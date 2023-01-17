@@ -50,6 +50,7 @@ $(RULESFILE) : $(OTTFILES)
 
 COQC = coqc
 COQDEP = coqdep
+COQSPLIT = $(COQ_LOC)/coqsplit
 
 LIBNAME=$(OTT_NAME)
 LNGEN=lngen
@@ -68,22 +69,26 @@ VFILES   = $(foreach i, $(FILES), $(COQ_LOC)/$(i).v)
 VOFILES  = $(foreach i, $(FILES), $(COQ_LOC)/$(i).vo)
 INCFLAGS = $(foreach i, $(INCDIRS), -I $(i))
 
+# Files with exercises to split
+SPLIT    = relations
+FULL     = $(foreach i, $(SPLIT), $(COQ_LOC)/$(i)_full.v)
+SOL      = $(foreach i, $(SPLIT), $(COQ_LOC)/$(i)_sol.v)
+
 .SECONDARY: $(VFILES)
 
 METALIBFILES= $(METALIBLOCATION)/*.v  $(METALIBLOCATION)/Makefile  $(METALIBLOCATION)/README.txt
-
 
 quick:  $(COQMKFILENAME)
 	@$(MAKE) -f $(COQ_LOC)/CoqSrc.mk quick
 
 
-gen: $(COQ_LOC)/$(OTT_NAME)_ott.v $(COQ_LOC)/$(OTT_NAME)_inf.v
+gen: $(COQ_LOC)/$(OTT_NAME)_ott.v $(COQ_LOC)/$(OTT_NAME)_inf.v $(FULL) $(SOL)
 
-coq: $(COQ_LOC)/$(COQMKFILENAME) $(VFILES) 
+coq: $(COQ_LOC)/$(COQMKFILENAME) $(VFILES)  
 	echo "Compiling Coq files"
 	cd $(COQ_LOC); $(MAKE) -f CoqSrc.mk
 
-%.vo: %.v
+$(COQ_LOC)/%.vo: $(COQ_LOC)/%.v
 	cd $(COQ_LOC); $(MAKE) -f CoqSrc.mk $*.vo
 
 
@@ -99,6 +104,19 @@ $(COQ_LOC)/%_inf_proofs.v: $(OTT_LOC)/%.ott Makefile
 
 $(COQ_LOC)/$(COQMKFILENAME): Makefile $(shell ls $(COQ_LOC)/*.v | grep -v _ott.v | grep -v _inf.v)
 	cd $(COQ_LOC); { echo "-R . $(LIBNAME) " ; ls *.v ; } > _CoqProject && coq_makefile -arg '-w -variable-collision,-meta-collision,-require-in-module' -f _CoqProject -o $(COQMKFILENAME)
+
+
+$(COQSPLIT): $(COQSPLIT).ml
+	(cd $(COQ_LOC); ocamlc.opt coqsplit.ml -o coqsplit)
+
+$(COQ_LOC)/%_full.v: $(COQ_LOC)/%.v $(COQSPLIT)
+	$(COQSPLIT) < $< > $@
+
+$(COQ_LOC)/%_short.v: $(COQ_LOC)/%.v $(COQSPLIT)
+	$(COQSPLIT) -terse < $< > $@
+
+$(COQ_LOC)/%_sol.v: $(COQ_LOC)/%.v $(COQSPLIT)
+	$(COQSPLIT) -solutions < $< > $@
 
 
 coqclean:

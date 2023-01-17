@@ -1,44 +1,51 @@
 Require Export lc.tactics.
+
 Import LCNotations.
 Local Open Scope lc_scope.
 
+(* Formalization of Barendregt's Chapter 3 (REDUCTION). *)
 
-(*** Formalization of Barendregt's Chapter 3 (REDUCTION). *)
+(** Section 3.1 Notions of reduction *)
 
-
-(* ################################################################# *)
-(** * Section 3.1 Notions of reduction *)
-
-(** We start by defining *properties* of binary term relations.
+(* We start by defining *properties* of binary term relations.
   
-    In our Ott generated definitions, a [relation] is defined as the type
-    [tm -> tm -> Prop]. 
-
-    Below, we'll use the metavariable [R] for relations, and if terms [t] and 
-    [u] are related by [R], then we will write that as [R t u].
-
-    Because we are working with a locally nameless representation, if we have 
-    [R t u], we'll want to know that both [t] and [u] are locally closed. In 
-    other words, we have satisfied the [lc R] constraint.
-
+   In our Ott generated definitions, a `relation` is something of type
+   `tm -> tm -> Prop`.
  *)
 
-(** ** Equivalence relation (and type classes) *)
+(* First, Barendregt defines three substitution properties for binary term 
+   relations. Ours are similar.
+*)
 
-(** This is a standard mathematical definitions. An *equivalence* relation is
-    one that is reflexive, symmetric and transitive.  These definitions are
-    similar to those in the the Coq standard library
-    (https://coq.inria.fr/library/Coq.Classes.RelationClasses.html) but
-    reflexivity is only required for locally closed terms.
+(* 3.1.14 *)
+Definition subst1 (R : relation) := 
+  forall t t' x u, lc_tm u ->
+    R t t' -> R (t [ x ~> u ]) (t' [ x ~> u ]) .
+Definition subst2 (R : relation) :=
+  forall x t u u', lc_tm t -> 
+    R u u' -> R (t [ x ~> u ]) (t [ x ~> u' ]).
+Definition subst3 (R : relation) :=
+  forall x t t' u u', 
+    R t t' -> R u u' -> R (t [ x ~> u ]) ( t' [ x ~> u' ]).
 
-    A type class is a form of record type that is determined by its parameter
-    [R]. We expect that there will only be one meaningful way that a relation
-    can be reflexive. Later on, we will create values of this record type 
-    for specific relations, by supplying the appropriate proofs. By declaring
-    these records to be type classes, Coq can find these values automatically, 
-    just by knowing what relation we are working with.
+(* In general, we expect the first property to always hold for 
+   any binary term relation. 
+
+   However, the second and third may or may not be true. 
+   (For example, the second is not true for the relation "beta".)
+
+   We'll make a class for relations that satisfy the first 
+   substitution property. *)
+Class substitutive (R : relation) := {
+    subst : subst1 R
+}.
+
+
+(* An equivalence relation is one that is reflexive, symmetric and transitive.
+   These definitions are similar to the Coq standard library
+   (https://coq.inria.fr/library/Coq.Classes.RelationClasses.html)
+   but reflexivity is only required for locally closed terms.
  *)
-
 Class reflexive (R: relation) := {
   reflexivity : forall a : tm, lc_tm a -> R a a
 }.
@@ -55,24 +62,12 @@ Class equivalence (R : relation) : Prop := {
     equivalence_transitive :> transitive R 
 }.
 
-(* ================================================================= *)
 
-(** ** Compatible relation *)
+(* Definition 3.1.1 (i)
 
-(** Definition 3.1.1 (i)
+   A compatible relation is one that is preserved by the constructors of the
+   language definition.
 
-   A *compatible* relation is one that is preserved by the constructors of the
-   language definition. We might write this informally, using the three
-   conditions.
-
-       - (abs) R t u implies R \x.t \x.u
-
-       - (app1) R t t' implies R (t u) (t' u)
-
-       - (app2) R u u' implies R (t u) (t u')
-
-   Because of our use of the locally nameless representation, we'll need to 
-   be a little more careful in our definitions. 
    Compatibility with the `abs` constructor is an important property for
    inductive relations defined by cofinite quantification and corresponds to
    an "exists-fresh" lemma.
@@ -92,32 +87,27 @@ Class compatible (R: relation) := {
       lc_tm t -> R u u' -> R (app t u) (app t u')
   }.
 
-(** In the case when the relation is reflexive and transitive, we can use the
-    two separate properties for application at once. The notation `{_} marks 
-    type class arguments to this lemma. When we apply the lemma, Coq will 
-    search for the values automatically. *)
+(* In the case when the relation is reflexive and transitive, we can 
+   use the two separate properties for application at once. *)
 
-Lemma compatible_app {R} `{lc R} `{reflexive R} `{transitive R} `{compatible R} :
+Definition compatible_app {R} `{lc R} `{reflexive R} `{transitive R} `{compatible R} :
   forall t u t' u',
   R t t' -> R u u' -> R (app t u) (app t' u').
 Proof.
-  (* WORKINCLASS *)
+  (* WORKED IN CLASS *)
   intros. 
   eapply transitivity with (b := (app t' u)).
   eapply compatible_app1; eauto with lngen.  
   eapply compatible_app2; eauto with lngen.
-Qed. (* /WORKINCLASS *)
-
-(* ================================================================= *)
-
-(** Definition 3.1.1 (ii) a *congruence* relation (also called an equality) is 
+Qed. 
+(* Definition 3.1.1 (ii) a congruence relation (also called an equality) is 
    a compatible equivalence relation. *)
 Class congruence R := {
   congruence_equivalence :> equivalence R ;
   congruence_compatible  :> compatible R 
 }.
 
-(** Definition 3.1.1 (iii) a *reduction* relation is reflexive, transitive and 
+(* Definition 3.1.1 (iii) a reduction relation is reflexive, transitive and 
   compatible. *)
 Class reduction R := {
   reduction_reflexive  :> reflexive R ;
@@ -125,66 +115,23 @@ Class reduction R := {
   reduction_compatible :> compatible R
 }.
 
+(* ----------------------------------------------------------------------- *)
 
-(** We'll jump ahead a bit and also define the following three substitution
-    properties for binary term relations.
+(* We diverge slightly from Barendregt and define a general definition for
+reflexive-transitive closure and symmetric-transitive closure instead of
+layering them on top of the compatible closure of the relation. *) 
 
-    In general, we expect the first property to always hold for any binary
-    term relation.
-
-    However, the second and third may or may not be true.  (For example, the
-    second is not true for primitive "beta" reduction.)  *)
-
-(** Definition 3.1.14 *)
-Definition subst1 (R : relation) := 
-  forall t t' x u, lc_tm u ->
-    R t t' -> R (t [ x ~> u ]) (t' [ x ~> u ]) .
-Definition subst2 (R : relation) :=
-  forall x t u u', lc_tm t -> 
-    R u u' -> R (t [ x ~> u ]) (t [ x ~> u' ]).
-Definition subst3 (R : relation) :=
-  forall x t t' u u', 
-    R t t' -> R u u' -> R (t [ x ~> u ]) ( t' [ x ~> u' ]).
-
-(** We'll also make a class for relations that satisfy the first substitution
-    property. *)
-Class substitutive (R : relation) := {
-    subst : subst1 R
-}.
-
-(* ================================================================= *)
-
-(** ** Definition 3.1.4 and 3.1.5
-    
-   We diverge slightly from Barendregt and define a general definition for
-   reflexive-transitive closure and symmetric-transitive closure instead of
-   layering them on top of compatible closure.
-
-   Take a moment to look at the following inductive definitions that appear in
-   the Ott file. These definitions are a way of taking a relation and forcing
-   it to be compatible, reflexive, transitive, etc.  *)
-
-Print compatible_closure.
-Print refl_trans_closure.
-Print sym_trans_closure.
- 
-
-Definition one_step_R_reduction (R : relation) := compatible_closure R.
 Definition R_reduction (R : relation) := refl_trans_closure (compatible_closure R).
 Definition R_convertibility (R : relation) := sym_trans_closure (R_reduction R).
 
-(** We will also specialize the latter two to the [beta] relation *)
+(* We will then specialize these two to the beta relation *)
 
 Definition β_reduction := R_reduction beta.
 Definition β_convertibility := R_convertibility beta.
 
-(* ================================================================= *)
+(* ----------------------------------------------------------------------- *)
 
-(** We'll want to show that β_reduction and  β_convertibility have the properties 
-    listed above. We can do so by proving those properties about the closure operations. 
-*)
-
-(** ** Properties of the compatible closure operation *)
+(** ----- Properties of the compatible closure operation ------ **)
 
 #[local]
 Instance lc_compatible_closure {R} `{lc R} : lc (compatible_closure R).
@@ -196,49 +143,34 @@ Qed.
 
 (** *** Exercise [subst1_compatible closure] *)
 
-(** This is a standard substitution lemma *)
+(* This is a standard substitution lemma *)
 #[local]
 Instance subst1_compatible_closure R { SR : substitutive R } : substitutive (compatible_closure R).
 Proof. 
-(* ADMITTED *)
-  constructor. intros t t' x u LCu CC. 
-  induction CC.
-  - eapply cc_rel; eauto. apply subst; eauto.
-  - pick fresh y and apply cc_abs. fold subst_tm. 
-    spec y.
-    autorewrite with lngen in H0; auto.
-  - eapply cc_app1; eauto with lngen.
-  - eapply cc_app2; eauto with lngen.
-Qed. (* /ADMITTED *)
+(* FILL IN HERE *) Admitted.
 
 (** Due to the use of co-finite quantification in our definition of
-    compatible_closure (in the Ott file), we need the underlying relation to
-    be substitutive.  Showing this result is similiar to proving an
-    "exists-fresh" lemma *)
+    compatible_closure, we need the underlying relation to be substitutive.
+    Showing this result is similiar to proving an "exists-fresh" lemma *)
 
 #[local]
 Instance compatible_compatible_closure {R} `{substitutive R} : compatible (compatible_closure R).
 Proof.
-    (* WORKINCLASS *)
+    (* WORKED IN CLASS *)
   split;  intros; eauto.
   have SS: substitutive (compatible_closure R) by typeclasses eauto.
   pick fresh y and apply cc_abs.
   rewrite (subst_tm_intro x t); auto.
   rewrite (subst_tm_intro x u); auto.
   eapply subst; eauto.
-Qed. (* /WORKINCLASS *)
-
-(** ** Properties of refl_trans_closure operation **)
+Qed. 
+(** ----------- Properties of refl_trans_closure operation ----------- **)
 
 (** *** Exercise [lc_refl_trans_closure ] *)
 
 #[local]
 Instance lc_refl_trans_closure {R} `{lc R} : lc (refl_trans_closure R).
-Proof. (* ADMITTED *)
-  split.
-  - induction 1; eauto using lc1.
-  - induction 1; eauto using lc2.
-Qed. (* /ADMITTED *)
+Proof. (* FILL IN HERE *) Admitted.
 
 #[local]
 Instance subst1_refl_trans_closure {R} `{substitutive R} : substitutive (refl_trans_closure R).
@@ -252,7 +184,7 @@ Qed.
 Instance compatible_refl_trans_closure {R} `{compatible R} : 
   compatible (refl_trans_closure R).
 Proof.
-  (* WORKINCLASS *)
+  (* WORKED IN CLASS *)
   split;  intros x t u H1 H0; eauto.
   + dependent induction H0. 
     - (* rt_rel *)
@@ -269,14 +201,14 @@ Proof.
       autorewrite with lngen; auto.
   + dependent induction H1; eauto using compatible_app1.
   + dependent induction H0; eauto using compatible_app2.
-Qed. (* /WORKINCLASS *)
+  Qed.
 
 
-(** ** Properties of sym_trans_closure *)
+(* Properties of sym_trans_closure *)
 
 #[local]
 Instance lc_sym_trans_closure {R} `{lc R} : lc (sym_trans_closure R).
-Proof.  (* ADMITTED *)
+Proof. 
   have LC:forall a b, sym_trans_closure R a b -> lc_tm a /\ lc_tm b.
   { intros a b STC. induction STC; split.
     all: try destruct IHSTC. 
@@ -287,7 +219,7 @@ Proof.  (* ADMITTED *)
   split.
   intros; edestruct LC; eauto.
   intros; edestruct LC; eauto.
-Qed. (* /ADMITTED *)
+Qed.
 
 #[local]
 Instance subst1_sym_trans_closure {R} {SR : substitutive R} : substitutive (sym_trans_closure R).
@@ -304,39 +236,13 @@ Qed.
 #[local]
 Instance compatible_sym_trans_closure {R} {CR: compatible R} : compatible (sym_trans_closure R).
 Proof.
-  (* ADMITTED *)
-  constructor.
-  + intros.
-    dependent induction H0.
-    - eapply st_rel; eauto.
-      eapply compatible_abs; eauto.
-    - eapply st_sym; eauto.
-    - eapply st_trans with (t2 := (abs (close x t2))).
-      eapply IHsym_trans_closure1; eauto.
-      autorewrite with lngen; auto.
-      autorewrite with lngen; auto.
-      eapply IHsym_trans_closure2; eauto.
-      autorewrite with lngen; auto.
-      autorewrite with lngen; auto.
- + intros.
-   dependent induction H.
-   - eapply st_rel; eauto. 
-     eapply compatible_app1; eauto.
-   - eapply st_sym; eauto.
-   - eapply st_trans with (t2 := app t2 u); eauto.
- + intros. dependent induction H0.
-   - eapply st_rel; eauto. 
-     eapply compatible_app2; eauto.      
-   - eapply st_sym; eauto.
-   - eapply st_trans with (t2 := app t t2); eauto.
-Qed. (* /ADMITTED *)
+  (* FILL IN HERE *) Admitted.
 
-(* ================================================================= *)
+(* --------------------------------------------------------------- *)
 
-(** Now let's put everything together and show properties of R-reduction and R-convertibility. *)
+(* Now let's put everything together and show properties of R-reduction and R-convertibility. *)
 
-(** ** Lemma 3.1.6  
-
+(* Lemma 3.1.6  
    Our definition of the R_reduction operation produces a reduction relation
    and R_convertibility produces a congruence relation. *)
 
@@ -362,11 +268,11 @@ Proof.
 Qed.
 
 
-(** ** Remark 3.1.7 *)
+(* Remark 3.1.7 *)
 
 Lemma subst2_R_reduction R `{lc R}`{substitutive R}: subst2 (R_reduction R).
 Proof.
-  (* WORKINCLASS *)
+  (* WORKED IN CLASS *)
   unfold subst2. 
   intros x t u u' LCt Red.
   have LC: lc (refl_trans_closure (compatible_closure R)). { typeclasses eauto. }
@@ -384,28 +290,27 @@ Proof.
     rewrite_subst_open_hyp; eauto with lngen.    
   + (* app *)
     eapply compatible_app; eauto.
-Qed. (* /WORKINCLASS *)
-
-(* ================================================================= *)
+Qed. 
+(* --------------------------------------------------------------- *)
 
 (** The next part defines what it means for a term to be a normal
-    form [nf] according to some reduction relation R. 
+    form (nf) according to some reduction relation R. 
   *)
 
-(** ** Definition 3.1.8 *)
+(* Definition 3.1.8 *)
 
-(** (i) A term t is a R-redex if there exists u, such that R t u *)
+(* (i) A term t is a R-redex if there exists u, such that R t u *)
 Print redex.
 
-(** (ii) A term t is R-normal-form if no subterm contains an R-redex *)
+(* (ii) A term t is R-normal-form if no subterm contains an R-redex *)
 Print nf.
 
-(** (iii) A term u is a R-nf-of t if u is an R-nf and t is R-convertible to u. *)
+(* (iii) A term u is a R-nf of t if u is an R-nf and t =R u. *)
 Definition R_nf_of R u t := nf R u /\ R_convertibility R t u.
 
-(** ** Lemma 3.1.10  (i) *)
+(* Lemma 3.1.10  (i) *)
 
-(** Normal forms do not single-step *)
+(* Normal forms do not single-step *)
 
 Lemma nf_normal R : forall t,
   nf R t -> not (redex (compatible_closure R) t).
@@ -417,9 +322,9 @@ Proof.
   pick fresh x. spec x. eauto.
 Qed.
 
-(** ** Lemma 3.1.10  (ii) *)
+(* Lemma 3.1.10  (ii) *)
 
-(** Normal forms only reduce to themselves *)
+(* Normal forms only reduce to themselves *)
 
 Lemma nf_noreduction {R} : forall t,  nf R t -> forall u, R_reduction R t u -> t = u /\ nf R u.
 Proof.
@@ -434,19 +339,16 @@ Proof.
     destruct (IHrefl_trans_closure2 R); auto.
 Qed.
 
-(* ================================================================= *)
-
-(** ** Definition 3.1.11 *) 
+(* Definition 3.1.11 *) 
 
 Definition diamond_property (R : relation) := 
   forall t t1 t2, R t t1 -> R t t2 -> exists t3, R t1 t3 /\ R t2 t3.
 
 Definition church_rosser (R : relation) := diamond_property (R_reduction R).  
 
-(** ** Theorem 3.1.12 *)
+(* R-compatible terms R-reduce to a common term *)
 
-(** R-compatible terms R-reduce to a common term *)
-
+(* Theorem 3.1.12 *)
 Theorem convertibility_reduction_diamond {R} `{lc R} (CR: church_rosser R) :
   forall t u, R_convertibility R t u -> exists z, R_reduction R t z /\ R_reduction R u z.
 Proof. 
@@ -469,7 +371,7 @@ Proof.
 Qed.
 
 
-(** ** Corollary 3.1.13 *)
+(* Corollary 3.1.13 *)
 Lemma nf_reduce R `{lc R} (CR: church_rosser R) : forall u t, R_nf_of R u t -> R_reduction R t u.
 Proof.
   intros u t.
@@ -480,7 +382,7 @@ Proof.
   auto.
 Qed.
   
-(** ** Proposition 3.1.15 *)
+(* 3.1.15 *)
 
 #[local]
 Instance subst1_R_reduction {R} `{substitutive R} : substitutive (R_reduction R).
@@ -494,13 +396,14 @@ Proof.
   typeclasses eauto.
 Qed.
 
-(** ** Proposition 3.1.16 *)
+(* ------------------------------- *)
 
-(** *** Exercise [subst1_beta] *)
+
+(* 3.1.16 *)
 
 #[local]
 Instance subst1_beta : substitutive beta.
-Proof. (* ADMITTED *)
+Proof. 
   constructor. intros t t' x u LCu Beta.
   inversion Beta. subst.
   simpl.
@@ -510,7 +413,7 @@ Proof. (* ADMITTED *)
   inversion H. spec y.
   apply subst_tm_lc_tm with (t2 := u) (x1 := x) in H2; auto.
   autorewrite with lngen in H2; auto.
-Qed. (* /ADMITTED *)
+Qed.
 
 #[local]
 Instance lc_beta : lc beta.
@@ -521,32 +424,10 @@ Proof.
     eauto with lngen.
 Qed.
 
-(* ################################################################# *)
-(** * Section 3.2 Beta reduction *)
+(* Section 3.2 Beta reduction *)
 
-(** This section studies the relation [β_reduction] more closely and shows 
-    that it is Church-Rosser using a proof that Barendregt attributes to 
-    Tait and Martin-L\"of. 
-
-   We won't show that β_reduction satisfies the diamond property directly. Instead 
-   we will define another relation, called "parallel reduction" and derive this 
-   property from the lemma below and the following two facts:
-
-      - parallel reduction satisfies the diamond property
-
-      - β_reduction is the transitive closure of parallel reduction
-      
-*)
-
-(** ** Lemma 3.2.2 *)
-(** If a relation has the diamond property, then so does its transitive closure. 
-
-Barendregt's proof is "A simple diagram chase suggested by figure 3.4"
-
-      * --
-
-
-*)
+(* If a relation has the diamond property, then so does its transitive closure. *)
+(* Lemma 3.2.2 *)
 
 Lemma diamond_property_trans_closure {R} : diamond_property R -> diamond_property (trans_closure R). 
 Proof.
@@ -554,7 +435,7 @@ Proof.
   unfold diamond_property in *.
   intros t t1 t2 TC1.
   move: t2.
-  (*  *)
+  (* A simple diagram chase suggested by figure 3.4 *)
   induction TC1; intros t2' TC2.
   - have lemma: forall u,  R t u -> exists t3, trans_closure R u t3 /\ R t2' t3.
     { clear u H.
@@ -570,13 +451,7 @@ Proof.
     exists u3. split. eauto. eapply t_trans with (t2 := u2); eauto.
 Qed.
 
-(* ================================================================= *)
-
-(** ** Definition 3.2.3 is often called parallel reduction. *)
-
-Print parallel.
-
-(** Properties of parallel reduction *)
+(* Definition 3.2.3 is called parallel reduction. Here are its properties. *)
 
 #[local]
 Instance lc_parallel : lc parallel.
@@ -630,11 +505,9 @@ Proof.
   + intros. eauto using reflexivity.
 Qed.
 
-(** ** Lemma 3.2.4  
+(* Lemma 3.2.4 *)
 
-   Parallel reduction satisfies the second and third substitution properties *)
-
-(** This is done inline. But we have already identified this property for 
+(* This is done inline. But we have already identified this property for 
    relations, so we'll prove it separately first. *)
 Lemma subst2_parallel : subst2 parallel.
 Proof.
@@ -653,7 +526,7 @@ Proof.
     eauto.
 Qed.
 
-(** Parallel reduction is *not* transitive. So we need to prove this by induction. *)
+(* Parallel reduction is *not* transitive. So we need to prove this by induction. *)
 Lemma subst3_parallel : subst3 parallel.
 Proof.
   unfold subst3.
@@ -673,31 +546,11 @@ Proof.
     eauto.
 Qed.
 
-(** A corollary of the above let's us reason about parallel reduction for opened terms. *)
-Corollary parallel_open : forall x t t' u u',
-  x `notin` fv_tm t 
-  -> x `notin` fv_tm t'
-  -> parallel (t ^ x) (t' ^ x) 
-  -> parallel u u' 
-  -> parallel (open t u) (open t' u').
-Proof.  
-  intros x t t' u u' F1 F2 H0 P41.
-  move: (subst3_parallel x _ _ _ _ H0 P41) => h.
-  repeat rewrite subst_tm_open_tm_wrt_tm in h; eauto.
-  eapply lc1; eauto with lngen.
-  eapply lc2; eauto with lngen.
-  repeat rewrite subst_eq_var in h.
-  repeat rewrite subst_tm_fresh_eq in h; auto.
-Qed.
+(* Lemma 3.2.5 *)
 
+(* Inversion lemmas that we will inline below *)
 
-
-(* ================================================================= *)
-
-(** ** Lemma 3.2.6 *)
-
-(** The first of our two key lemmas: parallel reduction satisfies the diamond property. *)
-
+(* Lemma 3.2.6 *)
 Lemma diamond_property_parallel : diamond_property parallel.
 Proof.
   unfold diamond_property.
@@ -710,16 +563,32 @@ Proof.
     inversion P31. subst.
     inversion P32. subst.
     destruct (IHparallel2 _ H4) as [t4' [P41 P42]].
+    have LCu : lc_tm u'. eapply lc2; eauto.
+    have LCu'0 : lc_tm u'0. eapply lc2; eauto.
+    have LCt4' : lc_tm t4'. eapply lc2; eauto.
     pick fresh x. spec x.
     exists (open t'1 t4'). 
-    split; eauto using parallel_open. 
+    apply (subst3_parallel x _ _ _ _ H0) in P41.
+    repeat rewrite subst_tm_open_tm_wrt_tm in P41; auto. 
+    repeat rewrite subst_eq_var in P41.
+    repeat rewrite subst_tm_fresh_eq in P41; auto.
+    apply (subst3_parallel x _ _ _ _ H5) in P42.
+    repeat rewrite subst_tm_open_tm_wrt_tm in P42; auto. 
+    repeat rewrite subst_eq_var in P42.
+    repeat rewrite subst_tm_fresh_eq in P42; auto.
   - (* beta / app *)
     destruct (IHparallel1 _ H1) as [t2 [P1 P2]].
     inversion P1. subst.
     destruct (IHparallel2 _ H4) as [t3 [P3 P4]].
+    have LCu : lc_tm u'. eapply lc2; eauto.
+    have LCt3 : lc_tm t3. eapply lc2; eauto.
     pick fresh x. spec x.
+    apply (subst3_parallel x _ _ _ _ H0) in P3.
+    repeat rewrite subst_tm_open_tm_wrt_tm in P3; auto. 
+    repeat rewrite subst_eq_var in P3.
+    repeat rewrite subst_tm_fresh_eq in P3; auto.
     exists (open t'1 t3).
-    split; eauto using parallel_open.
+    split; auto.
   - (* var / var *)
     exists (var_f x). split; auto.
   - (* abs / abs *)
@@ -727,31 +596,39 @@ Proof.
     destruct (H0 _ H3) as [t3 [P1 P2]].
     exists (abs (close x t3)).
     split.
-    eapply (compatible_abs x);
+    eapply (compatible_abs x). 
     autorewrite with lngen; auto.
-    eapply (compatible_abs x);
+    autorewrite with lngen; auto.
+    eapply (compatible_abs x). 
+    autorewrite with lngen; auto.
     autorewrite with lngen; auto.
   - (* app / beta *)
     destruct (IHparallel1 _ H1) as [t2 [P1 P2]].
     inversion P2. subst.
     destruct (IHparallel2 _ H4) as [t3 [P3 P4]].
+    have LCu : lc_tm u. eapply lc1; eauto.
+    have LCu'0 : lc_tm u'0. eapply lc2; eauto.
+    have LCt3 : lc_tm t3. eapply lc2; eauto.
     pick fresh x. spec x.
+    apply (subst3_parallel x _ _ _ _ H0) in P4.
+    repeat rewrite subst_tm_open_tm_wrt_tm in P4; auto. 
+    repeat rewrite subst_eq_var in P4.
+    repeat rewrite subst_tm_fresh_eq in P4; auto.
     exists (open t'1 t3).
-    split; eauto using parallel_open. 
+    split; auto.
   - (* app / app *)
     destruct (IHparallel1 _ H1) as [t2 [P1 P2]].
     destruct (IHparallel2 _ H4) as [t3 [P3 P4]].
     exists (app t2 t3).
     split; auto.
+Unshelve.
+   all: exact compatible_parallel.
 Qed.
 
-(* ================================================================= *)
+(* ---------------------------------------------------------------------- *)
+(* Lemma 3.2.7 *)
 
-(** This next part talks about relations between relations. To make this 
-    a bit easier to work with, we'll introduce some notation for when 
-    one relation implies another and when one relation is equivalent to 
-    another
-*)
+(* This next part talks about relations between relations. *)
 
 Module RelationNotation.
   Notation "R1 [<=] R2" := (forall t u, R1 t u -> R2 t u).
@@ -759,9 +636,7 @@ Module RelationNotation.
 End RelationNotation.
 Import RelationNotation.
 
-(** ** Lemma 3.2.7 *)
-
-(** Lemma 3.2.7 states that 
+(* Lemma 3.2.7 states that 
 
                β_reduction = trans_closure parallel
 
@@ -789,10 +664,8 @@ Proof.
   - eapply reflexivity; auto.
 Qed.
 
-(** *** Exercise [parallel_sub_β_reduction] *)
-
 Lemma parallel_sub_β_reduction : parallel [<=] β_reduction.
-Proof. (* ADMITTED *)
+Proof. 
   intros.
   induction H; unfold β_reduction in *; unfold R_reduction in *.
   - apply rt_trans with (t2:= app (abs t') u').
@@ -804,7 +677,7 @@ Proof. (* ADMITTED *)
   - pick fresh x. spec x.
     eapply (compatible_abs x); eauto.
   - eapply compatible_app; eauto.
-Qed. (* /ADMITTED *)
+Qed.   
 
 Lemma β_reduction_trans_refl_cc : β_reduction [=] trans_closure (refl_closure (compatible_closure beta)).
 Proof.
@@ -813,16 +686,15 @@ Proof.
   inversion H. eauto. eapply reflexivity. auto.
 Qed.
 
-Lemma  β_reduction_is_trans_closure_parallel : 
-   β_reduction [=] trans_closure parallel.
+Lemma implication : 
+    β_reduction [=] trans_closure parallel.
 Proof. 
   intros.
   split.
   - rewrite β_reduction_trans_refl_cc.
     intros h.
     dependent induction h.
-    eapply t_rel. 
-    eapply  refl_compatible_sub_parallel. auto.
+    eapply t_rel. eapply  refl_compatible_sub_parallel. auto.
     eapply t_trans; eauto.
   - intros h.
     dependent induction h.
@@ -830,45 +702,42 @@ Proof.
     eapply transitivity; eauto.
 Qed.
 
-(** To use this result, we also need to show that the diamond
-    property respects relational equivalence. This is mostly a matter 
-    of unfolding definitions. *)
+(* Finally, we'll cheat a bit and to convert the [=] into a =. 
+   Alternatively, we can show that the diamond property respects
+   logical equivalence. *)
 
-Lemma diamond_respects : forall R1 R2,
-  R1 [=] R2 ->
-  diamond_property R1 ->
-  diamond_property R2.
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Logic.PropExtensionality. 
+
+Lemma beta_reduction_is_trans_closure_parallel : 
+  β_reduction = trans_closure parallel.
 Proof.
-  intros R1 R2 rr.
-  unfold diamond_property. 
-  intros db t1 t2 t3 T1 T2.
-  rewrite <- rr in T1.
-  rewrite <- rr in T2.
-  destruct (db t1 t2 t3 T1 T2) as [t4 [b1 b2]].
-  exists t4.
-  rewrite -> rr in b1.
-  rewrite -> rr in b2.
-  split; auto.
+  extensionality t.
+  extensionality u.
+  apply propositional_extensionality.
+  apply implication.
 Qed.
 
-(* ================================================================= *)
-
-(** * Lemma 3.2.8 (Church-Rosser Theorem) *)
+(* Lemma 3.2.8 (Church-Rosser Theorem) *)
 
 Lemma church_rosser_beta : church_rosser beta.
 Proof.
   unfold church_rosser.
   fold β_reduction.
-  eapply diamond_respects.
-  symmetry.
-  eapply β_reduction_is_trans_closure_parallel.
+  rewrite beta_reduction_is_trans_closure_parallel.
   apply diamond_property_trans_closure.
   apply diamond_property_parallel.
 Qed.
 
-(* ================================================================= *)
+Lemma joinability t u (H : β_convertibility t u) :
+  exists v, β_reduction t v /\ β_reduction u v.
+Proof.
+  apply convertibility_reduction_diamond.
+  apply church_rosser_beta.
+  auto.
+Qed.
 
-(** ** Corollary 3.2.9 (i) *)
+(* Corollary 3.2.9 (i) *)
 
 Lemma nf_reduce_beta : forall u t, R_nf_of beta u t -> β_reduction t u.
 Proof.
@@ -877,7 +746,7 @@ Proof.
   eapply church_rosser_beta.
 Qed.
 
-(** ** Corollary 3.2.9 (ii) *)
+(* Corollary 3.2.9 (ii) *)
 
 Lemma nf_unique_beta : forall u1 u2 t, R_nf_of beta u1 t -> R_nf_of beta u2 t -> u1 = u2.
 Proof.
@@ -892,15 +761,7 @@ Proof.
   auto.
 Qed.
 
-Lemma joinability t u (H : β_convertibility t u) :
-  exists v, β_reduction t v /\ β_reduction u v.
-Proof.
-  apply convertibility_reduction_diamond.
-  apply church_rosser_beta.
-  auto.
-Qed.
-
-(** ** Main result: different normal forms are not beta convertible. *)
+(* Main result: different normal forms are not beta convertible. *)
 
 Lemma consistency : forall t u, nf beta t -> nf beta u -> t <> u -> not (β_convertibility t u).
 Proof.
@@ -912,6 +773,3 @@ Proof.
   rewrite <- EQ' in EQ.
   contradiction.
 Qed.
-
-
-
