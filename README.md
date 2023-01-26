@@ -1,4 +1,4 @@
-This repository contains a formalization of Chapter 3 of 
+This repository contains a formalization of part of Chapter 3 of 
 H.P. Barendregt, "The Lambda Calculus, Its Syntax and Semantics".
 
 The main result shown here is a proof of the Church-Rosser theorem for the
@@ -10,10 +10,13 @@ is intended to follow the [`Stlc`
 tutorial](https://github.com/plclub/metalib/tree/master/Stlc) found in the
 Penn `metalib` repository.
 
+To start the tutorial, read [overview.md](overview.md).
+
+
 Compilation instructions
 ------------------------
 
-This development has been tested with The Coq Proof Assistant, version 8.15.0.
+This development has been tested with The Coq Proof Assistant, version 8.17.0.
 
 If you have Coq, Ott, metalib and LaTeX installed (see below), the toplevel
 Makefile supports the following targets:

@@ -4,6 +4,10 @@ Require Export lc.relations.
 Import LCNotations.
 Local Open Scope lc_scope.
 
+Local Notation "t ≡β t'"  := (conversion t t') 
+    (at level 70, right associativity) : lc_scope.
+
+
 Lemma conversion_lc : forall t u, t ≡β u -> lc_tm t /\ lc_tm u.
 Proof. 
   intros t u H.

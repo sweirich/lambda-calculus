@@ -54,7 +54,11 @@ Unless otherwise specified, all files are in the `coq/` subdirectory.
    version with the proofs using the makefile target `make coq/lc_inf_proofs.v`.
    However, this version can take a long time to compile.
    
-3. Now take a look at `tactics.v`. This file contains various Ltac definitions 
+3. Next, take a look at `tactics.v`. This file contains various Ltac definitions 
    and hints intended to make working with a locally nameless representation more 
-   automatic.
-   
+   automatic. This file has not been automatically generated, so it contains 
+   comments describing the purpose of its definitions.
+
+4. Finally, begin the development proper with `relations_full.v` : the version of 
+   the tutorial with exercises. Exercise answers are available in `relations_sol.v`.
+   This file contains the proof of the Church Rosser theorem.

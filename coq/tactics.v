@@ -23,8 +23,6 @@ Module LCNotations.
   Notation "t ^ x"    := (open_tm_wrt_tm t (var_f x)) : lc_scope.
   Notation open t1 t2 := (open_tm_wrt_tm t1 t2).
   Notation close x t  := (close_tm_wrt_tm x t).
-  Notation "t ≡β t'"  := (conversion t t') 
-    (at level 70, right associativity) : lc_scope.
 End LCNotations.
 
 Import LCNotations.
@@ -124,7 +122,7 @@ Ltac spec y :=
      specialize (H0 y)
     | [H0 : forall x : tmvar, _ |- _ ] => 
      specialize (H0 y)
-  end.
+  end. 
 
 (* Look for an equality comparison for variables and do case analysis. *)
 Ltac destruct_var_eq :=     
