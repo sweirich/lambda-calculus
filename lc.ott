@@ -535,3 +535,71 @@ not redex R (t u)
 ----------------- :: app
 nf R (t u)
 
+
+defns 
+JParCC :: '' ::=
+
+defn 
+R |- t => u ::    :: cc_parallel :: 'cc_par_' 
+{{ com Compatible closure of $[[R]]$ (aka one-step reduction (3.1.5) }}
+{{ tex [[t]][[=>]]_{[[R]]} [[u]] }}
+by
+
+R t u 
+-------- :: rel
+R |- t => u 
+
+
+--------------- :: refl
+R |- t => t
+
+
+R |- t => u 
+----------------- :: abs
+R |- \x.t => \x.u 
+
+R |- t => t'  
+R |- u => u'
+------------------------ :: app
+R |- t u => t' u'
+
+
+
+defns 
+JParSynCC :: '' ::=
+
+defn 
+R |- t ==> u ::    :: cc_parallel2 :: 'cc_p_' 
+{{ com Compatible closure of $[[R]]$ (aka one-step reduction (3.1.5) }}
+{{ tex [[t]][[==>]]_{[[R]]} [[u]] }}
+by
+
+--------------- :: refl
+R |- t ==> t
+
+R |- t ==> u 
+----------------- :: abs
+R |- \x.t ==> \x.u 
+
+R |- t ==> t'  
+R |- u ==> u'
+------------------------ :: app
+R |- t u ==> t' u'
+
+R x u
+--------------- :: var_rel
+R |- x ==> u
+
+R |- t ==> u 
+R (\x.u) u'
+----------------- :: abs_rel
+R |- \x.t ==> u'
+
+
+R |- t ==> t'  
+R |- u ==> u'
+R (t' u') t''
+------------------------ :: app_rel
+R |- t u ==> t''
+
+

@@ -767,6 +767,7 @@ Import RelationNotation.
 *)
 
 
+
 Lemma refl_compatible_sub_parallel : refl_closure (compatible_closure beta) [<=] parallel.
 Proof.
   intros t u H. dependent induction H.
@@ -796,12 +797,18 @@ Proof.
   intros.
   split.
   - rewrite beta_reduction_trans_refl_cc.
+    (* relies on R1 [<=] R2 implies trans_closure R1 [<=] trans_closure R2
+       where R1 is refl_closure (cc beta) and R2 is parallel reduction 
+     *)
     intros h.
     dependent induction h.
     eapply t_rel. 
     eapply refl_compatible_sub_parallel. auto.
     eapply t_trans; eauto.
   - intros h.
+    (* relies on R1 [<=] R2 implies trans_closure R1 [<=] trans_closure R2
+       where R1 is parallel reduction and R2 is beta_reduction. 
+       Also observe: trans_closure (beta_reduction) [=] beta_reduction *)
     dependent induction h.
     eapply parallel_sub_beta_reduction; auto. 
     eapply transitivity; eauto.

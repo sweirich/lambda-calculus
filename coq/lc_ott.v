@@ -289,8 +289,49 @@ Inductive nf : relation -> tm -> Prop :=    (* defn nf *)
       not ( redex R  ( (app t u) )  )  ->
      nf R  ( (app t u) ) .
 
+(* defns JParCC *)
+Inductive cc_parallel : relation -> tm -> tm -> Prop :=    (* defn cc_parallel *)
+ | cc_par_rel : forall (R:relation) (t u:tm),
+      R t u  ->
+     cc_parallel R t u
+ | cc_par_refl : forall (R:relation) (t:tm),
+     lc_tm t ->
+     cc_parallel R t t
+ | cc_par_abs : forall (L:vars) (R:relation) (t u:tm),
+      ( forall x , x \notin  L  -> cc_parallel R  ( open_tm_wrt_tm t (var_f x) )   ( open_tm_wrt_tm u (var_f x) )  )  ->
+     cc_parallel R (abs t) (abs u)
+ | cc_par_app : forall (R:relation) (t u t' u':tm),
+     cc_parallel R t t' ->
+     cc_parallel R u u' ->
+     cc_parallel R (app t u) (app t' u').
+
+(* defns JParSynCC *)
+Inductive cc_parallel2 : relation -> tm -> tm -> Prop :=    (* defn cc_parallel2 *)
+ | cc_p_refl : forall (R:relation) (t:tm),
+     lc_tm t ->
+     cc_parallel2 R t t
+ | cc_p_abs : forall (L:vars) (R:relation) (t u:tm),
+      ( forall x , x \notin  L  -> cc_parallel2 R  ( open_tm_wrt_tm t (var_f x) )   ( open_tm_wrt_tm u (var_f x) )  )  ->
+     cc_parallel2 R (abs t) (abs u)
+ | cc_p_app : forall (R:relation) (t u t' u':tm),
+     cc_parallel2 R t t' ->
+     cc_parallel2 R u u' ->
+     cc_parallel2 R (app t u) (app t' u')
+ | cc_p_var_rel : forall (R:relation) (x:tmvar) (u:tm),
+      R (var_f x) u  ->
+     cc_parallel2 R (var_f x) u
+ | cc_p_abs_rel : forall (L:vars) (R:relation) (t u' u:tm),
+      ( forall x , x \notin  L  -> cc_parallel2 R  ( open_tm_wrt_tm t (var_f x) )   ( open_tm_wrt_tm u (var_f x) )  )  ->
+      R  ( (abs u) )  u'  ->
+     cc_parallel2 R (abs t) u'
+ | cc_p_app_rel : forall (R:relation) (t u t'' t' u':tm),
+     cc_parallel2 R t t' ->
+     cc_parallel2 R u u' ->
+      R  ( (app t' u') )  t''  ->
+     cc_parallel2 R (app t u) t''.
+
 
 (** infrastructure *)
-Hint Constructors beta eta betaeta compatible_closure refl_closure trans_closure refl_trans_closure sym_trans_closure parallel Step StepV Eval conversion full_reduction redex terminal nf lc_tm : core.
+Hint Constructors beta eta betaeta compatible_closure refl_closure trans_closure refl_trans_closure sym_trans_closure parallel Step StepV Eval conversion full_reduction redex terminal nf cc_parallel cc_parallel2 lc_tm : core.
 
 

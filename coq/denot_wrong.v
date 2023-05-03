@@ -2,12 +2,17 @@ Require Export lc.tactics.
 Require Export lc.relations.
 Require Import Lia.
 
+Require Import Coq.Classes.RelationClasses.
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Structures.Orders.
+
 Import LCNotations.
 Local Open Scope lc_scope.
 
 (* This is a Coq port of https://plfa.github.io/Denotational/ *)
-(* Extended with natural number constants *)
 
+(* However, the denotation is in terms of "option Values"
+   so that we can return "wrong" *)
 
 (* How to define the semantics of primitive operators? *)
 (* Is this CBN or CBV? What changes if it is CBV? *)
@@ -15,13 +20,14 @@ Local Open Scope lc_scope.
 
 Inductive Value : Type :=
   | v_bot   : Value
-  | v_map   : Value -> Value -> Value
+  | v_map   : Value -> option Value -> Value
   | v_union : Value -> Value -> Value
 .
 
 Notation "⊥" := v_bot.
 Infix "|->" := v_map (at level 90, right associativity).
 Infix "⊔" := v_union (at level 85, right associativity).
+
 
 Inductive v_sub : Value -> Value -> Prop :=
   | v_sub_bot : forall v, ⊥ [<=] v
@@ -34,16 +40,24 @@ Inductive v_sub : Value -> Value -> Prop :=
   | v_sub_trans : forall u v w, 
       u [<=] v -> v [<=] w -> u [<=] w
   | v_sub_fun : forall v w v' w', 
-      v' [<=] v
-      -> w [<=] w'
-      -> (v |-> w) [<=] (v' |-> w')
+      (v |-> w) [<=] (v' |-> w')
   | v_sub_dist : forall v w w', 
-      (v |-> (w ⊔ w')) [<=] ((v |-> w) ⊔ (v |-> w'))
+      (v |-> Some (w ⊔ w')) [<=] 
+        ((v |-> Some w) ⊔ (v |-> Some w'))
 where "v1 [<=] v2" := (v_sub v1 v2).
+
+Definition option_sub 
+  (o1: option Value) (o2: option Value) : Prop := 
+  match o1, o2  with 
+  | Some v1 , Some v2 => v_sub v1 v2
+  | None , None => True
+  | _ , _ => False 
+  end.
+
 
 #[global] Hint Constructors v_sub : core.
 
-Lemma v_sub_refl : forall v, v [<=] v.
+Lemma v_sub_refl : forall (v:Value), v [<=] v.
 Proof.
   intro v. induction v; eauto.
 Qed.  
@@ -57,16 +71,9 @@ Proof.
   intros; eauto.
 Qed.
 
-(* ⊔↦⊔-dist *)
 Lemma v_sub_union_dist : forall (v w v' w': Value), 
-    (v ⊔ v' |-> w ⊔ w') [<=] ((v |-> w) ⊔ (v' |-> w')).
-Proof. intros. 
-       eapply v_sub_trans.
-       eapply v_sub_dist.
-       eapply v_sub_mono.
-       + eapply v_sub_fun; eauto.
-       + eauto.
-Qed.
+    (v ⊔ v' |-> Some (w ⊔ w')) [<=] ((v |-> Some w) ⊔ (v' |-> Some w')).
+Proof. eauto. Qed.
 
 Lemma v_sub_union_invL : forall u v w,
     (u ⊔ v) [<=] w -> u [<=] w.
@@ -83,53 +90,47 @@ Proof. intros u v w H. dependent induction H; eauto. Qed.
 
   *)
 
-Definition Env := atom -> Value.
+Definition v_wrong : option Value := None.
 
-Definition empty : Env := fun x => v_bot.
+Definition Env := atom -> option Value.
+
+Definition empty : Env := fun x => v_wrong.
 
 Definition cons : atom -> Value -> Env -> Env := 
   fun x v γ => fun y => match (x == y) with 
-                  | left _ => v
+                  | left _ => Some v
                   | right pf => γ y
                   end.
 
 Definition env_sub (γ : Env) (δ : Env) : Prop :=
-  forall x, γ x [<=] δ x.
+  forall x, option_sub (γ x) (δ x).
+
 
 #[global] Instance Refl_env_sub : Reflexive env_sub.
-unfold Reflexive. intros γ. unfold env_sub. intros x. auto.
+unfold Reflexive. intros γ. unfold env_sub. intros x.
+destruct (γ x); simpl; eauto.
 Qed.
 
 #[global] Instance Trans_env_sub : Transitive env_sub.
-unfold Transitive. intros γ1 γ2 γ3. unfold env_sub. intros g1 g2 x. eauto.
+unfold Transitive. intros γ1 γ2 γ3. unfold env_sub. 
+intros g1 g2 x.
+specialize (g1 x). 
+specialize (g2 x). 
+destruct (γ1 x) eqn:E1; destruct (γ2 x) eqn:E2; destruct (γ3 x) eqn:E3; subst; simpl; eauto. done.
 Qed.
 
 
-Require Import Coq.Logic.FunctionalExtensionality.
-
-Lemma cons_cons : forall x y z v γ, 
-    z <> y ->
-    z <> x ->
-    cons y ((cons z v γ) x) (cons z v γ) = cons z v (cons y (γ x) γ).
-Proof.
-  intros.
-  unfold cons.
-  extensionality w.
-  destruct (y == w) eqn:YW;
-  destruct (z == w) eqn:ZW; auto.
-  + subst. done. 
-  + subst. destruct (z == x). subst. done. done.
-Qed.     
-
-(* CBV requires that the value is not bot?? *)
-Inductive v_app : Value -> Value -> Value -> Prop :=
+Inductive v_app : option Value -> option Value -> option Value -> Prop :=
   | app_beta : forall v w, 
-      (* CBV??      v <> v_bot -> *)
-      v_app (v |-> w) v w
+      v_app (Some (v |-> w)) (Some v) w
+  | app_wrong_fun : forall v,
+      v_app v_wrong v v_wrong
+  | app_wrong_arg : forall v,
+      v_app (Some v) v_wrong v_wrong
 .
 
 
-Inductive sem : Env -> tm -> Value -> Prop :=
+Inductive sem : Env -> tm -> option Value -> Prop :=
   | sem_var : forall γ x,
       sem γ (var_f x) (γ x)
   | sem_app : forall γ L M u v w,
@@ -140,26 +141,44 @@ Inductive sem : Env -> tm -> Value -> Prop :=
   | sem_abs : forall L γ v w N,
       (forall x, x `notin` L ->
           sem (cons x v γ) (N ^ x) w) -> 
-      sem γ (abs N) (v |-> w)
+      sem γ (abs N) (Some (v |-> w))
   | bot_intro : forall γ M,
       lc_tm M ->
-      sem γ M ⊥
+      sem γ M (Some ⊥)
   | union_intro : forall γ M v w,
-      sem γ M v
-      -> sem γ M w
-      -> sem γ M (v ⊔ w)
+      sem γ M (Some v)
+      -> sem γ M (Some w)
+      -> sem γ M (Some (v ⊔ w))
   | sem_sub : forall γ M v w,
-      sem γ M v
+      sem γ M (Some v)
       -> w [<=] v
-      -> sem γ M w
+      -> sem γ M (Some w)
 .
 
-#[global] Hint Constructors sem : core.
+#[global] Hint Constructors sem.
 
-Lemma sem_subst : forall x y γ M v,
+
+Lemma cons_cons : forall x y z v γ u, 
+    z <> y ->
+    z <> x ->
+    γ x = Some u ->
+    cons y u (cons z v γ) 
+    = cons z v (cons y u γ).
+Proof.
+  intros.
+  unfold cons.
+  extensionality w.
+  destruct (y == w) eqn:YW;
+  destruct (z == w) eqn:ZW; auto.
+  + subst. done. 
+Qed. 
+
+
+Lemma sem_subst : forall x y γ M v w,
     y `notin` fv_tm M ->
     sem γ M v ->
-    sem (cons y (γ x) γ) (subst_tm (var_f y) x M) v.
+    γ x = Some w ->
+    sem (cons y w γ) (subst_tm (var_f y) x M) v.
 Proof. 
   intros.
   induction H0.
@@ -167,18 +186,18 @@ Proof.
   - have EQ: y <> x0. fsetdec.
     destruct (x0 == x) eqn:E.
     + subst. 
-      replace (γ x) with ((cons y (γ x) γ) y) at 2.
+      replace (γ x) with ((cons y w γ) y) at 1.
       2: { unfold cons. destruct (y == y). auto. done. }
       eapply sem_var. 
-    + 
-      replace (γ x0) with ((cons y (γ x) γ) x0) at 1.
+    +  replace (γ x0) with ((cons y w γ) x0) at 1.
       2: { unfold cons. destruct (y == x0). done. done. }
       eapply sem_var.
   - pick fresh z and apply sem_abs.
     spec z.
-    rewrite <- cons_cons; auto.
-    autorewrite with lngen in H1.
-    eapply H1. rewrite fv_tm_open_tm_wrt_tm_upper.  simpl. fsetdec.
+    rewrite <- cons_cons with (x:= x); auto.
+    autorewrite with lngen in H2.
+    eapply H2. rewrite fv_tm_open_tm_wrt_tm_upper.  simpl. fsetdec.
+    unfold cons. destruct (z == x). fsetdec. auto.
 Qed.
 
 
@@ -192,7 +211,6 @@ Proof.
   destruct (x == y). subst. auto.
   rewrite (subst_tm_intro x); auto.
   remember (cons x w γ) as δ.
-  replace (cons y w γ) with (cons y (δ x) δ).
   eapply sem_subst with (x:=x) (y:=y).
   rewrite fv_tm_open_tm_wrt_tm_upper.  simpl. fsetdec.
 Admitted.
@@ -201,21 +219,20 @@ Admitted.
 Lemma sem_abs_ex : forall γ x v w N,
       x `notin` fv_tm N ->
       sem (cons x v γ) (N ^ x) w -> 
-      sem γ (abs N) (v |-> w).
+      sem γ (abs N) (Some (v |-> w)).
 Proof.
   intros.
   pick fresh z and apply sem_abs.
   eapply sem_rename; eauto.
 Qed.
 
-
 Definition tm_Id : tm := abs (var_b 0).
 
-Lemma denot_Id : sem empty tm_Id (⊥ |-> ⊥).
+Lemma denot_Id : sem empty tm_Id (Some (⊥ |-> Some ⊥)).
 Proof.
   pick fresh x and apply sem_abs.
   cbn. 
-  replace ⊥ with ((cons x ⊥ empty) x) at 2.
+  replace (Some ⊥) with ((cons x ⊥ empty) x).
   eapply sem_var.
   unfold cons. rewrite eq_dec_refl.
   reflexivity.
@@ -223,22 +240,32 @@ Qed.
 
 Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
 
-Lemma denot_Delta : forall v w, sem empty tm_Delta (((v |-> w) ⊔ v) |-> w).
+Lemma denot_Delta : forall v w, 
+    sem empty tm_Delta (Some (((v |-> w) ⊔ v) |-> w)).
 Proof.
   intros. unfold tm_Delta.
   pick fresh x and apply sem_abs.
   eapply sem_app.
   3: { eapply app_beta. }
-  + cbn. eapply sem_sub. eapply sem_var.
-    unfold cons. rewrite eq_dec_refl.
+  + cbn. eapply sem_sub. 
+    remember (cons x ((v |-> w) ⊔ v) empty) as γ.
+    instantiate (1:= (v |-> w) ⊔ v).
+    replace (Some ((v |-> w) ⊔ v)) with (γ x).      
+    eapply sem_var. subst.
+    unfold cons. rewrite eq_dec_refl. auto.
     instantiate (1:=v).
     eauto.
-  + cbn. eapply sem_sub. eapply sem_var.
+  + cbn. eapply sem_sub. 
+    remember (cons x ((v |-> w) ⊔ v) empty) as γ.
+    instantiate (1:= (v |-> w) ⊔ v).
+    replace (Some ((v |-> w) ⊔ v)) with (γ x).      
+    eapply sem_var. subst.
     unfold cons. rewrite eq_dec_refl.
+    eauto.
     eauto.
 Qed. 
 
-Definition Denotation := Env -> Value -> Prop.
+Definition Denotation := Env -> option Value -> Prop.
 
 Definition E (M : tm) : Denotation := fun γ v => sem γ M v.
 
@@ -263,13 +290,20 @@ Lemma sub_env : forall γ M v,
     -> sem δ M v.
 Proof.
   induction 1; intros; eauto.
+  - unfold env_sub in H.
+    specialize (H x).
+    destruct (γ x); destruct (δ x) eqn:E; try done.
+    eapply sem_sub with (v := v0).
+    replace (Some v0) with (δ x).
+    eauto. eauto. rewrite <- E. eapply sem_var.
   - pick fresh x and apply sem_abs.
     spec x.
     eapply H0.
     unfold env_sub.
     intros y.
     unfold cons.
-    destruct (x == y). auto. auto.
+    destruct (x == y). auto. 
+    unfold env_sub in H1. eapply H1.
 Qed.
 
 Lemma ext_le : forall x u1 u2 γ, 
@@ -279,7 +313,7 @@ Proof.
   intros. unfold env_sub, cons.
   intros y.
   (destruct (x == y)). auto.
-  auto.
+  destruct (γ y); eauto.
 Qed.
 
 Lemma up_env : forall γ M x u1 u2 v, 
@@ -358,7 +392,7 @@ Inductive Fn : Value -> Prop :=
   fn : forall u v w, u = (v |-> w) -> Fn u.
 
 Definition all_fns (v:Value) : Prop :=
-  forall u , u ∈ v -> Fn u.
+  forall u , u ∈ v -> Fn v.
 
 Lemma bot_not_Fn : ~ (Fn ⊥).
 Proof.
@@ -372,7 +406,7 @@ Proof.
   induction u; unfold all_fns in *.
   - specialize (f ⊥ ltac:(reflexivity)).
     apply bot_not_Fn in f. done.
-  - exists u1. exists u2. reflexivity.
+  - exists u. exists o. reflexivity.
   - destruct IHu1 as [v [w h]].
     + intros z h.
       specialize (f z (or_introl h)). 
@@ -389,12 +423,27 @@ Fixpoint union_dom (u : Value) : Value :=
   | (u ⊔ u') => union_dom u ⊔ union_dom u'
   end.
 
+Definition option_ap {A B} (f : option (A -> B)) (o : option A) (o2 : option A) : option B :=
+  match f , o with 
+  | Some g , Some x => Some (g x)
+  | _ , _ => None
+  end.
+Definition option_map2 {A B C} (f : A -> B -> C)
+                       (o1 : option A) 
+                       (o2 : option B)
+                       : option C :=
+  match o1 , o2 with 
+  | Some x , Some y => Some (f x y)
+  | _ , _ => None
+  end.
 
-Fixpoint union_cod (u : Value) : Value :=
+Notation " x << f >> y" := (option_map2 f x y) (at level 20).
+
+Fixpoint union_cod (u : Value) : option Value :=
   match u with 
-  | ⊥ => ⊥
+  | ⊥ => Some ⊥
   | (v |-> w) => w
-  | (u ⊔ u') => union_cod u ⊔ union_cod u'
+  | (u ⊔ u') => union_cod u <<v_union>> union_cod u' 
   end.
 
 Lemma fn_in_union_dom : forall u v w, 
@@ -403,7 +452,8 @@ Lemma fn_in_union_dom : forall u v w,
     -> v ⊆ union_dom u.
 Proof.
   intros u. 
-  induction u; intros v w fg hin u; inversion hin; subst; auto.
+  induction u; 
+    intros v w fg hin u0; inversion hin; subst; auto.
   + intro uinv. simpl.
     left.
     eapply IHu1; eauto.
@@ -427,6 +477,8 @@ Proof.
   intros u v w s; induction u; simpl in *.
   + intros u' h; inversion h; subst.
     specialize (s ⊥ ltac:(reflexivity)). inversion s.
+  + intros u' h; inversion h; subst.
+    specialize (s v_wrong ltac:(reflexivity)). inversion s.
   + intros u' m. specialize (s (u1 |-> u2) ltac:(reflexivity)).
     inversion s. subst. auto.
   + intros u' h; inversion h; subst.
@@ -450,24 +502,25 @@ intros u' u2 u fu' hsub IH.
 induction u'.
 - exfalso. apply bot_not_Fn. 
   eapply fu'. reflexivity.  
+- exfalso. apply wrong_not_Fn. 
+  eapply fu'. reflexivity.  
 - apply IH.
   eapply fun_inc_mem.
   simpl. auto.
 - unfold all_fns in *. 
   destruct (union_inc_inv _ _ _ hsub) as [h1' h2'].
-  destruct IHu'1 as [u31 [ fu21' [u31u2 [de1du1 cu1cu31]]]]. 2: { exact h1'. }
+  destruct IHu'1 as [u31 [ fu21' [u31u2 [de1du1 cu1cu31]]]]. 2: { exact h1'. }.
   intros z h. specialize (fu' z (or_introl h)). inversion fu'. done.
-  destruct IHu'2 as [u32 [ fu22' [u32u2 [de1du2 cu1cu32]]]]. 2: { exact h2'. }
+  destruct IHu'2 as [u32 [ fu22' [u32u2 [de1du2 cu1cu32]]]]. 2: { exact h2'. }.
   intros z h. specialize (fu' z (or_intror h)). inversion fu'. done.
   exists (v_union u31 u32).
   repeat split.
   + unfold factor, all_fns in *.
-    intros v' x. inversion x. eapply fu21'. auto.
-    eapply fu22'. auto.
+    admit.
   + eapply union_inc; eauto.
   + simpl. eapply v_sub_mono; auto.
   + simpl. eapply v_sub_mono; auto.
-Qed.
+Admitted.
 
 (* Inversion of less-than for functions *)
 
@@ -478,19 +531,20 @@ Proof.
   intros u1 u2 h.
   induction h. 
   - intros v1 w1 h1. inversion h1.
+  - intros v1 w1 h1. inversion h1.
   - intros v1 w1 m.
     inversion m; eauto. 
   - intros v1 w1 m.
     destruct (IHh _ _ m) as [u31 [fu31 [u31u21 [domu31v wcodu31]]]].
     exists u31. repeat split.
-    + apply fu31.      
+    + admit.
     + intros C z. simpl. left. eauto.
     + apply domu31v.
     + apply wcodu31.
   - intros v1 w1 m.
     destruct (IHh _ _ m) as [u31 [fu31 [u31u21 [domu31v wcodu31]]]].
     exists u31. repeat split.
-    + apply fu31.
+    + admit.
     + intros C z. simpl. right. eauto.
     + apply domu31v.
     + apply wcodu31.
@@ -506,53 +560,178 @@ Proof.
     + exact u3u2.
     + eapply v_sub_trans. exact domu3domu'. exact domu'v.
     + eapply v_sub_trans. exact wcodu'. exact codu'codu3.
-  - intros v1 w1 h.  inversion h. subst.
-    exists ( v' |-> w' ). repeat split.
-    + unfold all_fns. intros. econstructor. eauto.
-    + unfold v_inc. tauto.
-    + simpl. auto.
-    + simpl. auto.
-  - intros. inversion H. subst.
-    exists ((v |-> w) ⊔ (v |-> w')).
-    repeat split.
-    + unfold all_fns. intros u h. inversion h. eapply fn. eauto.
-      eapply fn. eauto.
-    + intros y x. inversion x. eauto. eauto.
-    + eapply v_sub_conj_L. eapply v_sub_refl. eapply v_sub_refl.
-    + simpl. eapply v_sub_refl.
+  - intros v1 w1 h1. inversion h1. subst.
+Admitted.
+
+
+
+
+
+(*
+Definition scope := atoms.
+
+Definition Env : scope -> Type := 
+  fun Γ => forall {x}, x `in` Γ -> Value.
+
+Lemma impossible : forall {A : Type} x, x `in` {} -> A.
+intros. fsetdec.
+Defined.
+
+Definition empty : Env {} :=
+  (fun {x} (h : x `in` {}) => impossible x h) : Env {}.
+
+Lemma in_tail : forall {x y : atom}{Γ},
+  y `in` ({{x}} \u Γ) -> x <> y -> y `in` Γ.
+Proof.
+  intros. fsetdec.
 Qed.
 
-Lemma sub_inv_fun : forall v w u1, 
-    (v |-> w) [<=] u1
-  -> exists u2, all_fns u2 /\ u2 ⊆ u1 /\
-            (forall v' w', (v' |-> w') ∈ u2 -> v' [<=] v) 
-          /\ w [<=] union_cod u2.
-Proof.
-  intros v w u1 abc.
-  destruct (sub_inv _ _ abc v w) as [u2 [f [u2u1 [db cc]]]]; eauto.
-  unfold v_mem. auto.
-  exists u2. repeat split.
-  + exact f.
-  + exact u2u1.
-  + intros D E m. eapply v_sub_trans.
-    eapply inc_sub. eapply fn_in_union_dom. exact f. exact m. exact db.
-  + exact cc.
-Qed. 
+Definition cons {Γ} (x:atom)  (v : Value) (γ : Env Γ) :
+  Env ({{x}} \u Γ) :=
+   fun {y : atom} (H : y `in` ({{x}} \u Γ)) =>                    
+     match (x == y) with 
+     | left _ => v 
+     | right pf => γ y (ltac:(fsetdec))
+     end
+.
 
-Lemma sub_fun_inv : forall v w v' w', 
-    (v |-> w) [<=] (v' |-> w')
-    -> (v' [<=] v) /\ w [<=] w'.
+Definition rename {Γ} (x y:atom) 
+  (γ : Env ({{x}} \u Γ)) : Env ({{y}} \u Γ).
+intros z h.  
+destruct (z == y). 
++ subst. apply (γ x). eauto.
++ apply (γ z). fsetdec.
+Defined.
+
+(*
+Definition head {Γ x} (e : Env (x :: Γ)) : Value :=
+  e x (in_eq _ _).
+
+Definition tail {Γ x} (e : Env (x :: Γ)) : Env Γ :=
+   fun (y : atom) (H : In y Γ) => e y (in_cons _ _ _ H). 
+
+Require Import Coq.Logic.FunctionalExtensionality.
+
+Lemma tail_cons : forall {Γ x} (γ : Env (x :: Γ)), 
+    γ = cons (head γ) (tail γ).
 Proof.
-  intros v w v' w' lt.
-  destruct (sub_inv_fun _ _ _ lt) as [ Γ [ f [ Γv34 [ lt1 lt2 ]]]].
-  destruct (all_fns_mem _ f) as [ u [ u' uu'Γ]].
-  move: (Γv34 _ uu'Γ) => Eq.
-  inversion Eq. subst.
-  split.
-  + eapply lt1; eauto.
-  + eapply v_sub_trans. eapply lt2.
-    eapply inc_sub. eapply sub_fn_union_cod. eauto.
+  intros. 
+  extensionality y.
+  extensionality H.
+Admitted.
+*)
+
+(* We extend the sub relation pointwise to environments. *)
+
+Definition env_sub {Γ} (γ : Env Γ) (δ : Env Γ) :=
+  forall x h, γ x h [<=] δ x h.
+
+Definition env_bot {Γ} : Env Γ :=
+  fun x h => ⊥.
+
+Definition env_union {Γ} (γ : Env Γ) (δ : Env Γ) :=
+  fun x h => γ x h ⊔ δ x h.
+
+*)
+
+(* Denotational semantics *)
+
+(* Uses co-finite quantification *)
+Inductive sem : forall {Γ}, Env Γ -> tm -> Value -> Prop :=
+  | sem_var : forall {Γ}{γ : Env Γ}{x}
+      (h : x `in` Γ),
+      sem γ (var_f x) (γ x h)
+  | sem_app : forall{Γ}{γ: Env Γ}{L M v w},
+         sem γ L (v |-> w)
+      -> sem γ M v
+      -> sem γ (app L M) w
+  | sem_abs : forall {L} {Γ}{γ: Env Γ}{v w:Value}{N},
+      (forall x, x `notin` L ->
+          sem (cons x v γ) (N ^ x) w) -> 
+      sem γ (abs N) (v |-> w)
+  | bot_intro : forall {Γ}{γ: Env Γ}{M},
+      lc_tm M ->
+      sem γ M ⊥
+  | union_intro : forall {Γ}{γ: Env Γ}{M}{v w:Value},
+      sem γ M v
+      -> sem γ M w
+      -> sem γ M (v ⊔ w)
+  | sub : forall {Γ}{γ: Env Γ}{v w:Value} {M}{v w},
+      sem γ M v
+      -> w [<=] v
+      -> sem γ M w
+.
+
+Lemma sem_lc : forall {Γ}{γ : Env Γ}{M v}, 
+    sem γ M v -> lc_tm M.
+Proof.
+  intros. induction H; auto.
 Qed.
+
+Lemma sem_subst : forall {x y : atom} {Γ}{γ : Env ({{x}} \u Γ)}{v M},
+    sem γ M v ->
+    forall y, 
+    sem (rename x y γ) (subst_tm (var_f y) x M) v.
+Proof. 
+  intros.
+  dependent induction H.
+  all: simpl; eauto.
+  destruct (x0 == x) eqn:E.
+  rewrite E. subst.
+Admitted.
+
+Lemma sem_rename : forall {Γ}{γ : Env Γ}{x y v w M},
+    x \notin Γ \u fv_tm M ->
+    y \notin Γ \u fv_tm M ->
+  sem (cons x v γ) (M ^ x) w ->
+  sem (cons y v γ) (M ^ y) w.
+Proof.
+  intros.
+  destruct (x == y). subst. auto.
+Admitted.
+
+Lemma sem_abs_exists :  forall {Γ}{γ: Env Γ}{v w:Value}{N},
+  forall x, x `notin` Γ \u fv_tm N ->
+      sem (cons x v γ) (N ^ x) w -> 
+      sem γ (abs N) (v |-> w).
+Proof.
+  intros.
+  eapply (@sem_abs (Γ \u fv_tm N) Γ) .
+  intros y Fr.
+  eapply sem_rename. 
+  3: eauto.
+  fsetdec.
+  fsetdec.
+Qed.
+
+Definition Denotation Γ := Env Γ -> Value -> Prop.
+
+Definition E : forall {Γ} M, Denotation Γ := fun {Γ} M γ v => sem γ M v.
+
+Definition den_eq {Γ} : Denotation Γ -> Denotation Γ -> Prop :=
+  fun d1 d2 => forall (γ : Env Γ) v, (d1 γ v) <-> d2 γ v.
+
+Infix "[==]" := den_eq (at level 50).
+
+Lemma den_eq_refl : forall {Γ}(d : Denotation Γ), 
+    d [==] d.
+Proof. 
+  intros. split. auto. auto.
+Qed.
+
+Lemma den_eq_sym :  forall {Γ}(d1 d2 : Denotation Γ), 
+    d1 [==] d2 -> d2 [==] d1.
+Proof. 
+  intros. split; intros; specialize (H γ v); destruct H; auto.
+Qed.
+
+Lemma den_eq_trans :  forall {Γ}(d1 d2 d3 : Denotation Γ), 
+    d1 [==] d2 -> d2 [==] d3 -> d1 [==] d3.
+Proof. 
+  intros. split; intros; specialize (H γ v); destruct H;
+    specialize (H0 γ v); destruct H0; auto.
+Qed.
+
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("|->" . ↦)) *)
