@@ -34,3 +34,8 @@ nra.cache
 CoqSrc.mk
 CoqSrc.mk.conf
 _CoqProject
+*~
+*.aux
+*.log
+*-rules.tex
+coq/coqsplit
