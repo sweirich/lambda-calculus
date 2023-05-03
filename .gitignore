@@ -31,3 +31,6 @@ lia.cache
 nia.cache
 nlia.cache
 nra.cache
+CoqSrc.mk
+CoqSrc.mk.conf
+_CoqProject

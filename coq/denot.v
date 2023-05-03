@@ -1,17 +1,18 @@
 Require Export lc.tactics.
 Require Export lc.relations.
 Require Import Lia.
+Require Import Coq.Logic.FunctionalExtensionality.
 
 Import LCNotations.
 Local Open Scope lc_scope.
 
+
 (* This is a Coq port of https://plfa.github.io/Denotational/ *)
-(* Extended with natural number constants *)
+(* It is a filter model of the lambda calculus *)
 
-
-(* How to define the semantics of primitive operators? *)
-(* Is this CBN or CBV? What changes if it is CBV? *)
-(* And, how do we keep wrong out of it??? *)
+(* What changes if we want to do CBV instead? *)
+(* What if we want to add "WRONG", i.e. for unbound variables? *)
+(* What if we want to add other values (i.e. nats, lists, etc)? *)
 
 Inductive Value : Type :=
   | v_bot   : Value
@@ -20,46 +21,52 @@ Inductive Value : Type :=
 .
 
 Notation "⊥" := v_bot.
-Infix "|->" := v_map (at level 90, right associativity).
+Infix "↦" := v_map (at level 90, right associativity).
 Infix "⊔" := v_union (at level 85, right associativity).
 
+(* Approximate values *)
+
+Reserved Notation "v1 ⊑ v2" (at level 55).
 Inductive v_sub : Value -> Value -> Prop :=
-  | v_sub_bot : forall v, ⊥ [<=] v
+  | v_sub_bot : forall v, ⊥ ⊑ v
   | v_sub_conj_L : forall u v w, 
-      (v [<=] u) -> (w [<=] u) -> ((v ⊔ w) [<=] u)
+      (v ⊑ u) -> (w ⊑ u) -> ((v ⊔ w) ⊑ u)
   | v_sub_conj_R1 : forall u v w, 
-      u [<=] v -> u [<=] (v ⊔ w)      
+      u ⊑ v -> u ⊑ (v ⊔ w)      
   | v_sub_conj_R2 : forall u v w, 
-      u [<=] w -> u [<=] (v ⊔ w)
+      u ⊑ w -> u ⊑ (v ⊔ w)
   | v_sub_trans : forall u v w, 
-      u [<=] v -> v [<=] w -> u [<=] w
+      u ⊑ v -> v ⊑ w -> u ⊑ w
   | v_sub_fun : forall v w v' w', 
-      v' [<=] v
-      -> w [<=] w'
-      -> (v |-> w) [<=] (v' |-> w')
+      v' ⊑ v
+      -> w ⊑ w'
+      -> (v ↦ w) ⊑ (v' ↦ w')
   | v_sub_dist : forall v w w', 
-      (v |-> (w ⊔ w')) [<=] ((v |-> w) ⊔ (v |-> w'))
-where "v1 [<=] v2" := (v_sub v1 v2).
+      (v ↦ (w ⊔ w')) ⊑ ((v ↦ w) ⊔ (v ↦ w'))
+where "v1 ⊑ v2" := (v_sub v1 v2).
 
 #[global] Hint Constructors v_sub : core.
 
-Lemma v_sub_refl : forall v, v [<=] v.
+Lemma v_sub_refl : forall v, v ⊑ v.
 Proof.
   intro v. induction v; eauto.
 Qed.  
 
 #[global] Hint Resolve v_sub_refl : core.
 
+#[global] Instance Refl_v_sub : Reflexive v_sub.
+unfold Reflexive. eauto. Qed.
+
 Lemma v_sub_mono : forall (v w v' w': Value), 
-    v [<=] v' -> (w [<=] w') ->
-    (v ⊔ w) [<=] (v' ⊔ w').
+    v ⊑ v' -> (w ⊑ w') ->
+    (v ⊔ w) ⊑ (v' ⊔ w').
 Proof. 
   intros; eauto.
 Qed.
 
 (* ⊔↦⊔-dist *)
 Lemma v_sub_union_dist : forall (v w v' w': Value), 
-    (v ⊔ v' |-> w ⊔ w') [<=] ((v |-> w) ⊔ (v' |-> w')).
+    (v ⊔ v' ↦ w ⊔ w') ⊑ ((v ↦ w) ⊔ (v' ↦ w')).
 Proof. intros. 
        eapply v_sub_trans.
        eapply v_sub_dist.
@@ -69,19 +76,18 @@ Proof. intros.
 Qed.
 
 Lemma v_sub_union_invL : forall u v w,
-    (u ⊔ v) [<=] w -> u [<=] w.
+    (u ⊔ v) ⊑ w -> u ⊑ w.
 Proof. intros u v w H. dependent induction H; eauto. Qed.
 
 Lemma v_sub_union_invR : forall u v w,
-    (u ⊔ v) [<=] w -> v [<=] w.
+    (u ⊔ v) ⊑ w -> v ⊑ w.
 Proof. intros u v w H. dependent induction H; eauto. Qed.
 
 
-(* Environments are maps of (in-scope) variables to values.
-
-   With metalib, we'll represent them using association lists.
-
-  *)
+(* Environments are maps of variables to values. We don't 
+   index by the current scope to avoid dependently-typed 
+   programming in Coq. 
+*)
 
 Definition Env := atom -> Value.
 
@@ -94,7 +100,7 @@ Definition cons : atom -> Value -> Env -> Env :=
                   end.
 
 Definition env_sub (γ : Env) (δ : Env) : Prop :=
-  forall x, γ x [<=] δ x.
+  forall x, γ x ⊑ δ x.
 
 #[global] Instance Refl_env_sub : Reflexive env_sub.
 unfold Reflexive. intros γ. unfold env_sub. intros x. auto.
@@ -104,8 +110,6 @@ Qed.
 unfold Transitive. intros γ1 γ2 γ3. unfold env_sub. intros g1 g2 x. eauto.
 Qed.
 
-
-Require Import Coq.Logic.FunctionalExtensionality.
 
 Lemma cons_cons : forall x y z v γ, 
     z <> y ->
@@ -125,7 +129,7 @@ Qed.
 Inductive v_app : Value -> Value -> Value -> Prop :=
   | app_beta : forall v w, 
       (* CBV??      v <> v_bot -> *)
-      v_app (v |-> w) v w
+      v_app (v ↦ w) v w
 .
 
 
@@ -140,7 +144,7 @@ Inductive sem : Env -> tm -> Value -> Prop :=
   | sem_abs : forall L γ v w N,
       (forall x, x `notin` L ->
           sem (cons x v γ) (N ^ x) w) -> 
-      sem γ (abs N) (v |-> w)
+      sem γ (abs N) (v ↦ w)
   | bot_intro : forall γ M,
       lc_tm M ->
       sem γ M ⊥
@@ -150,7 +154,7 @@ Inductive sem : Env -> tm -> Value -> Prop :=
       -> sem γ M (v ⊔ w)
   | sem_sub : forall γ M v w,
       sem γ M v
-      -> w [<=] v
+      -> w ⊑ v
       -> sem γ M w
 .
 
@@ -170,8 +174,7 @@ Proof.
       replace (γ x) with ((cons y (γ x) γ) y) at 2.
       2: { unfold cons. destruct (y == y). auto. done. }
       eapply sem_var. 
-    + 
-      replace (γ x0) with ((cons y (γ x) γ) x0) at 1.
+    + replace (γ x0) with ((cons y (γ x) γ) x0) at 1.
       2: { unfold cons. destruct (y == x0). done. done. }
       eapply sem_var.
   - pick fresh z and apply sem_abs.
@@ -201,7 +204,7 @@ Admitted.
 Lemma sem_abs_ex : forall γ x v w N,
       x `notin` fv_tm N ->
       sem (cons x v γ) (N ^ x) w -> 
-      sem γ (abs N) (v |-> w).
+      sem γ (abs N) (v ↦ w).
 Proof.
   intros.
   pick fresh z and apply sem_abs.
@@ -211,7 +214,7 @@ Qed.
 
 Definition tm_Id : tm := abs (var_b 0).
 
-Lemma denot_Id : sem empty tm_Id (⊥ |-> ⊥).
+Lemma denot_Id : sem empty tm_Id (⊥ ↦ ⊥).
 Proof.
   pick fresh x and apply sem_abs.
   cbn. 
@@ -223,7 +226,7 @@ Qed.
 
 Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
 
-Lemma denot_Delta : forall v w, sem empty tm_Delta (((v |-> w) ⊔ v) |-> w).
+Lemma denot_Delta : forall v w, sem empty tm_Delta (((v ↦ w) ⊔ v) ↦ w).
 Proof.
   intros. unfold tm_Delta.
   pick fresh x and apply sem_abs.
@@ -237,6 +240,8 @@ Proof.
     unfold cons. rewrite eq_dec_refl.
     eauto.
 Qed. 
+
+(** Denotation **)
 
 Definition Denotation := Env -> Value -> Prop.
 
@@ -273,7 +278,7 @@ Proof.
 Qed.
 
 Lemma ext_le : forall x u1 u2 γ, 
-    u1 [<=] u2 ->
+    u1 ⊑ u2 ->
     env_sub (cons x u1 γ) (cons x u2 γ).
 Proof.
   intros. unfold env_sub, cons.
@@ -284,7 +289,7 @@ Qed.
 
 Lemma up_env : forall γ M x u1 u2 v, 
     sem (cons x u1 γ) M v ->
-    u1 [<=] u2  ->
+    u1 ⊑ u2  ->
     sem (cons x u2 γ) M v.
 Proof.
   intros.
@@ -296,7 +301,7 @@ Qed.
 Fixpoint v_mem (u : Value) (v: Value) : Prop :=
   match v with 
   | ⊥ => u = ⊥
-  | v |-> w => u = (v |-> w)
+  | v ↦ w => u = (v ↦ w)
   | v ⊔ w => v_mem u v \/ v_mem u w
   end.
 
@@ -312,7 +317,7 @@ Definition v_inc v w := forall u, u ∈ v -> u ∈ w.
 
 Infix "⊆" := v_inc (at level 50).
 
-Lemma mem_sub : forall u v, u ∈ v -> u [<=] v.
+Lemma mem_sub : forall u v, u ∈ v -> u ⊑ v.
 Proof. intros. induction v; inversion H; eauto. Qed.
 
 Lemma union_inc : forall u v w, 
@@ -334,7 +339,7 @@ Proof.
 Qed.
 
 
-Lemma inc_sub : forall u v, u ⊆ v -> u [<=] v.
+Lemma inc_sub : forall u v, u ⊆ v -> u ⊑ v.
 Proof. intros u v s.
        induction u; eauto.
        + eapply mem_sub.
@@ -347,7 +352,7 @@ Qed.
 
 (* ↦⊆→∈  *)
 Lemma fun_inc_mem : forall v w u, 
-    (v |-> w) ⊆ u -> (v |-> w) ∈ u.
+    (v ↦ w) ⊆ u -> (v ↦ w) ∈ u.
 Proof. 
   intros. eapply H. reflexivity.
 Qed.
@@ -355,7 +360,7 @@ Qed.
 (** Function values **)
 
 Inductive Fn : Value -> Prop :=
-  fn : forall u v w, u = (v |-> w) -> Fn u.
+  fn : forall u v w, u = (v ↦ w) -> Fn u.
 
 Definition all_fns (v:Value) : Prop :=
   forall u , u ∈ v -> Fn u.
@@ -366,7 +371,7 @@ Proof.
 Qed.
 
 Lemma all_fns_mem : forall u,
-    all_fns u -> exists v, exists w, (v |-> w) ∈ u.
+    all_fns u -> exists v, exists w, (v ↦ w) ∈ u.
 Proof.
   intros u f.
   induction u; unfold all_fns in *.
@@ -385,7 +390,7 @@ Qed.
 Fixpoint union_dom (u : Value) : Value :=
   match u with 
   | ⊥ => ⊥
-  | (v |-> w) => v
+  | (v ↦ w) => v
   | (u ⊔ u') => union_dom u ⊔ union_dom u'
   end.
 
@@ -393,13 +398,13 @@ Fixpoint union_dom (u : Value) : Value :=
 Fixpoint union_cod (u : Value) : Value :=
   match u with 
   | ⊥ => ⊥
-  | (v |-> w) => w
+  | (v ↦ w) => w
   | (u ⊔ u') => union_cod u ⊔ union_cod u'
   end.
 
 Lemma fn_in_union_dom : forall u v w, 
     all_fns u 
-    -> (v|-> w) ∈ u
+    -> (v↦ w) ∈ u
     -> v ⊆ union_dom u.
 Proof.
   intros u. 
@@ -421,13 +426,13 @@ Proof.
 Qed.
 
 Lemma sub_fn_union_cod : forall u v w, 
-     u ⊆ (v|-> w)
+     u ⊆ (v↦ w)
     -> union_cod u ⊆ w.
 Proof.
   intros u v w s; induction u; simpl in *.
   + intros u' h; inversion h; subst.
     specialize (s ⊥ ltac:(reflexivity)). inversion s.
-  + intros u' m. specialize (s (u1 |-> u2) ltac:(reflexivity)).
+  + intros u' m. specialize (s (u1 ↦ u2) ltac:(reflexivity)).
     inversion s. subst. auto.
   + intros u' h; inversion h; subst.
     ++ eapply IHu1; auto.  intros C z.  eapply s. simpl. left. auto.
@@ -436,14 +441,14 @@ Qed.
 
 Definition factor := 
   fun (u u' v w : Value) => 
-    (all_fns u') /\ (u' ⊆ u) /\ (union_dom u' [<=] v) /\ (w [<=] union_cod u').
+    (all_fns u') /\ (u' ⊆ u) /\ (union_dom u' ⊑ v) /\ (w ⊑ union_cod u').
 
 
 (* Inversion of less-than for functions, case for trans *)
 
 Lemma sub_inv_trans : forall u' u2 u, 
     all_fns u' -> u' ⊆ u
-    -> (forall v' w', (v' |-> w') ∈ u -> exists u3, factor u2 u3 v' w')
+    -> (forall v' w', (v' ↦ w') ∈ u -> exists u3, factor u2 u3 v' w')
     -> exists u3, factor u2 u3 (union_dom u') (union_cod u').
 Proof.
 intros u' u2 u fu' hsub IH.
@@ -471,8 +476,8 @@ Qed.
 
 (* Inversion of less-than for functions *)
 
-Lemma sub_inv : forall u1 u2, u1 [<=] u2  
-                  -> forall v w, (v |-> w) ∈ u1
+Lemma sub_inv : forall u1 u2, u1 ⊑ u2  
+                  -> forall v w, (v ↦ w) ∈ u1
                   -> exists u3, factor u2 u3 v w.
 Proof.
   intros u1 u2 h.
@@ -507,13 +512,13 @@ Proof.
     + eapply v_sub_trans. exact domu3domu'. exact domu'v.
     + eapply v_sub_trans. exact wcodu'. exact codu'codu3.
   - intros v1 w1 h.  inversion h. subst.
-    exists ( v' |-> w' ). repeat split.
+    exists ( v' ↦ w' ). repeat split.
     + unfold all_fns. intros. econstructor. eauto.
     + unfold v_inc. tauto.
     + simpl. auto.
     + simpl. auto.
   - intros. inversion H. subst.
-    exists ((v |-> w) ⊔ (v |-> w')).
+    exists ((v ↦ w) ⊔ (v ↦ w')).
     repeat split.
     + unfold all_fns. intros u h. inversion h. eapply fn. eauto.
       eapply fn. eauto.
@@ -523,10 +528,10 @@ Proof.
 Qed.
 
 Lemma sub_inv_fun : forall v w u1, 
-    (v |-> w) [<=] u1
+    (v ↦ w) ⊑ u1
   -> exists u2, all_fns u2 /\ u2 ⊆ u1 /\
-            (forall v' w', (v' |-> w') ∈ u2 -> v' [<=] v) 
-          /\ w [<=] union_cod u2.
+            (forall v' w', (v' ↦ w') ∈ u2 -> v' ⊑ v) 
+          /\ w ⊑ union_cod u2.
 Proof.
   intros v w u1 abc.
   destruct (sub_inv _ _ abc v w) as [u2 [f [u2u1 [db cc]]]]; eauto.
@@ -540,8 +545,8 @@ Proof.
 Qed. 
 
 Lemma sub_fun_inv : forall v w v' w', 
-    (v |-> w) [<=] (v' |-> w')
-    -> (v' [<=] v) /\ w [<=] w'.
+    (v ↦ w) ⊑ (v' ↦ w')
+    -> (v' ⊑ v) /\ w ⊑ w'.
 Proof.
   intros v w v' w' lt.
   destruct (sub_inv_fun _ _ _ lt) as [ Γ [ f [ Γv34 [ lt1 lt2 ]]]].
@@ -553,7 +558,3 @@ Proof.
   + eapply v_sub_trans. eapply lt2.
     eapply inc_sub. eapply sub_fn_union_cod. eauto.
 Qed.
-
-(* Local Variables: *)
-(* company-coq-local-symbols: (("|->" . ↦)) *)
-(* End: *)
