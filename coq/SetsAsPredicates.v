@@ -29,8 +29,14 @@ End SetNotations.
 
 Definition P := Ensemble.
 
-Definition nonempty {A} : P A -> Prop := Inhabited A.
+Definition nonempty {A} : P A -> Prop := @Inhabited A.
+
+(* This is in Type so that we can extract the witness *)
+Definition nonemptyT {A} (s : P A) : Type :=
+   {x : A & In s x}.
+
 Arguments nonempty {_}.
+Arguments nonemptyT {_}.
 
 Import SetNotations.
 Open Scope set_scope.
@@ -41,6 +47,12 @@ Check (∅ ∪ ⌈ 1 ⌉).
 Check (∅ ∪ ⌈ 1 ⌉ ≃ ∅).
 
 
+#[global] Instance Refl_Incl {A} : Reflexive (@Included A).
+intros x. unfold Included. eauto. Qed.
+
+#[global] Instance Trans_Incl {A} : Transitive (@Included A).
+intros x y z S1 S2. unfold Included. intro w. eauto. Qed.
+
 #[global] Instance Equivalence_Same_set {A} : Equivalence (@Same_set A) .
 constructor.
 - unfold Reflexive, Same_set, Included in *. tauto. 
@@ -48,6 +60,7 @@ constructor.
 - unfold Transitive, Same_set, Included in *. intros x y z [h1 h2] [k1 k2]. 
   split; eauto.
 Qed.
+
 
 Require Import Coq.Lists.List.
 
