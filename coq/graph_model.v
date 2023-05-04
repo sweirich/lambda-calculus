@@ -7,6 +7,7 @@ Require Import lc.env.
 (* https://github.com/jsiek/denotational_semantics/blob/master/agda/PValueCBV.agda *)
 
 
+
 Inductive Value : Type :=
   | v_nat : nat -> Value 
   | v_map : list Value -> Value -> Value
@@ -113,7 +114,6 @@ Proof.
     move: (Fcont X (cons w nil) M NEX) => 
     [ D [ DltX [ wInFD NED ]]].
     exists D. repeat split; eauto.
-    eapply wInFD. cbn. auto.
 Qed.
 
 (*  Primitive Abstraction followed by Application is the identity --------- *)
@@ -308,24 +308,6 @@ Proof.
   destruct (x == x). reflexivity. done.
 Qed.  
 
-Lemma mem_head a (V : list Value) :
-   a ∈ mem (a :: V).
-Proof. 
-  unfold mem. 
-  unfold Ensembles.In.
-  econstructor. auto.
-Qed.
-
-Lemma mem_cons d a (V : list Value) :
-    d ∈ mem V ->
-    d ∈ mem (a :: V).
-Proof. 
-  unfold mem. 
-  unfold Ensembles.In.
-  eapply in_cons.
-Qed.
-
-#[global] Hint Resolve mem_cons : core.
 
 (* continuous-∈⇒⊆ *)
 Lemma continuous_In_sub E ρ (NE : nonempty_env ρ) :

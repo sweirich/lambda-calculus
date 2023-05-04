@@ -29,17 +29,18 @@ End SetNotations.
 
 Definition P := Ensemble.
 
+Import SetNotations.
+Open Scope set_scope.
+
 Definition nonempty {A} : P A -> Prop := @Inhabited A.
 
 (* This is in Type so that we can extract the witness *)
 Definition nonemptyT {A} (s : P A) : Type :=
-   {x : A & In s x}.
+   {x : A & x ∈ s}.
 
 Arguments nonempty {_}.
 Arguments nonemptyT {_}.
 
-Import SetNotations.
-Open Scope set_scope.
 
 Check (1 ∈ ⌈ 1 ⌉).
 Check (∅ ⊆ ⌈ 1 ⌉).
@@ -74,3 +75,22 @@ Proof. intros. destruct E; cbv. done.
        econstructor.
        econstructor. eauto.
 Qed.
+
+Lemma mem_head {A} a (V : list A) :
+   a ∈ mem (a :: V).
+Proof. 
+  unfold mem. 
+  unfold Ensembles.In.
+  econstructor. auto.
+Qed.
+
+Lemma mem_cons {A} d a (V : list A) :
+    d ∈ mem V ->
+    d ∈ mem (a :: V).
+Proof. 
+  unfold mem. 
+  unfold Ensembles.In.
+  eapply in_cons.
+Qed.
+
+#[global] Hint Resolve mem_head mem_cons : core.
