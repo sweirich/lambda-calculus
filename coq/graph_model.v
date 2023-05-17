@@ -162,7 +162,7 @@ Definition sub_env : Env -> Env -> Prop := all2 Included.
 Lemma all2_refl {F : P Value -> P Value -> Prop} `{Reflexive _ F} {ρ} : uniq ρ -> all2 F ρ ρ.
 Proof. induction 1; eauto. Qed.
 
-Hint Resolve all2_refl.
+#[export] Hint Resolve all2_refl.
 
 Lemma Reflexive_sub_env {ρ:Env} : uniq ρ -> ρ ⊆e ρ.
 Proof.
@@ -301,7 +301,7 @@ Proof.
   destruct f as [v w]. simpl. congruence.
 Qed. 
 
-Hint Rewrite initial_finite_dom : rewr_list.
+#[export] Hint Rewrite initial_finite_dom : rewr_list.
 
 Lemma singleton_mem : forall v : Value,  ⌈ v ⌉ ⊆ mem (v :: nil).
 Proof. intro v. econstructor. inversion H. done. Qed.
@@ -952,7 +952,8 @@ Proof.
     destruct h as [ρ' [F' [S' vv]]].
     ++ intros V NV. 
        eapply IHn. rewrite size_tm_open_tm_wrt_tm_var; try lia.
-       admit.
+       { inversion LC; econstructor; simpl_env; 
+         autorewrite with lngen; eauto. admit. }
        move: (nonnil_nonempty_mem NV) => h. 
        eapply extend_nonempty_env; auto.
        admit.

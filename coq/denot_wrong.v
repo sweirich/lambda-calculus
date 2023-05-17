@@ -284,6 +284,7 @@ Defined.
 
 (* Environment strengthening *)
 
+(*
 Lemma sub_env : forall γ M v, 
     sem γ M v 
     -> forall δ, env_sub γ δ
@@ -736,3 +737,4 @@ Qed.
 (* Local Variables: *)
 (* company-coq-local-symbols: (("|->" . ↦)) *)
 (* End: *)
+*)
