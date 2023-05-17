@@ -307,12 +307,6 @@ Fixpoint v_mem (u : Value) (v: Value) : Prop :=
 
 Infix "∈" := v_mem (at level 50).
 
-#[global] Instance Refl_v_mem : Reflexive v_mem.
-Proof. 
-  unfold Reflexive. intros v. induction v; simpl; try reflexivity.
-  left.
-Abort.
-
 Definition v_inc v w := forall u, u ∈ v -> u ∈ w.
 
 Infix "⊆" := v_inc (at level 50).

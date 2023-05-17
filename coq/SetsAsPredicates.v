@@ -1,7 +1,22 @@
 Require Export Ensembles.
 Require Export ssreflect.
 Require Export Coq.Classes.RelationClasses.
+Require Import Coq.Relations.Relation_Definitions.
 Require Export Coq.Program.Equality.  (* for dependent induction *) 
+Require Import Coq.Classes.Morphisms.
+Require Import Coq.Setoids.Setoid.
+
+(* Representing sets by their characteristic functions. 
+
+   This is a wrapper for `Ensembles` from the Coq standard library.
+
+   It includes notations, Relation classes instances, and a bridge to 
+   finite sets represented by lists.
+
+*)
+
+(* Inspired by 
+   https://github.com/jsiek/denotational_semantics/agda/SetsAsPredicates.agda *)
 
 
 Declare Scope set_scope.
@@ -32,6 +47,18 @@ Definition P := Ensemble.
 Import SetNotations.
 Open Scope set_scope.
 
+(* Test cases for notations *)
+Check (1 ∈ ⌈ 1 ⌉).
+Check (∅ ⊆ ⌈ 1 ⌉).
+Check (∅ ∪ ⌈ 1 ⌉).
+Check (∅ ∪ ⌈ 1 ⌉ ≃ ∅).
+
+
+(* Add hint for  v ∈ ⌈ v ⌉ *)
+
+(* A proposition that a set is inhabited. Due to the restrictions
+   of Coq, the witness cannot be extracted except to produce a 
+   proof of a different proposition. *)
 Definition nonempty {A} : P A -> Prop := @Inhabited A.
 
 (* This is in Type so that we can extract the witness *)
@@ -41,12 +68,12 @@ Definition nonemptyT {A} (s : P A) : Type :=
 Arguments nonempty {_}.
 Arguments nonemptyT {_}.
 
+Lemma nonemptyT_nonempty {A}{S : P A} : 
+  nonemptyT S -> nonempty S.
+Proof. intros h. destruct h. econstructor; eauto. Qed.
 
-Check (1 ∈ ⌈ 1 ⌉).
-Check (∅ ⊆ ⌈ 1 ⌉).
-Check (∅ ∪ ⌈ 1 ⌉).
-Check (∅ ∪ ⌈ 1 ⌉ ≃ ∅).
 
+(* Relation classes *)
 
 #[global] Instance Refl_Incl {A} : Reflexive (@Included A).
 intros x. unfold Included. eauto. Qed.
@@ -62,6 +89,26 @@ constructor.
   split; eauto.
 Qed.
 
+Locate Proper.
+
+#[global] Instance Union_Included_Proper {A} : Proper (@Included A ==> @Included A ==> @Included A) Union.
+Proof. intros a1 a2 Ea b1 b2 Eb.
+unfold Included in *. intros x h. inversion h. subst. left. auto. right. auto.
+Qed.
+
+#[global] Instance Union_Same_set_Proper {A} : Proper (@Same_set A ==> @Same_set A ==> @Same_set A) Union.
+Proof. intros a1 a2 Ea b1 b2 Eb.
+unfold Same_set in Ea. unfold Same_set in Eb. move: Ea => [Sa1 Sa2]. move: Eb => [Sb1 Sb2].
+split. rewrite -> Sa1. rewrite -> Sb1. reflexivity. rewrite -> Sa2. rewrite -> Sb2. reflexivity. Qed.
+
+#[global] Instance Included_Same_set_Proper {A} : Proper (@Same_set A ==> @Same_set A ==> Logic.iff) Included.
+Proof. intros a1 a2 Ea. intros b1 b2 Eb.
+       unfold Same_set in Ea. unfold Same_set in Eb. move: Ea => [Sa1 Sa2]. move: Eb => [Sb1 Sb2].
+       split. intro h. transitivity a1; auto. transitivity b1; auto. 
+       intros h. transitivity a2; auto. transitivity b2; auto. Qed.
+
+
+(* Finite lists `mem` *)
 
 Require Import Coq.Lists.List.
 
@@ -94,3 +141,35 @@ Proof.
 Qed.
 
 #[global] Hint Resolve mem_head mem_cons : core.
+
+
+Lemma union_mem {A:Type}{E1 E2 : list A} : mem (E1 ++ E2) = (mem E1 ∪ mem E2).
+Proof. unfold mem. 
+       eapply Extensionality_Ensembles.
+       split.
+       + intros x.
+         induction E1. 
+         ++ simpl. intro h. right. auto.
+         ++ simpl. intro h. inversion h.
+            left. unfold In. econstructor; eauto.
+            apply IHE1 in H.
+            inversion H. subst.
+            left. unfold In. eapply in_cons. auto.
+            subst. right. auto.
+       + intros x.
+         induction E1. 
+         ++ intro h. inversion h. subst. done. subst. auto.
+         ++ simpl. intro h. inversion h; subst.
+            destruct H.  left. auto.
+            lapply IHE1. intro h2. right. eauto.
+            left. eauto. right. apply in_or_app. right. auto.
+Qed.
+
+Lemma union_idem {A:Type}{E : P A} : (E ∪ E) ≃ E.
+Proof.
+  split. intros x h. inversion h; auto.
+  intros x h. left. auto.
+Qed.
+
+
+#[global] Hint Resolve union_idem : core.
