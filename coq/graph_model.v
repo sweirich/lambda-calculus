@@ -868,58 +868,57 @@ Qed.
 (* denotational_semantics/agda/SemanticProperties.agda  *)
 
 Lemma denot_monotone {ρ ρ' t} : 
-  scoped t ρ ->
-  scoped t ρ' ->
+(*  scoped t ρ ->
+  scoped t ρ' -> *)
   ρ ⊆e ρ' ->
   denot t ρ ⊆ denot t ρ'.
 Proof.
   intros.
   unfold denot.
   remember (size_tm t) as n. clear Heqn.
-  move: ρ ρ' t H H0 H1.
+  move: ρ ρ' t H.
   induction n.
-  all: intros ρ ρ' t [FV1 U1 LC1] [FV2 U2 _] S; simpl; auto.
+  all: intros ρ ρ' t S; simpl; auto.
   reflexivity.
-  all: destruct t; inversion LC1; simpl in FV1 ; simpl in FV2.
+  all: destruct t.
+  + (* bvar case *)
+    reflexivity.
   + (* var case *)
-    subst.
-    eapply all2_access; eauto.
+    admit. (* either in both or in neither. *)
+(*     eapply all2_access; eauto. *)
   + intro x.
     unfold In , Λ.
     destruct x; try done.
+
+    move: (all2_dom _ S) => EQ.
+    have EQD: dom ρ [=] dom ρ'. rewrite EQ. reflexivity.
     name_binder y Fry.
     name_binder z Frz.
-    pick fresh w.
-    simpl_env.
-    rewrite -> (rename_open_denot y w); auto.
-    rewrite -> (rename_open_denot z w); auto.
-    intros [h1 h2].
-    split; auto.
-    specialize (IHn (w ~ mem l ++ ρ) (w ~ mem l ++  ρ')). 
+    have EQyz: y = z. rewrite Heqy. rewrite Heqz. f_equal.
+    f_equal. apply EQ. rewrite EQyz. clear y Heqy Fry EQyz.
+
+    intros [h ln]. split; auto.
+    specialize (IHn (z ~ mem l ++ ρ) (z ~ mem l ++  ρ')). 
     eapply IHn; eauto.
-    repeat split; eauto.
-    rewrite fv_tm_open_tm_wrt_tm_upper; simpl. fsetdec.
-    repeat split; eauto.
-    rewrite fv_tm_open_tm_wrt_tm_upper; simpl. fsetdec.
-    eapply extend_sub_env; eauto.
+    eapply extend_sub_env; eauto. 
+    rewrite EQD. fsetdec.
+
   + subst.
     eapply APPLY_mono_sub.
-    eapply IHn; eauto. econstructor; eauto. fsetdec. econstructor; eauto. fsetdec.
-    eapply IHn; eauto. econstructor; eauto. fsetdec. econstructor; eauto. fsetdec.
-Qed.
+    eapply IHn; eauto. 
+    eapply IHn; eauto. 
+Admitted.
 
 
 (* ⟦⟧-monotone-one *)
 Lemma denot_monotone_one : forall ρ t x, 
-    (forall D, scoped t (x ~ D ++ ρ))
-    -> monotone (fun D => denot t (x ~ D ++ ρ)).
+    uniq ρ -> x `notin` dom ρ ->
+    monotone (fun D => denot t (x ~ D ++ ρ)).
 Proof. 
   intros.
   unfold monotone. 
   intros D1 D2 sub.
-  move: (H D1) => [FV U1 _]. destruct_uniq. simpl_env in FV.
   eapply denot_monotone; simpl; auto.
-  eapply H. eapply H.
   econstructor; eauto.
 Qed.
   
@@ -962,10 +961,6 @@ Proof.
        rewrite size_is_enough. admit.
        rewrite size_is_enough. admit.
        eapply denot_monotone.
-       admit. (* The definition of monotone doesn't include a scoping 
-                 constraint, and the envs are abstract, so this isn't 
-                 satisfiable. Need to fix. *)
-       admit.
        auto.
     ++ exists ρ'. exists F'.
        repeat split. auto.
@@ -997,11 +992,9 @@ Proof.
   unfold monotone_env.
   intros r0 r'.
   eapply denot_monotone.
-  admit. 
-  admit.
-  intros v vInV.
+  intros v InV.
   eapply denot_continuous; auto.
-Admitted.
+Qed.
 
 (* ⟦⟧-continuous-one *)
 Lemma denot_continuous_one { t ρ x } :
