@@ -244,10 +244,16 @@ Inductive conversion : tm -> tm -> Prop :=    (* defn conversion *)
      conversion (abs t) (abs t').
 
 (* defns JRed *)
-Inductive full_reduction : tm -> tm -> Prop :=    (* defn full_reduction *)
+Inductive value : tm -> Prop :=    (* defn value *)
+ | V_var : forall (x:tmvar),
+     value (var_f x)
+ | V_abs : forall (t:tm),
+     lc_tm (abs t) ->
+     value  ( (abs t) ) 
+with full_reduction : tm -> tm -> Prop :=    (* defn full_reduction *)
  | F_beta : forall (t u:tm),
      lc_tm (abs t) ->
-     lc_tm u ->
+     value u ->
      full_reduction (app  ( (abs t) )  u)  (open_tm_wrt_tm t u ) 
  | F_abs : forall (L:vars) (t t':tm),
       ( forall x , x \notin  L  -> full_reduction  ( open_tm_wrt_tm t (var_f x) )   ( open_tm_wrt_tm t' (var_f x) )  )  ->
@@ -258,8 +264,7 @@ Inductive full_reduction : tm -> tm -> Prop :=    (* defn full_reduction *)
      full_reduction (app t u) (app t' u)
  | F_app2 : forall (t u u':tm),
      lc_tm t ->
-     lc_tm u' ->
-     full_reduction u u ->
+     full_reduction u u' ->
      full_reduction (app t u) (app t u').
 
 (* defns Jredex *)
@@ -332,6 +337,6 @@ Inductive cc_parallel2 : relation -> tm -> tm -> Prop :=    (* defn cc_parallel2
 
 
 (** infrastructure *)
-Hint Constructors beta eta betaeta compatible_closure refl_closure trans_closure refl_trans_closure sym_trans_closure parallel Step StepV Eval conversion full_reduction redex terminal nf cc_parallel cc_parallel2 lc_tm : core.
+Hint Constructors beta eta betaeta compatible_closure refl_closure trans_closure refl_trans_closure sym_trans_closure parallel Step StepV Eval conversion value full_reduction redex terminal nf cc_parallel cc_parallel2 lc_tm : core.
 
 

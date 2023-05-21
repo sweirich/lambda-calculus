@@ -75,13 +75,13 @@ Proof. intros h. destruct h. econstructor; eauto. Qed.
 
 (* Relation classes *)
 
-#[global] Instance Refl_Incl {A} : Reflexive (@Included A).
+#[export] Instance Refl_Incl {A} : Reflexive (@Included A).
 intros x. unfold Included. eauto. Qed.
 
-#[global] Instance Trans_Incl {A} : Transitive (@Included A).
+#[export] Instance Trans_Incl {A} : Transitive (@Included A).
 intros x y z S1 S2. unfold Included. intro w. eauto. Qed.
 
-#[global] Instance Equivalence_Same_set {A} : Equivalence (@Same_set A) .
+#[export] Instance Equivalence_Same_set {A} : Equivalence (@Same_set A) .
 constructor.
 - unfold Reflexive, Same_set, Included in *. tauto. 
 - unfold Symmetric, Same_set, Included in *. tauto.
@@ -89,23 +89,42 @@ constructor.
   split; eauto.
 Qed.
 
-Locate Proper.
-
-#[global] Instance Union_Included_Proper {A} : Proper (@Included A ==> @Included A ==> @Included A) Union.
+#[export] Instance Union_Included_Proper {A} : Proper (@Included A ==> @Included A ==> @Included A) Union.
 Proof. intros a1 a2 Ea b1 b2 Eb.
 unfold Included in *. intros x h. inversion h. subst. left. auto. right. auto.
 Qed.
 
-#[global] Instance Union_Same_set_Proper {A} : Proper (@Same_set A ==> @Same_set A ==> @Same_set A) Union.
+#[export] Instance Union_Same_set_Proper {A} : Proper (@Same_set A ==> @Same_set A ==> @Same_set A) Union.
 Proof. intros a1 a2 Ea b1 b2 Eb.
 unfold Same_set in Ea. unfold Same_set in Eb. move: Ea => [Sa1 Sa2]. move: Eb => [Sb1 Sb2].
 split. rewrite -> Sa1. rewrite -> Sb1. reflexivity. rewrite -> Sa2. rewrite -> Sb2. reflexivity. Qed.
 
-#[global] Instance Included_Same_set_Proper {A} : Proper (@Same_set A ==> @Same_set A ==> Logic.iff) Included.
+#[export] Instance Included_Same_set_Proper {A} : Proper (@Same_set A ==> @Same_set A ==> Logic.iff) Included.
 Proof. intros a1 a2 Ea. intros b1 b2 Eb.
        unfold Same_set in Ea. unfold Same_set in Eb. move: Ea => [Sa1 Sa2]. move: Eb => [Sb1 Sb2].
        split. intro h. transitivity a1; auto. transitivity b1; auto. 
        intros h. transitivity a2; auto. transitivity b2; auto. Qed.
+
+
+(* Facts about union *)
+
+(* These should be in the SetsAsPredicates module *)
+Lemma sub_union_left {A} (X Y : P A) : X ⊆ (X ∪ Y).
+Proof. intros x I.  econstructor; eauto. Qed.
+
+Lemma sub_union_right {A} (X Y : P A) : Y ⊆ (X ∪ Y).
+Proof. intros x I. eapply Union_intror; eauto. Qed.
+
+#[export] Hint Resolve sub_union_left sub_union_right : core.
+
+Lemma union_idem {A:Type}{E : P A} : (E ∪ E) ≃ E.
+Proof.
+  split. intros x h. inversion h; auto.
+  intros x h. left. auto.
+Qed.
+
+#[export] Hint Resolve union_idem : core.
+
 
 
 (* Finite lists `mem` *)
@@ -117,7 +136,7 @@ Definition mem {A} : list A -> P A :=
 
 
 (* E≢[]⇒nonempty-mem *)
-Lemma nonnil_nonempty_mem : forall{T}{E : list T}, E <> nil -> nonempty (mem E).
+Lemma nonnil_nonempty_mem : forall{T}{E : list T}, E <> nil -> nonemptyT (mem E).
 Proof. intros. destruct E; cbv. done.
        econstructor.
        econstructor. eauto.
@@ -140,7 +159,7 @@ Proof.
   eapply in_cons.
 Qed.
 
-#[global] Hint Resolve mem_head mem_cons : core.
+#[export] Hint Resolve mem_head mem_cons : core.
 
 
 Lemma union_mem {A:Type}{E1 E2 : list A} : mem (E1 ++ E2) = (mem E1 ∪ mem E2).
@@ -165,11 +184,10 @@ Proof. unfold mem.
             left. eauto. right. apply in_or_app. right. auto.
 Qed.
 
-Lemma union_idem {A:Type}{E : P A} : (E ∪ E) ≃ E.
-Proof.
-  split. intros x h. inversion h; auto.
-  intros x h. left. auto.
-Qed.
+Lemma singleton_mem {A} : forall v : A,  ⌈ v ⌉ ⊆ mem (v :: nil).
+Proof. intro v. econstructor. inversion H. done. Qed.
 
+Lemma mem_singleton {A} : forall v : A, mem (v :: nil) ⊆ ⌈ v ⌉.
+Proof. intro v. cbv. intros. inversion H. subst. econstructor; eauto. done. Qed.
 
-#[global] Hint Resolve union_idem : core.
+#[export] Hint Resolve singleton_mem mem_singleton : core. 

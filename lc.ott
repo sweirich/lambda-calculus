@@ -462,12 +462,23 @@ defns
 
 JRed :: '' ::=
 
+defn
+value t ::   :: value :: 'V_'
+by
+
+-------- :: var
+value x
+
+-------------- :: abs
+value (\x. t)
+
 defn 
 t --> u ::    :: full_reduction :: 'F_' 
-{{ com Full $\beta$-reduction }}
+{{ com Full CBV $\beta$-reduction }}
 {{ tex [[t]][[-->]]_{\beta} [[u]] }}
 by
 
+value u
 -------------------------- :: beta
 (\x.t) u --> t [ x ~> u ]
 
@@ -480,7 +491,7 @@ t --> t'
 ---------------------------- :: app1
 t u --> t' u
 
-u --> u
+u --> u'
 ---------------------------- :: app2
 t u --> t u'
 
