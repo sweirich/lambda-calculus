@@ -935,10 +935,124 @@ Proof.
 Qed.
 
 Inductive scoped t (ρ : Env) :=
-  scoped_intro : fv_tm t [<=] dom ρ -> uniq ρ -> lc_tm t -> scoped t ρ.
+  scoped_intro : 
+    fv_tm t [<=] dom ρ -> uniq ρ -> lc_tm t -> scoped t ρ.
 
 #[global] Hint Constructors scoped : core.
 
+Lemma scoped_app : forall t1 t2 ρ,
+    scoped t1 ρ -> scoped t2 ρ -> 
+    scoped (app t1 t2) ρ.
+Proof.
+  intros. inversion H. inversion H0. econstructor; eauto.
+  simpl. fsetdec.
+Qed.
+
+Lemma scoped_app_inv1 : forall t1 t2 ρ,
+    scoped (app t1 t2) ρ ->
+    scoped t1 ρ.
+Proof.
+  intros. inversion H.
+  simpl in *. inversion H2.
+  econstructor; eauto. 
+  fsetdec.
+Qed.
+
+Lemma scoped_app_inv2 : forall t1 t2 ρ,
+    scoped (app t1 t2) ρ ->
+    scoped t2 ρ.
+Proof.
+  intros. inversion H.
+  simpl in *. inversion H2.
+  econstructor; eauto. 
+  fsetdec.
+Qed.
+
+Lemma scoped_abs : forall x t1 D ρ, 
+  x `notin` dom ρ \u fv_tm t1
+  -> scoped (t1 ^ x) (x ~ D ++ ρ)
+  -> scoped (abs t1) ρ.
+Proof. 
+  intros. destruct H0.
+  simpl_env in s.
+  rewrite <- fv_tm_open_tm_wrt_tm_lower in s.
+  destruct_uniq.
+  constructor. simpl. fsetdec.
+  auto.
+  eapply (lc_abs_exists x).
+  auto.
+Qed.
+
+Lemma scoped_abs_inv : forall x t1 D ρ, 
+  x `notin` dom ρ \u fv_tm t1
+  -> scoped (abs t1) ρ
+  -> scoped (t1 ^ x) (x ~ D ++ ρ).
+Proof.
+  intros.
+  destruct H0. simpl in s. inversion l.
+  econstructor; eauto.
+  autorewrite with lngen.
+  simpl_env.
+  subst.
+  simpl. fsetdec.
+Qed.
+
+(*
+Inductive scoped : tm -> Env -> Prop :=
+  | scoped_var : forall x ρ,
+    uniq ρ -> x `in` dom ρ -> scoped (var_f x) ρ
+  | scoped_app : forall t1 t2 ρ,
+    scoped t1 ρ -> scoped t2 ρ -> 
+    scoped (app t1 t2) ρ
+  | scoped_abs : forall L t1 D ρ,
+     (forall x, x `notin` L -> scoped (t1 ^ x) (x ~ D ++ ρ))
+     -> scoped (abs t1) ρ.
+
+
+Lemma scoped_uniq { t ρ } : scoped t ρ -> uniq ρ.
+Proof. induction 1; eauto. pick fresh x. 
+       move: (H0 x ltac:(auto)) => h. solve_uniq. Qed.
+
+Lemma scoped_lc {t ρ} : scoped t ρ -> lc_tm t.
+Proof. induction 1; eauto. Qed.
+
+Lemma scoped_fv {t ρ} : scoped t ρ -> fv_tm t [<=] dom ρ.
+Proof. induction 1; simpl; try fsetdec.
+       pick fresh x. move: (H0 x ltac:(auto)) => h. 
+       rewrite <- fv_tm_open_tm_wrt_tm_lower in h.
+       simpl_env in h.
+       fsetdec.
+Qed.
+
+Lemma scoped_rename {t1 D ρ} : forall x y,
+  x `notin` dom ρ \u fv_tm t1  
+  -> y `notin` dom ρ \u fv_tm t1
+  -> scoped (t1 ^ x) (x ~ D ++ ρ)
+  -> scoped (t1 ^ y) (y ~ D ++ ρ).
+Admitted.
+
+Lemma scoped_abs_exists {x t1 D ρ} : 
+  x `notin` dom ρ \u fv_tm t1
+  -> scoped (t1 ^ x) (x ~ D ++ ρ)
+  -> scoped (abs t1) ρ.
+Proof. 
+  intros Fr SC.
+  pick fresh y and apply scoped_abs.
+  eapply (scoped_rename x y); eauto.
+Qed.
+
+Lemma scoped_abs_inversion {x t1 ρ} : 
+  x `notin` dom ρ \u fv_tm t1
+  -> scoped (abs t1) ρ 
+  -> exists D, scoped (t1 ^ x) (x ~ D ++ ρ).
+Proof. 
+  intros Fr SC.
+  inversion SC. subst. exists D.
+  pick fresh y.
+  specialize (H0 y ltac:(auto)).  
+  eapply (scoped_rename y x); eauto.
+Qed.
+*)
 
 Lemma subst_denot : forall t x u ρ1 ρ2, 
     scoped t (ρ1 ++ x ~ (denot u ρ2) ++ ρ2) ->
@@ -952,9 +1066,12 @@ Proof.
   all: intros x u ρ1 ρ2 ST SU.
   + simpl. repeat rewrite denot_var_b. reflexivity.
   + destruct (y == x) eqn:EQ. subst.
-    ++ have NI: x `notin` dom ρ1.  admit.
-       have D2: fv_tm u [<=] dom ρ2. admit.
-       have U2: uniq (ρ1 ++ ρ2). admit.
+    ++ have NI: x `notin` dom ρ1.
+       { inversion ST. destruct_uniq. auto. }
+       have D2: fv_tm u [<=] dom ρ2. 
+       { inversion SU. auto. }
+       have U2: uniq (ρ1 ++ ρ2). 
+       { inversion ST. solve_uniq. }
        rewrite subst_eq_var.
        rewrite denot_var.
        rewrite access_app_fresh; auto.       
@@ -967,13 +1084,13 @@ Proof.
        move: (h2 ρ2) => [N1 ->]. 
        move: (h2 (x ~ denot u ρ2 ++ ρ2)) => [N3 ->].
        rewrite access_neq_var; auto.
-  + have SC1: scoped t1 (ρ1 ++ x ~ denot u ρ2 ++ ρ2). admit.
-    have SC2: scoped t2 (ρ1 ++ x ~ denot u ρ2 ++ ρ2). admit.
+  + move: (scoped_app_inv1 _ _ _ ST) => S1.
+    move: (scoped_app_inv2 _ _ _ ST) => S2.
     simpl. repeat rewrite denot_app.
     f_equal.
     eapply IH1; eauto.
     eapply IH2; eauto.
-  + have LCU: lc_tm u. admit.
+  + have LCU: lc_tm u. inversion SU. auto.
     pick fresh z.
     specialize (IH z ltac:(auto) x u).
     simpl. simpl_env.
@@ -982,28 +1099,15 @@ Proof.
     simpl_env. rewrite fv_tm_subst_tm_upper. fsetdec. 
     f_equal.
     extensionality D.
-    have SC1:
-      scoped (t' ^ z) ((z ~ D ++ ρ1) ++ x ~ denot u ρ2 ++ ρ2).
-      admit.
+    have FZ: z `notin` (dom (ρ1 ++ x ~ denot u ρ2 ++ ρ2) \u fv_tm t').
+    simpl_env. fsetdec.
+    move: (scoped_abs_inv z t' D _ FZ ST) => h.
     rewrite <- app_assoc.
     rewrite IH; auto.
     autorewrite with lngen.
     reflexivity.
-Admitted.
-
-
-(*
-Lemma subst_denot : forall t x u ρ2, 
-    scoped t (x ~ (denot u ρ2) ++ ρ2) ->
-    scoped u ρ2 ->
-    denot t (x ~ (denot u ρ2) ++ ρ2) =
-    denot (t [ x ~> u]) ρ2.
-Proof.
-  intros.
-  unfold denot.
-  eapply subst_denot_n with (ρ1 := nil); eauto.
+    auto.
 Qed.
-*)
 
 (* ------------------------------------ *)
 
@@ -1043,50 +1147,6 @@ Proof.
     eapply extend_sub_env; eauto. 
 Qed.
 
-(*
-Lemma denot_monotone {ρ ρ' t} : 
-  ρ ⊆e ρ' ->
-  denot t ρ ⊆ denot t ρ'.
-Proof.
-  intros.
-  unfold denot.
-  remember (size_tm t) as n. clear Heqn.
-  move: ρ ρ' t H.
-  induction n.
-  all: intros ρ ρ' t S; simpl; auto.
-  reflexivity.
-  all: destruct t.
-  + (* bvar case *)
-    reflexivity.
-  + (* var case *)
-    have lemma: ρ ⊆e ρ' -> ρ ⋅ x ⊆ ρ' ⋅ x.
-    { clear. induction 1. simpl. reflexivity.
-           simpl. destruct (x == x0) eqn:E. rewrite E. auto.
-           rewrite E. auto. }
-    eauto.
-  + intro x.
-    unfold In , Λ.
-    destruct x; try done.
-
-    move: (all2_dom _ S) => EQ.
-    have EQD: dom ρ [=] dom ρ'. rewrite EQ. reflexivity.
-    name_binder y Fry.
-    name_binder z Frz.
-    have EQyz: y = z. rewrite Heqy. rewrite Heqz. f_equal.
-    f_equal. apply EQ. rewrite EQyz. clear y Heqy Fry EQyz.
-
-    intros [h ln]. split; auto.
-    specialize (IHn (z ~ mem l ++ ρ) (z ~ mem l ++  ρ')). 
-    eapply IHn; eauto.
-    eapply extend_sub_env; eauto. 
-    rewrite EQD. fsetdec.
-
-  + subst.
-    eapply APPLY_mono_sub.
-    eapply IHn; eauto. 
-    eapply IHn; eauto. 
-Qed.
-*)
 
 (* ⟦⟧-monotone-one *)
 Lemma denot_monotone_one : forall ρ t x, 
@@ -1314,22 +1374,24 @@ Proof.
     eapply Λ_ext.
     intros X NEX.
     eapply H0.
-    admit. (* scoped body of abs *)
-    admit. (* scoped body of abs *)
+    have F1 : x `notin` dom ρ \u fv_tm t. fsetdec.
+    eapply (scoped_abs_inv x _ X _ F1 SCt).
+    have F2 : x `notin` dom ρ \u fv_tm t'. fsetdec.
+    eapply (scoped_abs_inv x _ X _ F2 SCu).
     eapply extend_nonempty_env.
     fsetdec.
     eauto.
     eauto.
-  - have SC1: scoped t ρ. admit.
-    have SC2: scoped t' ρ. admit.
-    have SC3: scoped u ρ. admit.
+  - have SC1: scoped t ρ. eapply scoped_app_inv1; eauto.
+    have SC2: scoped t' ρ. eapply scoped_app_inv1; eauto.
+    have SC3: scoped u ρ. eapply scoped_app_inv2; eauto.
     repeat rewrite denot_app.
     eapply APPLY_cong; eauto.
     reflexivity.
-  - have SC1: scoped t ρ. admit.
-    have SC2: scoped u ρ. admit.
-    have SC3: scoped u' ρ. admit.
+  - have SC1: scoped t ρ.  eapply scoped_app_inv1; eauto.
+    have SC2: scoped u ρ.  eapply scoped_app_inv2; eauto.
+    have SC3: scoped u' ρ.  eapply scoped_app_inv2; eauto.
     repeat rewrite denot_app.
     eapply APPLY_cong; eauto.
     reflexivity.
-Admitted.
+Qed.
