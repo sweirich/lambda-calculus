@@ -207,6 +207,18 @@ Section AccessProperties.
     done.
   Qed.
 
+Polymorphic Lemma access_fresh {x}{ρ : GEnv A} :
+  x `notin` dom ρ ->
+  ρ ⋅ x = d.
+Proof.
+  induction ρ; simpl; intro h; try done.
+  destruct a.
+  (destruct (x == a) eqn:EQ).
+  subst. fsetdec.
+  rewrite IHρ. auto. auto.
+Qed.
+
+
   Polymorphic Lemma access_app_fresh {x}{ρ1 ρ2:GEnv A}:  
       x `notin` dom ρ1 -> (ρ1 ++ ρ2) ⋅ x = ρ2 ⋅ x.
   Proof.
