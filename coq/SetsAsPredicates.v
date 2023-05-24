@@ -54,7 +54,11 @@ Check (∅ ∪ ⌈ 1 ⌉).
 Check (∅ ∪ ⌈ 1 ⌉ ≃ ∅).
 
 
-(* Add hint for  v ∈ ⌈ v ⌉ *)
+Lemma in_singleton {A:Type} {v : A} : 
+  v ∈ ⌈ v ⌉.
+Proof. unfold In. econstructor. Qed.
+
+#[export] Hint Resolve in_singleton : core.
 
 (* A proposition that a set is inhabited. Due to the restrictions
    of Coq, the witness cannot be extracted except to produce a 

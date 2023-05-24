@@ -13,7 +13,8 @@ Require Import lc.AssocList.
 
    Expressions are mapped to sets of values. The interpretation of a function
    is a set of its mappings. We need an infinite set to fully represent a
-   function but any computation only requires a finite approximation.
+   function but any computation only requires a finite approximation of that 
+   function.
 
 *)
 
@@ -27,64 +28,17 @@ Require Import lc.AssocList.
    ⊆  \subseteq   (Included)
 *)
 
-Definition result (A:Type) := sum unit A.
-Definition wrong {A} : result A := inl tt.
-Definition ret {A} : A -> result A := inr.
-Definition bind {A} : result A -> (A -> result A) -> result A :=
-    fun x f => match x with 
-            | inl _ => wrong
-            | inr v => f v
-            end.
-
-
 Inductive Value : Type :=
   | v_nat : nat -> Value 
     (* one entry in a function's table *)
   | v_map : list Value -> Value -> Value
     (* trivial function value, evaluated to a value but never applied *)
   | v_fun : Value
-    (* tuple of values *)
+    (* list/tuple of values *)
   | v_list : list Value -> Value
     (* dynamic type error *)
   | v_wrong : Value
 .
-
-(* 
-
-A: denot (exists x. x) = fun x => False
-
-B: denot (exists x. x) = [] ∪ [1] ∪ [1,2] ∪ [1 ↦ 3,5] ...
-      union of all finite lists of values
-
-Fine-grained CBV -- can only apply values to values
-   combined monadic metalanguage with computational lambda calculus
-
-      x = e1 ; e2
-
-*)
-
-(*
-
- ( fail || X )  == X
- ( wrong || X ) == wrong
- ( X || wrong ) == wrong
-
-all (exists x. x) == Fail
-all (exists x. x = 3 || x = 4) == [3, 4]
-
-A || B == exists x. if x == 0 then A if x == 1 then B else Fail
-
-
-  
-
-(* For nondeterminism *)
-Definition Choice (X1 : P (Labeled Value)) (X2 : P Value) := 
-  Union (label Left X1) (label Right X2).
-
-Definition One (X : P Value) : P Value.
-
-*)
-
 
 (* ------------ Functions ------------------ *)
 
@@ -109,7 +63,9 @@ Definition LIST : list (P Value) -> P Value  :=
 
 (* 4 possibilities in application: 
    1. v_wrong e |-> v_wrong
-   2. e v_wrong |-> v_wrong  -- should this ensure that e is a function or tuple?
+   2. e v_wrong |-> v_wrong  
+         -- should this ensure that e is a function or list?
+         
    3. (V |-> w) v |-> w 
    4. <V1 .. Vn> k |-> Vk
  *)
@@ -121,7 +77,7 @@ Inductive APPLY : P Value -> P Value -> Value -> Prop :=
      (v_wrong ∈ D2) 
      -> APPLY D1 D2 v_wrong
   | BETA : forall D1 D2 w V,
-     (V ↦ w ∈ D1) -> (mem V ⊆ D2) -> V <> nil 
+     (V ↦ w ∈ D1) -> (mem V ⊆ D2) -> V <> nil -> not (v_wrong ∈ mem V)
      -> APPLY D1 D2 w
   | PROJ   : forall D1 D2 w VS k, 
      (v_list VS ∈ D1) -> (v_nat k ∈ D2) -> nth_error VS k = Some w
@@ -140,14 +96,15 @@ Definition den_nat : nat -> P Value :=
    Primitive addition function. A set containing all mappings of the 
    form:  
      <i,j> |-> i+j
-     V |-> WRONG
+     V |-> WRONG   where V /= <i,j>
 *)
 Definition den_add : P Value :=
   fun w => 
     match w with 
-    | (v_list (v_nat i :: v_nat j :: nil) :: nil) ↦ v_nat k => 
-        k = i + j
-    | _ ↦ v_wrong => True
+    | (V ↦ v_nat k) => 
+        exists i j, (v_list (v_nat i :: v_nat j :: nil) ∈ mem V) /\ k = i + j
+    | V ↦ v_wrong => 
+        not (exists i j, v_list (v_nat i :: v_nat j :: nil) ∈ mem V)
     | _ => False
     end.
 
@@ -187,6 +144,11 @@ Qed.
 
 (* Valid ---- -------------------------------------- *)
 
+(* A `P Value` is the denotation of an actual lambda-calculus value if it is
+   an inhabited set that does not include wrong. We put this definition 
+   in `Type` so that we can extract the inhabitant. 
+*)
+
 Definition valid (V : P Value) : Type :=
   { x : Value & ((x ∈ V) /\ not (v_wrong ∈ V)) }.
 
@@ -225,11 +187,6 @@ Definition continuous (F : P Value -> P Value) : Set :=
 Definition monotone (F : P Value -> P Value) : Set := 
   forall D1 D2, (D1 ⊆ D2) -> F D1 ⊆ F D2.
 
-(* Is there a better word for this? *)
-(* Definition strict (F : P Value -> P Value) : Set := 
-  forall X, v_wrong ∈ X -> v_wrong ∈ F X. *)
-
-
 (* Λ-▪-id *)
 Lemma Λ_APPLY_id { F X } :
   continuous F -> monotone F -> valid X 
@@ -247,13 +204,56 @@ Proof.
     { intros d y. inversion y; subst. auto. done. }
     move: (Fcont X (cons w nil) M NEX) => 
     [ D [ DltX [ wInFD NED ]]].
-    eapply BETA with (V:=D); eauto.
     move: NEX => [ x [ h0 h1]].
+    eapply BETA with (V:=D); eauto.
     split; auto.
 Qed.
 
 (*  Primitive Abstraction followed by Application is the identity --------- *)
 
+Lemma den_list : forall i j V, mem V ⊆ LIST (den_nat i :: den_nat j :: nil) ->
+                 forall x, x ∈ mem V -> x = v_list (v_nat i :: v_nat j :: nil).
+Proof.
+  induction V.  intros. done.
+  intros M x xin.
+  move: (M x xin) => h.
+  destruct x; try done.
+  cbv in h.
+  inversion h; subst; clear h.
+  destruct y; try done. subst.
+  inversion H3; subst; clear H3.
+  destruct y; try done. subst.
+  inversion H4; subst; clear H4.
+  auto.
+Qed.
+
+Lemma add_APPLY {i j} : 
+  den_add ▩ (LIST (den_nat i :: den_nat j :: nil)) ≃ den_nat (i + j).
+Proof.
+  split.
+  + intros w APP. inversion APP; subst; clear APP.
+    all: cbn in H.
+    all: try done.
+
+    destruct w; try done.
+    - destruct H as [i0 [j0 [h0 h1]]]. subst.
+      move: (den_list _ _ _ H0 _ h0) => h1. inversion h1. subst. clear h1.
+      eapply k_in_den_k.
+    - assert False. eapply H.
+      destruct V; try done.
+      move: (den_list _ _ _ H0 v ltac:(auto)) => h1. subst. 
+      eauto.
+      done.
+   + intros w wIn.
+     apply v_in_den_k_inv in wIn. subst.
+     eapply BETA with (V := v_list (v_nat i :: v_nat j :: nil) :: nil).
+     - cbn. eauto.
+     - intros x xIn. inversion xIn. subst.
+       cbn. eauto using k_in_den_k.
+       inversion H.
+     - intro h. done.
+     - intro h. cbn in h. destruct h as [v1 | v2]; try done.
+Qed.
 
 (* This is about primitive functions, so skip for now *)
 
@@ -321,7 +321,6 @@ Definition valid_env : Env -> Type := allT valid.
 Definition finite (X : P Value) : Prop := exists E, (X ≃ mem E) /\ E <> nil.
 
 Definition finite_env : Env -> Type := allT finite.
-
 
 Lemma extend_nonempty_env {ρ x X} : 
   x `notin` dom ρ ->
@@ -684,15 +683,6 @@ Proof.
     repeat split; eauto.
 Qed.
 
-(*
-#[export] Instance Proper_in {A : Type} : Proper (Same_set ==> Logic.eq) (@In A).
-intros X1 X2 EQ. unfold In. apply Extensionality_Ensembles in EQ. rewrite EQ.
-auto. Qed.
-
-#[export] Instance Proper_nonemptyT {A : Type} : Proper (Same_set ==> Logic.eq) (@nonemptyT A).
-intros X1 X2 EQ. unfold nonemptyT.  apply Extensionality_Ensembles in EQ. rewrite EQ.
-auto. Qed.
-*)
 
 (* Exists *)
 
@@ -1369,20 +1359,6 @@ Proof.
     auto.
 Qed.
 
-Print monotone.
-(* fun F : P Value -> P Value => 
-   forall D1 D2 : Ensemble Value, D1 ⊆ D2 -> F D1 ⊆ F D2  *)
-Print monotone_env.
-(* fun D : Env -> P Value => forall ρ ρ' : list (atom * Ensemble Value), 
-   ρ ⊆e ρ' -> D ρ ⊆ D ρ' *)
-
-
-(*
-Lemma denot_strict : forall t, strict (denot t).
-  eapply tm_induction with (t := t);
-  [move=>i|move=>y|move=>t1 t2 IH1 IH2|move=> t' IH].
-*)
-
 (* Λ⟦⟧-▪-id *)
 Lemma Λ_denot_APPLY_id :
   forall t ρ x X,
@@ -1436,6 +1412,7 @@ Proof.
   rewrite -> mem_singleton. 
   intros x0 II. inversion II. subst. cbv. right. left. auto.
   intro h. done.
+  intro h. apply NW. inversion h. auto. inversion H.
   split. intro h. done.
   intros [v1|[v2|v3]]; try done.
 Qed.
@@ -1481,12 +1458,6 @@ Proof.
     rewrite access_eq_var in h1.
     move: h1 => [h3 h4].
 Abort.
-
-Lemma in_singleton {A:Type} {v : A} : 
-  v ∈ ⌈ v ⌉.
-Proof. unfold In. econstructor. Qed.
-
-#[export] Hint Resolve in_singleton : core.
 
 (* A term with an unbound variable has no value. *)
 Definition tm_Wrong : tm := app (var_b 1) (var_b 0).
