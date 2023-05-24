@@ -43,11 +43,10 @@ Inductive Value : Type :=
   | v_map : list Value -> Value -> Value
     (* trivial function value, evaluated to a value but never applied *)
   | v_fun : Value
-(*    | v_wrong : Value
-  | v_fail : Value
-  | v_list : list Value -> Value *)
-(*  | v_sequence : list Value -> Value  (* finite approximation of infinite *)
-  | v_tag : Either Value Value -> Value *)
+    (* tuple of values *)
+  | v_list : list Value -> Value
+    (* dynamic type error *)
+  | v_wrong : Value
 .
 
 (* 
@@ -65,8 +64,10 @@ Fine-grained CBV -- can only apply values to values
 *)
 
 (*
-[ fail || X ] == X
-[ wrong || X ] == wrong
+
+ ( fail || X )  == X
+ ( wrong || X ) == wrong
+ ( X || wrong ) == wrong
 
 all (exists x. x) == Fail
 all (exists x. x = 3 || x = 4) == [3, 4]
@@ -74,11 +75,6 @@ all (exists x. x = 3 || x = 4) == [3, 4]
 A || B == exists x. if x == 0 then A if x == 1 then B else Fail
 
 
-Definition All (X : P Value) : P Value := 
-  fun V => match V with 
-          | v_list l => mem l ⊆ X 
-          | _ => False
-        end.
   
 
 (* For nondeterminism *)
@@ -87,24 +83,6 @@ Definition Choice (X1 : P (Labeled Value)) (X2 : P Value) :=
 
 Definition One (X : P Value) : P Value.
 
-*)
-
-(* ------------ Wrong ------------------ *)
-
-(*
-
-Inductive Result (D1 : Prop) (D2 : Prop) : Prop :=
- | Wrong   : D1 -> Result D1 D2
- | Success : D2 -> Result D1 D2
-. 
-
-Definition is_wrong (v : Value) :=
-  match v with 
-    | v_wrong => True
-    | _ => False
-  end. 
-
-Definition nonwrong V := not (is_wrong V).
 *)
 
 
@@ -117,16 +95,37 @@ Local Open Scope set_scope.
 
 Definition Λ : (P Value -> P Value) -> P Value :=
   fun f => fun v => match v with 
-          | (V ↦ w) => (w ∈ f (mem V)) /\ V <> nil
+          | (V ↦ w) => (w ∈ f (mem V)) /\ V <> nil /\ not (v_wrong ∈ mem V)
           | v_fun => True
           | _ => False
           end.
 
-Definition APPLY : P Value -> P Value -> P Value :=
-  fun D1 D2 w =>
-    ((exists V, (V ↦ w ∈ D1) /\ (mem V ⊆ D2) /\ V <> nil)).
-(*     Result (((v_wrong ∈ D1) \/ (v_wrong ∈ D2)) /\ w = v_wrong)  *)
-           
+Definition LIST : list (P Value) -> P Value  :=
+  fun DS w => 
+    match w with 
+    | v_list WS => Forall2 In DS WS
+    | _ => False
+    end.
+
+(* 4 possibilities in application: 
+   1. v_wrong e |-> v_wrong
+   2. e v_wrong |-> v_wrong  -- should this ensure that e is a function or tuple?
+   3. (V |-> w) v |-> w 
+   4. <V1 .. Vn> k |-> Vk
+ *)
+Inductive APPLY : P Value -> P Value -> Value -> Prop :=
+  | FUNWRONG : forall D1 D2,
+     (v_wrong ∈ D1)
+     -> APPLY D1 D2 v_wrong
+  | ARGWRONG : forall D1 D2,
+     (v_wrong ∈ D2) 
+     -> APPLY D1 D2 v_wrong
+  | BETA : forall D1 D2 w V,
+     (V ↦ w ∈ D1) -> (mem V ⊆ D2) -> V <> nil 
+     -> APPLY D1 D2 w
+  | PROJ   : forall D1 D2 w VS k, 
+     (v_list VS ∈ D1) -> (v_nat k ∈ D2) -> nth_error VS k = Some w
+     -> APPLY D1 D2 w.
 
 
 Infix "▩" := APPLY (at level 90).
@@ -136,6 +135,21 @@ Definition den_nat : nat -> P Value :=
           | v_nat k => j = k
           | _ => False
           end.
+
+(* 
+   Primitive addition function. A set containing all mappings of the 
+   form:  
+     <i,j> |-> i+j
+     V |-> WRONG
+*)
+Definition den_add : P Value :=
+  fun w => 
+    match w with 
+    | (v_list (v_nat i :: v_nat j :: nil) :: nil) ↦ v_nat k => 
+        k = i + j
+    | _ ↦ v_wrong => True
+    | _ => False
+    end.
 
 
 (* -- Basic Properties of Denotational Operators --------------------------------- *) 
@@ -155,9 +169,13 @@ Proof. intros. destruct v; inversion H. done. Qed.
 Lemma APPLY_mono_sub { D1 D2 D3 D4 } :
     D1 ⊆ D3 -> D2 ⊆ D4 -> ((D1 ▩ D2) ⊆ (D3 ▩ D4)).
 Proof.  
-  intros D13 D24 w [ V [wvD1 [ VD2 VNE ]] ].
-  + exists V. repeat split; eauto.
-  intros d z. eapply D24; eauto.
+  intros D13 D24 w APP. 
+  inversion APP; subst; unfold Included in *.
+  + apply FUNWRONG. eauto.
+  + apply ARGWRONG. eauto.
+  + apply BETA with (V:=V); eauto.
+    intros d z. eauto.
+  + apply PROJ with (VS := VS) (k := k); eauto.
 Qed.
 
 Lemma APPLY_cong { D1 D2 D3 D4 } :
@@ -167,23 +185,31 @@ Proof.
   split; eapply APPLY_mono_sub; eauto.
 Qed.
 
+(* Valid ---- -------------------------------------- *)
+
+Definition valid (V : P Value) : Type :=
+  { x : Value & ((x ∈ V) /\ not (v_wrong ∈ V)) }.
+
+Lemma valid_is_nonempty V : valid V -> nonemptyT V.
+  intros [x [P _]]. econstructor; eauto. Defined.
 
 (*  Abstraction is Extensional ---- -------------------------------------- *)
 
 (* Λ-ext-⊆  *)
 Lemma Λ_ext_sub {F1 F2} :
-  (forall {X : P Value}, nonemptyT X -> F1 X ⊆ F2 X) -> Λ F1 ⊆ Λ F2.
+  (forall {X : P Value}, valid X -> F1 X ⊆ F2 X) -> Λ F1 ⊆ Λ F2.
 Proof.
   intros F1F2 v Iv. destruct v eqn:E; inversion Iv.
-  - split. eapply F1F2; eauto.
-    eapply nonnil_nonempty_mem.
-    auto.
-    eauto.
+  - move: H0 => [NN NW]. 
+    split. eapply F1F2; eauto. 
+    destruct l as [|w l]; try done. 
+    econstructor; eauto.
+    split. auto. auto.
   - trivial.
 Qed.
 
 Lemma Λ_ext {F1 F2} :
-  (forall {X}, nonemptyT X -> F1 X ≃ F2 X) -> Λ F1 ≃ Λ F2.
+  (forall {X}, valid X -> F1 X ≃ F2 X) -> Λ F1 ≃ Λ F2.
 Proof. 
   intros g. split;
   eapply Λ_ext_sub; intros X NEX; destruct (g X); eauto.
@@ -193,33 +219,37 @@ Qed.
 (*  Abstraction followed by Application is the identity ------------------- *)
 
 Definition continuous (F : P Value -> P Value) : Set :=
-  forall X E, mem E ⊆ F X -> nonemptyT X 
+  forall X E, mem E ⊆ F X -> valid X 
          -> exists D, (mem D ⊆ X) /\ ((mem E) ⊆ F (mem D)) /\ D <> nil.
 
 Definition monotone (F : P Value -> P Value) : Set := 
   forall D1 D2, (D1 ⊆ D2) -> F D1 ⊆ F D2.
 
-(*
-Definition strict (F : P Value -> P Value) : Set := 
-  forall X, v_wrong ∈ X -> v_wrong ∈ F X.
-*)
+(* Is there a better word for this? *)
+(* Definition strict (F : P Value -> P Value) : Set := 
+  forall X, v_wrong ∈ X -> v_wrong ∈ F X. *)
 
 
 (* Λ-▪-id *)
 Lemma Λ_APPLY_id { F X } :
-  continuous F -> monotone F -> nonemptyT X 
+  continuous F -> monotone F -> valid X 
   -> (Λ F) ▩ X ≃ F X.
 Proof. 
   intros Fcont Fmono NEX .
   split.
-  + intros w [ V [[ wInFV _ ] [VX _ ]]].
-    exact (Fmono (mem V) X VX w wInFV).
+  + intros w APP. inversion APP; subst. 
+    - inversion H.
+    - move: NEX => [x [_ W]]. done.
+    - inversion H. eapply (Fmono (mem V) X); eauto. 
+    - inversion H.
   + intros w wInFX.
     have M: mem (cons w nil) ⊆ F X. 
     { intros d y. inversion y; subst. auto. done. }
     move: (Fcont X (cons w nil) M NEX) => 
     [ D [ DltX [ wInFD NED ]]].
-    exists D. repeat split; eauto.
+    eapply BETA with (V:=D); eauto.
+    move: NEX => [ x [ h0 h1]].
+    split; auto.
 Qed.
 
 (*  Primitive Abstraction followed by Application is the identity --------- *)
@@ -233,7 +263,7 @@ Qed.
 Definition Env := GEnv (P Value).
 
 Module EnvNotations.
-Notation "ρ ⋅ x" := (access (fun _ => False) ρ x) (at level 50).
+Notation "ρ ⋅ x" := (access ⌈ v_wrong ⌉ ρ x) (at level 50).
 Infix "⊔e" := (map2 Union) (at level 60).
 Infix "⊆e" := (all2 Included) (at level 50).
 End EnvNotations.
@@ -283,10 +313,13 @@ Definition ne (s : P Value) : Type := { x : Value & (x ∈ s) }.
 
 Definition nonempty_env : Env -> Type := allT ne.
 
+Definition valid_env : Env -> Type := allT valid.
+
 (* A finite environment has a list of values for 
    each variable. *)
 
 Definition finite (X : P Value) : Prop := exists E, (X ≃ mem E) /\ E <> nil.
+
 Definition finite_env : Env -> Type := allT finite.
 
 
@@ -294,6 +327,12 @@ Lemma extend_nonempty_env {ρ x X} :
   x `notin` dom ρ ->
   ne X -> 
   nonempty_env ρ -> nonempty_env (x ~ X ++ ρ).
+Proof. intros Fr NEP NEX. eapply allT_cons; eauto. Qed.
+
+Lemma extend_valid_env {ρ x X} : 
+  x `notin` dom ρ ->
+  valid X -> 
+  valid_env ρ -> valid_env (x ~ X ++ ρ).
 Proof. intros Fr NEP NEX. eapply allT_cons; eauto. Qed.
 
 (* ----------------------------------------------------- *)
@@ -391,9 +430,9 @@ Definition continuous_env (D:Env -> P Value) (ρ:Env) : Prop :=
 
 (* creates an environment that maps each variable x to a singleton 
    set of some element in ρ x *)
-Definition initial_finite_env (ρ : Env) (NE : nonempty_env ρ) : Env.
+Definition initial_finite_env (ρ : Env) (NE : valid_env ρ) : Env.
   induction NE. exact nil.
-  destruct f as [V v].
+  destruct f as [V _].
   exact (cons (x, ⌈ V ⌉) IHNE).
 Defined.
 
@@ -413,7 +452,7 @@ Qed.
 #[export] Hint Resolve finite_singleton : core. 
 
 
-Lemma initial_fin (ρ : Env) (NE : nonempty_env ρ) :
+Lemma initial_fin (ρ : Env) (NE : valid_env ρ) :
   finite_env (initial_finite_env ρ NE).
 Proof.
   induction NE.
@@ -426,11 +465,11 @@ Qed.
 #[global] Hint Resolve initial_fin : core. 
 
 
-Lemma initial_fin_sub (ρ : Env) (NE : nonempty_env ρ) :
+Lemma initial_fin_sub (ρ : Env) (NE : valid_env ρ) :
   initial_finite_env ρ NE ⊆e ρ.
 Proof.
   induction NE; simpl. econstructor.
-  destruct f as [v wpx].
+  destruct f as [v [wpx _]].
   econstructor. auto.
   rewrite initial_finite_dom. auto.
   intros z y. inversion y. subst. unfold In. auto.
@@ -441,7 +480,7 @@ Qed.
 
 (* single-env maps x to D and any other variable y to something in ρ y. *)
 Definition single_env (x : atom) (D : P Value) (ρ : Env) 
-  (NE : nonempty_env ρ) : Env :=
+  (NE : valid_env ρ) : Env :=
   update x D (initial_finite_env ρ NE).
 
   
@@ -464,23 +503,28 @@ Qed.
 
 
 Lemma single_sub { ρ x v } :
-  forall (NE : nonempty_env ρ),
+  forall (NE : valid_env ρ),
     v ∈ ρ ⋅ x 
+  -> x `in` dom ρ
   -> (single_env x ⌈ v ⌉ ρ NE) ⊆e ρ.
 Proof.
   intros NE.
   induction NE.
-  all: intros vpe. inversion vpe.
-  unfold single_env.
-  simpl. destruct f. simpl.
-  simpl in vpe.
-  destruct (x == x0).
-  + subst. econstructor; eauto.
-    simpl_env. auto.
-    intros x h. inversion h. subst. auto.
-  + econstructor; eauto. 
-    simpl_env. auto.
-    intros y h. inversion h. subst. unfold In. auto.
+  all: intros vpe Indom. 
+  + (* nil case *) auto. 
+  + (* cons case *)
+    unfold single_env in *.
+    simpl. simpl_env in Indom.
+    destruct f as [w [h1 h2]]. simpl.
+    simpl in vpe.
+    destruct (x == x0).
+    ++ subst. econstructor; eauto.
+       simpl_env. auto.
+       intros x h. inversion h. subst. auto.
+    ++ econstructor; eauto. 
+       eapply IHNE; eauto. fsetdec.
+       simpl_env. auto.
+       intros y h. inversion h. subst. unfold In. auto.
 Qed.
 
 #[global] Hint Resolve single_sub : core. 
@@ -505,7 +549,7 @@ Qed.
 
 
 (* continuous-∈⇒⊆ *)
-Lemma continuous_In_sub E ρ (NE : nonempty_env ρ) :
+Lemma continuous_In_sub E ρ (NE : valid_env ρ) :
    monotone_env E
    -> forall V, mem V ⊆ E ρ
    -> (forall v, v ∈ mem V -> continuous_In E ρ v)
@@ -538,8 +582,9 @@ Proof.
     eapply me. eapply join_sub_left; eauto. auto.
 Qed.
 
+
 Lemma APPLY_continuous {D E ρ}{w} :
-  (nonempty_env ρ)
+  (valid_env ρ)
   -> w ∈ ((D ρ) ▩ (E ρ))
   -> continuous_env D ρ 
   -> continuous_env E ρ
@@ -549,34 +594,50 @@ Lemma APPLY_continuous {D E ρ}{w} :
     exists (pf : finite_env ρ3) , ρ3 ⊆e  ρ 
                              /\ (w ∈ ((D ρ3) ▩ (E ρ3))).
 Proof.  
-  intros NE [V [VwDp [VEp VN]]].
-  intros IHD IHE mD mE.
-  destruct (IHD (V ↦ w) VwDp) as 
-    [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
-  destruct 
-    (continuous_In_sub E ρ NE mE V VEp)
-      as [ ρ2 [ fρ2 [ ρ2ρ VEp2 ]]].
-  intros v vV. eapply IHE; eauto.
-  have S1: same_scope ρ1 ρ. eapply all2_same_scope; eauto.
-  have S2: same_scope ρ2 ρ. eapply all2_same_scope; eauto.
-  have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
-  exists (ρ1 ⊔e ρ2).
-  repeat split.
+  intros NE APP. inversion APP; subst. 
+  all: intros IHD IHE mD mE.
+  + destruct (IHD v_wrong H) as
+      [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
+    exists ρ1. exists fρ1. split. auto.
+    eapply FUNWRONG; auto.
+  + destruct (IHE v_wrong H) as 
+      [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
+    exists ρ1. exists fρ1. split. auto.
+    eapply ARGWRONG; auto.
+  + destruct (IHD (V ↦ w) H) as 
+      [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
+    destruct 
+      (continuous_In_sub E ρ NE mE V)
+      as [ ρ2 [ fρ2 [ ρ2ρ VEp2 ]]]; eauto.
+    have S1: same_scope ρ1 ρ. eapply all2_same_scope; eauto.
+    have S2: same_scope ρ2 ρ. eapply all2_same_scope; eauto.
+    have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+    exists (ρ1 ⊔e ρ2).
+    repeat split.
   - eapply join_finite_env; eauto.
   - eapply join_lub; eauto.
-  - exists V. 
-    have VwDp3 : V ↦ w ∈ D (ρ1 ⊔e ρ2).
+  - have VwDp3 : V ↦ w ∈ D (ρ1 ⊔e ρ2).
     { eapply mD. 2: eapply VwDp1. 
       eapply join_sub_left. auto. }
     have VEρ3 : mem V ⊆ E (ρ1 ⊔e ρ2).
     { intros v vV. eapply mE.
       2: eapply VEp2; auto. 
       eapply join_sub_right.  auto. }
+    eapply BETA with (V:=V); auto.
+ + destruct (IHD (v_list VS)) as [ρ1 [F1 [h1 h2]]]; auto.
+   destruct (IHE (v_nat k)) as [ρ2 [F2 [h3 h4]]]; auto.
+    have S1: same_scope ρ1 ρ. eapply all2_same_scope; eauto.
+    have S2: same_scope ρ2 ρ. eapply all2_same_scope; eauto.
+    have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+   exists (ρ1 ⊔e ρ2).
     repeat split.
-    + auto.
-    + auto.
-    + done.
+  - eapply join_finite_env; eauto.    
+  - eapply join_lub; eauto.
+  - eapply PROJ with (VS := VS) (k:=k); eauto.
+    eapply mD. eapply join_sub_left; auto. auto.
+    eapply mE. eapply join_sub_right; auto. auto.
 Qed.
+
 
 
 Lemma env_tail {ρ' x v ρ} :  
@@ -597,9 +658,9 @@ Qed.
    Only need finite information from the environment.
 *)
 
-Lemma Lambda_continuous {E ρ} {NE : nonempty_env ρ}{ v x} :
+Lemma Lambda_continuous {E ρ} {NE : valid_env ρ}{ v x} :
   v ∈ Λ (fun D => E (x ~ D ++ ρ)) 
-  -> (forall V, V <> nil -> 
+  -> (forall V, V <> nil -> not (v_wrong ∈ mem V) ->
           continuous_env E (x ~ mem V ++ ρ))
   -> monotone_env E
   -> exists ρ', exists (pf:finite_env ρ'),
@@ -607,9 +668,10 @@ Lemma Lambda_continuous {E ρ} {NE : nonempty_env ρ}{ v x} :
             (v ∈ (Λ (fun D => E (x ~ D ++ ρ')))).
 Proof.
   induction v.
-  - intro h. inversion h.
-  - intros [ wEVρ VN ] IH mE.
-    destruct (IH l VN v wEVρ) as
+  all: try solve [intros; cbv in H; done].
+  - (* v is l ↦ v *)
+    intros [ wEVρ [VN NW] ] IH mE.
+    destruct (IH l VN NW v wEVρ) as
       [ ρ' [ fρ' [ ρ'Vρ wEρ' ]]]. 
     inversion ρ'Vρ. subst. clear ρ'Vρ.
     inversion fρ'. subst. clear fρ'.
@@ -623,14 +685,78 @@ Proof.
 Qed.
 
 (*
+#[export] Instance Proper_in {A : Type} : Proper (Same_set ==> Logic.eq) (@In A).
+intros X1 X2 EQ. unfold In. apply Extensionality_Ensembles in EQ. rewrite EQ.
+auto. Qed.
 
-Definition Exists (F : P Value -> P Value) : P Value :=
-  fun V => exists W , V ∈ F W.
+#[export] Instance Proper_nonemptyT {A : Type} : Proper (Same_set ==> Logic.eq) (@nonemptyT A).
+intros X1 X2 EQ. unfold nonemptyT.  apply Extensionality_Ensembles in EQ. rewrite EQ.
+auto. Qed.
+*)
+
+(* Exists *)
 
 Definition ExistsFinite (F : P Value -> P Value) : P Value :=
   fun V => exists W , finite W /\ (V ∈ F W).
-*)
-(* If F is continuous then these two definitions are the same? *)
+
+Lemma ExistsFinite_ext_sub: forall {F1 F2 : P Value -> Ensemble Value}, 
+    (forall X : P Value, nonemptyT X -> F1 X ⊆ F2 X) -> ExistsFinite F1 ⊆ ExistsFinite F2.
+Proof.
+  intros.
+  unfold ExistsFinite, Included.
+  intros v [W [[L [W1 W2]] h]].
+  apply Extensionality_Ensembles in W1. subst.
+  have NL: nonemptyT (mem L) by (eauto using nonnil_nonempty_mem).
+  exists (mem L).
+  split. unfold finite. exists L; split; auto. reflexivity.
+  eapply H; eauto.
+Qed.
+
+Lemma ExistsFinite_ext: 
+  forall {F1 F2 : P Value -> Ensemble Value}, 
+    (forall X : P Value, nonemptyT X -> F1 X ≃ F2 X) 
+    -> ExistsFinite F1 ≃ ExistsFinite F2.
+Proof.
+  intros.
+  split.
+  eapply ExistsFinite_ext_sub. intros X h. destruct (H X); auto.
+  eapply ExistsFinite_ext_sub. intros X h. destruct (H X); auto.
+Qed.
+
+Lemma ExistsFinite_continuous {E}{ρ}
+  {NE : valid_env ρ}{v x} :
+  x `notin` dom ρ
+  -> uniq ρ
+  -> v ∈ ExistsFinite (fun D => E (x ~ D ++ ρ)) 
+  -> (forall V, V <> nil -> 
+          continuous_env E (x ~ mem V ++ ρ))
+  -> monotone_env E
+  -> exists ρ', exists (pf:finite_env ρ'),
+            ρ' ⊆e ρ /\
+            (v ∈ (ExistsFinite (fun D => E (x ~ D ++ ρ')))).
+Proof.
+  intros Fx Uρ [X [FX inX]] CE ME.
+  move: FX => [V [MV NN]].
+  specialize (CE V NN).
+  unfold continuous_env, continuous_In in CE.
+  have SE: (x ~ X ++ ρ) ⊆e (x ~ mem V ++ ρ).
+    econstructor; eauto. rewrite MV. reflexivity.
+  unfold monotone_env in ME.
+  apply ME in SE. 
+  move: (SE _ inX) => inV.
+  destruct (CE _ inV) as [ρ' [Fp [h1 h2]]].
+  inversion h1. subst.
+  inversion Fp. subst.
+  exists E1.  eexists. eauto.
+  split. auto.
+  unfold ExistsFinite.
+  unfold "∈".
+  exists a1.
+  split. auto.
+  auto.
+Qed.
+
+
 
 
 (* ---------------------------------------------------------- *)
@@ -691,7 +817,7 @@ Fixpoint denot_n (n : nat) (a : tm) (ρ : Env) : P Value :=
   | O => fun _ => False
   | S m => 
      match a with 
-     | var_b _ => fun _ => False 
+     | var_b _ => ⌈ v_wrong ⌉
      | var_f x => ρ ⋅ x 
      | app t u   => 
          denot_n m t ρ ▩ denot_n m u ρ
@@ -726,7 +852,7 @@ Qed.
 
 Definition denot (a : tm) := denot_n (size_tm a) a.
 
-Lemma denot_var_b : forall x ρ, denot (var_b x) ρ = fun x => False.
+Lemma denot_var_b : forall x ρ, denot (var_b x) ρ = ⌈ v_wrong ⌉.
 Proof.
   intros x ρ. reflexivity.
 Qed.
@@ -758,7 +884,7 @@ Ltac name_binder x0 Frx0 :=
          simpl_env in Frx0
     end.    
 
-Definition access_app_P := @access_app (P Value) (fun _ => False).
+Definition access_app_P := @access_app (P Value) ⌈ v_wrong ⌉.
 
 (* Renaming property for denotations. *)
 
@@ -997,63 +1123,6 @@ Proof.
   simpl. fsetdec.
 Qed.
 
-(*
-Inductive scoped : tm -> Env -> Prop :=
-  | scoped_var : forall x ρ,
-    uniq ρ -> x `in` dom ρ -> scoped (var_f x) ρ
-  | scoped_app : forall t1 t2 ρ,
-    scoped t1 ρ -> scoped t2 ρ -> 
-    scoped (app t1 t2) ρ
-  | scoped_abs : forall L t1 D ρ,
-     (forall x, x `notin` L -> scoped (t1 ^ x) (x ~ D ++ ρ))
-     -> scoped (abs t1) ρ.
-
-
-Lemma scoped_uniq { t ρ } : scoped t ρ -> uniq ρ.
-Proof. induction 1; eauto. pick fresh x. 
-       move: (H0 x ltac:(auto)) => h. solve_uniq. Qed.
-
-Lemma scoped_lc {t ρ} : scoped t ρ -> lc_tm t.
-Proof. induction 1; eauto. Qed.
-
-Lemma scoped_fv {t ρ} : scoped t ρ -> fv_tm t [<=] dom ρ.
-Proof. induction 1; simpl; try fsetdec.
-       pick fresh x. move: (H0 x ltac:(auto)) => h. 
-       rewrite <- fv_tm_open_tm_wrt_tm_lower in h.
-       simpl_env in h.
-       fsetdec.
-Qed.
-
-Lemma scoped_rename {t1 D ρ} : forall x y,
-  x `notin` dom ρ \u fv_tm t1  
-  -> y `notin` dom ρ \u fv_tm t1
-  -> scoped (t1 ^ x) (x ~ D ++ ρ)
-  -> scoped (t1 ^ y) (y ~ D ++ ρ).
-Admitted.
-
-Lemma scoped_abs_exists {x t1 D ρ} : 
-  x `notin` dom ρ \u fv_tm t1
-  -> scoped (t1 ^ x) (x ~ D ++ ρ)
-  -> scoped (abs t1) ρ.
-Proof. 
-  intros Fr SC.
-  pick fresh y and apply scoped_abs.
-  eapply (scoped_rename x y); eauto.
-Qed.
-
-Lemma scoped_abs_inversion {x t1 ρ} : 
-  x `notin` dom ρ \u fv_tm t1
-  -> scoped (abs t1) ρ 
-  -> exists D, scoped (t1 ^ x) (x ~ D ++ ρ).
-Proof. 
-  intros Fr SC.
-  inversion SC. subst. exists D.
-  pick fresh y.
-  specialize (H0 y ltac:(auto)).  
-  eapply (scoped_rename y x); eauto.
-Qed.
-*)
-
 Lemma subst_denot : forall t x u ρ1 ρ2, 
     scoped t (ρ1 ++ x ~ (denot u ρ2) ++ ρ2) ->
     scoped u ρ2 ->
@@ -1123,9 +1192,9 @@ Proof.
   auto. 
 Qed.
 
+(*  forall ρ ρ', ρ ⊆e ρ' -> denot t ρ ⊆ denot t ρ'. *)
 Lemma denot_monotone {t}: 
   monotone_env (denot t).
-(*  forall ρ ρ', ρ ⊆e ρ' -> denot t ρ ⊆ denot t ρ'. *)
 Proof.
   unfold monotone_env.
   eapply tm_induction with (t := t);
@@ -1162,22 +1231,28 @@ Qed.
   
 (* ⟦⟧-continuous *)
 Lemma denot_continuous {t} : forall ρ,
-    nonempty_env ρ
+    valid_env ρ
   -> continuous_env (denot t) ρ.
 Proof.
   eapply tm_induction with (t := t);
   [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH].
   all: intros ρ NE.
   all: intros v vIn.
-  + rewrite denot_var_b in vIn. done.
+  + rewrite denot_var_b in vIn. 
+    exists (initial_finite_env ρ NE).
+    eexists; eauto.
   + rewrite denot_var in vIn.
     destruct (FSetDecideAuxiliary.dec_In x (dom ρ)).
     - exists (single_env x ⌈ v ⌉ ρ NE).
       exists (@single_fin v x ρ NE).
       split.
-      ++ eapply single_sub. auto.
+      ++ eapply single_sub; auto.
       ++ eapply v_single_xvx. auto. 
-    - rewrite access_fresh in vIn. auto. done.
+    - exists (initial_finite_env ρ NE).
+      eexists; eauto. split. eauto.
+      rewrite denot_var.
+      rewrite access_fresh. simpl_env. auto.
+      rewrite access_fresh in vIn. auto. done.
   + rewrite denot_app in vIn.
     edestruct (APPLY_continuous NE vIn) as [ρ' [F SS]]; eauto.
     eapply denot_monotone.
@@ -1188,9 +1263,11 @@ Proof.
     rewrite (denot_abs x) in vIn. fsetdec.
     move: (@Lambda_continuous _ _ NE v x vIn) => h.    
     destruct h as [ρ' [Fρ' [S vvIn]]].
-    ++ intros V NEV.
-       move: (nonnil_nonempty_mem NEV) => h. 
-       eauto using extend_nonempty_env.
+    ++ intros V NEV NW.
+       move: (nonnil_nonempty_mem NEV) => [w h0]. 
+       eapply IH; eauto.
+       eapply extend_valid_env; eauto.
+       econstructor; eauto.
     ++ eapply denot_monotone.
     ++ exists ρ'. exists Fρ'. 
        erewrite <- all2_dom in Fr. 2: eapply S.
@@ -1201,7 +1278,7 @@ Qed.
 
 (* ⟦⟧-continuous-⊆ *) 
 Lemma denot_continuous_sub {ρ t} : 
-  nonempty_env ρ
+  valid_env ρ
   -> forall V, mem V ⊆ denot t ρ
   -> exists ρ', exists (pf : finite_env ρ'),
         ρ' ⊆e ρ  /\  (mem V ⊆ denot t ρ').
@@ -1268,7 +1345,7 @@ Qed.
 
 (* ⟦⟧-continuous-one *)
 Lemma denot_continuous_one { t ρ x } :
-  nonempty_env ρ 
+  valid_env ρ 
   -> x `notin` dom ρ 
   -> continuous (fun D => denot (t ^ x) (x ~ D ++ ρ)).
 Proof.
@@ -1277,7 +1354,7 @@ Proof.
   intros X E E_sub_denot NE_X.
   edestruct (@denot_continuous_sub (x ~ X ++ ρ)) as 
     [ρ' [pf [h1 h2]]]. 3: eauto.
-  + eapply extend_nonempty_env; eauto.
+  + eapply extend_valid_env; eauto.
   + eauto.
   + inversion h1. subst. inversion pf. subst.
     move: H6 => [D [S NN]].
@@ -1292,12 +1369,25 @@ Proof.
     auto.
 Qed.
 
+Print monotone.
+(* fun F : P Value -> P Value => 
+   forall D1 D2 : Ensemble Value, D1 ⊆ D2 -> F D1 ⊆ F D2  *)
+Print monotone_env.
+(* fun D : Env -> P Value => forall ρ ρ' : list (atom * Ensemble Value), 
+   ρ ⊆e ρ' -> D ρ ⊆ D ρ' *)
+
+
+(*
+Lemma denot_strict : forall t, strict (denot t).
+  eapply tm_induction with (t := t);
+  [move=>i|move=>y|move=>t1 t2 IH1 IH2|move=> t' IH].
+*)
 
 (* Λ⟦⟧-▪-id *)
 Lemma Λ_denot_APPLY_id :
   forall t ρ x X,
-    nonemptyT X
-    -> nonempty_env ρ
+    valid X
+    -> valid_env ρ
     -> x `notin` dom ρ 
     -> ((Λ (fun D => denot (t ^ x) (x ~ D ++ ρ))) ▩ X) ≃
       denot (t ^ x) (x ~ X ++ ρ).
@@ -1311,21 +1401,118 @@ Proof.
     eapply allT_uniq; eauto.
 Qed.
 
+(* Example semantics *)
+
+
+Definition tm_Id : tm := abs (var_b 0).
+
+Lemma denot_Id : ( v_fun :: nil ↦ v_fun) ∈ denot tm_Id nil.
+Proof.
+  unfold tm_Id.
+  pick fresh x.
+  rewrite (denot_abs x). simpl. auto.
+  cbv.
+  destruct (KeySetFacts.eq_dec x x); try done.
+  split. left. auto.
+  split. intro h. done. 
+  intros [v1| v2]; done.
+Qed. 
+
+Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
+
+Lemma denot_Delta : forall (v w : Value), v <> v_wrong ->
+    (((v :: nil ↦ w) :: v :: nil) ↦ w) ∈ denot tm_Delta nil.
+Proof.
+  intros v w NW.
+  pick fresh x.
+  unfold tm_Delta.
+  rewrite (denot_abs x); auto.
+  cbn.
+  destruct (x==x); try done.
+  split.
+  cbv.
+  eapply BETA with (V := v :: nil).
+  unfold In. left. auto.
+  rewrite -> mem_singleton. 
+  intros x0 II. inversion II. subst. cbv. right. left. auto.
+  intro h. done.
+  split. intro h. done.
+  intros [v1|[v2|v3]]; try done.
+Qed.
+
+Lemma open_app : forall t1 t2 x, 
+    (app t1 t2) ^ x = app (t1 ^ x) (t2 ^ x).
+Proof. intros. reflexivity. Qed.
+
+Lemma open_var : forall x, (var_b 0) ^ x = var_f x.
+Proof. intros. reflexivity. Qed.
+
+
+Definition tm_Omega : tm := app tm_Delta tm_Delta.
+
+Lemma denot_Omega : forall v, not (v ∈ denot tm_Omega nil).
+Proof.
+  intro v.
+  unfold tm_Omega.
+  rewrite denot_app.
+  unfold tm_Delta.
+  pick fresh x.
+  repeat rewrite (denot_abs x). auto.
+  repeat rewrite open_app.
+  repeat rewrite open_var.  
+  intro h. unfold In in h. inversion h; simpl in *; subst; clear h.
+  all: try solve [unfold Λ in H; cbv in H; done].
+  destruct V as [|w V]. done.
+  rename H into DD. rename H0 into h1.
+  unfold "∈" in DD.
+  unfold Λ in *.
+  rewrite denot_app in DD, h1.
+  rewrite denot_var in DD.
+  rewrite access_eq_var in DD.
+  move: DD => [DD _].
+  unfold mem in h1.
+  unfold Included in h1.
+  specialize (h1 w).
+  unfold "∈" in h1.
+  specialize (h1 (in_eq _ _)).
+  destruct w; try done.
+  + rewrite denot_app in h1.
+    rewrite denot_var in h1.
+    rewrite access_eq_var in h1.
+    move: h1 => [h3 h4].
+Abort.
+
+Lemma in_singleton {A:Type} {v : A} : 
+  v ∈ ⌈ v ⌉.
+Proof. unfold In. econstructor. Qed.
+
+#[export] Hint Resolve in_singleton : core.
+
+(* A term with an unbound variable has no value. *)
+Definition tm_Wrong : tm := app (var_b 1) (var_b 0).
+
+Lemma denot_Wrong : v_wrong ∈ denot tm_Wrong nil.
+Proof.
+  unfold tm_Wrong.
+  rewrite denot_app.
+  repeat rewrite denot_var_b.
+  eapply FUNWRONG.
+  auto.
+Qed.  
 
 (* Soundness of reduction with respect to denotation *)
 (* ISWIMPValue.agda *)
 
-
 Lemma value_nonempty {t}{ρ} : 
   fv_tm t [<=] dom ρ
-  -> nonempty_env ρ -> value t -> nonemptyT (denot t ρ).
+  -> valid_env ρ -> value t -> valid (denot t ρ).
 Proof. 
   intros FV NEρ vv.
   destruct t.
   all: try solve [assert False; try inversion vv; done].
   + rewrite denot_var.
     unfold nonempty_env in NEρ.
-    eapply (@allT_access _ (fun _ => False) _ _) in NEρ.
+    eapply (@allT_access _ ⌈ v_wrong ⌉ _ _) in NEρ.
     2: instantiate (1:= x); auto.
     destruct NEρ. exists x0. auto.
     simpl in FV. fsetdec.
@@ -1340,7 +1527,7 @@ Lemma soundness:
     forall ρ,
     scoped t ρ ->
     scoped u ρ ->
-    nonempty_env ρ ->
+    valid_env ρ ->
     denot t ρ ≃ denot u ρ.
 Proof.
   intros t u RED. 
@@ -1378,7 +1565,7 @@ Proof.
     eapply (scoped_abs_inv x _ X _ F1 SCt).
     have F2 : x `notin` dom ρ \u fv_tm t'. fsetdec.
     eapply (scoped_abs_inv x _ X _ F2 SCu).
-    eapply extend_nonempty_env.
+    eapply extend_valid_env.
     fsetdec.
     eauto.
     eauto.
