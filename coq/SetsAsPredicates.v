@@ -93,6 +93,8 @@ constructor.
   split; eauto.
 Qed.
 
+(* Proper instances: allow rewriting *)
+
 #[export] Instance Union_Included_Proper {A} : Proper (@Included A ==> @Included A ==> @Included A) Union.
 Proof. intros a1 a2 Ea b1 b2 Eb.
 unfold Included in *. intros x h. inversion h. subst. left. auto. right. auto.
@@ -108,6 +110,12 @@ Proof. intros a1 a2 Ea. intros b1 b2 Eb.
        unfold Same_set in Ea. unfold Same_set in Eb. move: Ea => [Sa1 Sa2]. move: Eb => [Sb1 Sb2].
        split. intro h. transitivity a1; auto. transitivity b1; auto. 
        intros h. transitivity a2; auto. transitivity b2; auto. Qed.
+
+#[export] Instance In_Proper {A} : Proper (@Same_set A ==> Logic.eq ==> Logic.iff) (@In A).
+Proof. 
+  intros a1 a2 [E1 E2]. intros b1 b2 ->.
+  split; intro x; eauto.
+Qed.
 
 
 (* Facts about union *)

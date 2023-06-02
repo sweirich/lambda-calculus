@@ -155,6 +155,16 @@ Definition valid (V : P Value) : Type :=
 Lemma valid_is_nonempty V : valid V -> nonemptyT V.
   intros [x [P _]]. econstructor; eauto. Defined.
 
+(* Our meta-operators produce valid results. *)
+
+Lemma valid_Λ : forall F, valid (Λ F).
+Proof. 
+  intros F. unfold Λ, valid.
+  exists v_fun. split. cbv. auto. cbv.  auto.
+Qed.
+
+#[export] Hint Resolve valid_Λ : core.
+
 (*  Abstraction is Extensional ---- -------------------------------------- *)
 
 (* Λ-ext-⊆  *)
@@ -313,7 +323,12 @@ Definition ne (s : P Value) : Type := { x : Value & (x ∈ s) }.
 
 Definition nonempty_env : Env -> Type := allT ne.
 
-Definition valid_env : Env -> Type := allT valid.
+Definition valid_env : Env -> Type := allT valid. 
+
+Lemma valid_nil : valid_env nil.
+Proof. unfold valid_env. eauto. Qed.
+
+#[export] Hint Resolve valid_nil : core.
 
 (* A finite environment has a list of values for 
    each variable. *)
@@ -333,6 +348,8 @@ Lemma extend_valid_env {ρ x X} :
   valid X -> 
   valid_env ρ -> valid_env (x ~ X ++ ρ).
 Proof. intros Fr NEP NEX. eapply allT_cons; eauto. Qed.
+
+#[export] Hint Resolve extend_nonempty_env extend_valid_env : core.
 
 (* ----------------------------------------------------- *)
 
@@ -756,12 +773,18 @@ Qed.
 Import LCNotations.
 Open Scope tm.
 
+Lemma open_app : forall t1 t2 x, 
+    (app t1 t2) ^ x = app (t1 ^ x) (t2 ^ x).
+Proof. intros. reflexivity. Qed.
+
+Lemma open_var : forall x, (var_b 0) ^ x = var_f x.
+Proof. intros. reflexivity. Qed.
+
 #[global] Hint Rewrite 
   subst_tm_open_tm_wrt_tm 
   fv_tm_open_tm_wrt_tm_upper  
-  size_tm_open_tm_wrt_tm_var : lngen.
-
-
+  size_tm_open_tm_wrt_tm_var 
+  open_app open_var : lngen.
 
 (* Find a new variable that isn't in a given set. *)
 Definition fresh_for (VS : atoms) := fresh (AtomSetImpl.elements VS).
@@ -799,7 +822,6 @@ Proof.
     lia.
   + eapply APP; eapply IH; eauto. lia. lia.
 Qed.    
-
 
 (* Denotation function: unbound variables have no denotation. *)
 Fixpoint denot_n (n : nat) (a : tm) (ρ : Env) : P Value :=
@@ -1050,6 +1072,8 @@ Proof.
   eapply weaken_denot1 with (ρ1 := nil); simpl; auto.
 Qed.
 
+(* Scoping predicates *)
+
 Inductive scoped t (ρ : Env) :=
   scoped_intro : 
     fv_tm t [<=] dom ρ -> uniq ρ -> lc_tm t -> scoped t ρ.
@@ -1167,6 +1191,17 @@ Proof.
     reflexivity.
     auto.
 Qed.
+
+Lemma subst_denot1 :
+  forall (t : tm) (x : atom) (u : tm) (ρ : Env),
+    scoped t (x ~ denot u ρ ++ ρ) 
+    -> scoped u ρ 
+    -> denot t (x ~ denot u ρ ++ ρ) = denot (t [x ~> u]) ρ.
+Proof.
+  intros. 
+  eapply subst_denot with (ρ1 := nil); auto. 
+Qed.
+
 
 (* ------------------------------------ *)
 
@@ -1396,6 +1431,29 @@ Qed.
 
 Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
 
+
+#[global] Hint Rewrite access_eq_var : lngen.
+
+Lemma denot_Delta_inv : forall (v : Value), 
+    v ∈ denot tm_Delta nil -> 
+    (exists v1 w, v = (((v1 :: nil ↦ w) :: v1 :: nil) ↦ w) /\ w <> v_wrong) \/ v = v_fun.
+Proof.
+  intros v.
+  unfold tm_Delta.
+  pick fresh x.
+  rewrite (denot_abs x); auto.
+  unfold Λ.
+  autorewrite with lngen.
+  destruct v; intro h; try done.
+  unfold In in h.
+  rewrite denot_app in h. 
+  rewrite denot_var in h.
+  rewrite access_eq_var in h.
+  move: h => [D1 [ne nw]].
+  inversion D1; subst; try done.
+  destruct V; try done.  
+Abort.    
+
 Lemma denot_Delta : forall (v w : Value), v <> v_wrong ->
     (((v :: nil ↦ w) :: v :: nil) ↦ w) ∈ denot tm_Delta nil.
 Proof.
@@ -1417,47 +1475,20 @@ Proof.
   intros [v1|[v2|v3]]; try done.
 Qed.
 
-Lemma open_app : forall t1 t2 x, 
-    (app t1 t2) ^ x = app (t1 ^ x) (t2 ^ x).
-Proof. intros. reflexivity. Qed.
-
-Lemma open_var : forall x, (var_b 0) ^ x = var_f x.
-Proof. intros. reflexivity. Qed.
-
 
 Definition tm_Omega : tm := app tm_Delta tm_Delta.
 
 Lemma denot_Omega : forall v, not (v ∈ denot tm_Omega nil).
 Proof.
-  intro v.
-  unfold tm_Omega.
-  rewrite denot_app.
-  unfold tm_Delta.
-  pick fresh x.
-  repeat rewrite (denot_abs x). auto.
-  repeat rewrite open_app.
-  repeat rewrite open_var.  
-  intro h. unfold In in h. inversion h; simpl in *; subst; clear h.
-  all: try solve [unfold Λ in H; cbv in H; done].
-  destruct V as [|w V]. done.
-  rename H into DD. rename H0 into h1.
-  unfold "∈" in DD.
-  unfold Λ in *.
-  rewrite denot_app in DD, h1.
-  rewrite denot_var in DD.
-  rewrite access_eq_var in DD.
-  move: DD => [DD _].
-  unfold mem in h1.
-  unfold Included in h1.
-  specialize (h1 w).
-  unfold "∈" in h1.
-  specialize (h1 (in_eq _ _)).
-  destruct w; try done.
-  + rewrite denot_app in h1.
-    rewrite denot_var in h1.
-    rewrite access_eq_var in h1.
-    move: h1 => [h3 h4].
-Abort.
+unfold tm_Omega.
+rewrite denot_app.
+intro v.
+intro h.
+inversion h; subst.
++ admit.
++ admit.
++ 
+Admitted.
 
 (* A term with an unbound variable has no value. *)
 Definition tm_Wrong : tm := app (var_b 1) (var_b 0).
@@ -1489,7 +1520,6 @@ Proof.
     simpl in FV. fsetdec.
   + pick fresh x.
     erewrite denot_abs with (x:=x); eauto.
-    exists v_fun. cbn. auto.
 Qed. 
 
 Lemma soundness: 
