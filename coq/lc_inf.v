@@ -35,6 +35,10 @@ Fixpoint close_tm_wrt_tm_rec (n1 : nat) (x1 : tmvar) (t1 : tm) {struct t1} : tm 
     | var_b n2 => if (lt_ge_dec n2 n1) then (var_b n2) else (var_b (S n2))
     | abs t2 => abs (close_tm_wrt_tm_rec (S n1) x1 t2)
     | app t2 u1 => app (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 u1)
+    | lit k1 => lit k1
+    | add => add
+    | tnil => tnil
+    | tcons t2 u1 => tcons (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 u1)
   end.
 
 Definition close_tm_wrt_tm x1 t1 := close_tm_wrt_tm_rec 0 x1 t1.
@@ -43,12 +47,19 @@ Definition close_tm_wrt_tm x1 t1 := close_tm_wrt_tm_rec 0 x1 t1.
 (* *********************************************************************** *)
 (** * Size *)
 
+Definition size_j (j1 : j) : nat := 1
+.
+
 Fixpoint size_tm (t1 : tm) {struct t1} : nat :=
   match t1 with
     | var_f x1 => 1
     | var_b n1 => 1
     | abs t2 => 1 + (size_tm t2)
     | app t2 u1 => 1 + (size_tm t2) + (size_tm u1)
+    | lit k1 => 1 + (size_j k1)
+    | add => 1
+    | tnil => 1
+    | tcons t2 u1 => 1 + (size_tm t2) + (size_tm u1)
   end.
 
 
@@ -69,7 +80,17 @@ Inductive degree_tm_wrt_tm : nat -> tm -> Prop :=
   | degree_wrt_tm_app : forall n1 t1 u1,
     degree_tm_wrt_tm n1 t1 ->
     degree_tm_wrt_tm n1 u1 ->
-    degree_tm_wrt_tm n1 (app t1 u1).
+    degree_tm_wrt_tm n1 (app t1 u1)
+  | degree_wrt_tm_lit : forall n1 k1,
+    degree_tm_wrt_tm n1 (lit k1)
+  | degree_wrt_tm_add : forall n1,
+    degree_tm_wrt_tm n1 (add)
+  | degree_wrt_tm_tnil : forall n1,
+    degree_tm_wrt_tm n1 (tnil)
+  | degree_wrt_tm_tcons : forall n1 t1 u1,
+    degree_tm_wrt_tm n1 t1 ->
+    degree_tm_wrt_tm n1 u1 ->
+    degree_tm_wrt_tm n1 (tcons t1 u1).
 
 Scheme degree_tm_wrt_tm_ind' := Induction for degree_tm_wrt_tm Sort Prop.
 
@@ -90,7 +111,17 @@ Inductive lc_set_tm : tm -> Set :=
   | lc_set_app : forall t1 u1,
     lc_set_tm t1 ->
     lc_set_tm u1 ->
-    lc_set_tm (app t1 u1).
+    lc_set_tm (app t1 u1)
+  | lc_set_lit : forall k1,
+    lc_set_tm (lit k1)
+  | lc_set_add :
+    lc_set_tm (add)
+  | lc_set_tnil :
+    lc_set_tm (tnil)
+  | lc_set_tcons : forall t1 u1,
+    lc_set_tm t1 ->
+    lc_set_tm u1 ->
+    lc_set_tm (tcons t1 u1).
 
 Scheme lc_tm_ind' := Induction for lc_tm Sort Prop.
 
@@ -139,6 +170,20 @@ Ltac default_case_split ::=
 
 Ltac default_auto ::= auto with arith lngen; tauto.
 Ltac default_autorewrite ::= fail.
+
+(* begin hide *)
+
+Lemma size_j_min_mutual :
+(forall j1, 1 <= size_j j1).
+Proof. Admitted.
+
+(* end hide *)
+
+Lemma size_j_min :
+forall j1, 1 <= size_j j1.
+Proof. Admitted.
+
+#[export] Hint Resolve size_j_min : lngen.
 
 (* begin hide *)
 
@@ -573,6 +618,12 @@ forall t1,
 Proof. Admitted.
 
 #[export] Hint Resolve lc_tm_of_degree : lngen.
+
+Ltac j_lc_exists_tac :=
+  repeat (match goal with
+            | H : _ |- _ =>
+              fail 1
+          end).
 
 Ltac tm_lc_exists_tac :=
   repeat (match goal with

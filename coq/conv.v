@@ -30,7 +30,7 @@ Proof. constructor. apply conversion_lc. apply conversion_lc. Qed.
 Instance subst1_conversion : substitutive conversion.
 Proof.
   constructor.
-  intros t t' x u LC Eq.
+  intros t t' x u LC isV Eq.
   induction Eq; simpl; eauto with lngen.
   + (* eq_beta *)
     autorewrite with lngen; auto.
@@ -64,9 +64,14 @@ Proof.
     eapply eq_trans with (t2 := app (t [x ~> u]) (u0 [x ~> u'])).
     eapply eq_app2; eauto using lc1,lc2.
     eapply eq_app1; eauto using lc1,lc2.
+  + (* cons *)
+    eapply eq_trans with (t2 := tcons (t [x ~> u]) (u0 [x ~> u'])).
+    eapply eq_cons2; eauto using lc1,lc2.
+    eapply eq_cons1; eauto using lc1,lc2.
+    
 Qed.
 
-Lemma conversion_subst3 : forall x t t' u u', 
+Lemma conversion_subst3 : forall x t t' u u', value u ->
     t ≡β t' -> u ≡β u' -> t [ x ~> u ] ≡β t' [ x ~> u' ].
 Proof.
   intros.
@@ -83,6 +88,8 @@ Proof.
     rewrite (subst_tm_intro x); auto.
     rewrite (subst_tm_intro x u); auto.
     apply subst; eauto.
+  + intros. eauto.
+  + intros. eauto.
   + intros. eauto.
   + intros. eauto.
 Qed.

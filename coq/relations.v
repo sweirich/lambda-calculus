@@ -79,6 +79,8 @@ Class equivalence (R : relation) : Prop := {
 
  *)
 
+
+
 Class compatible (R: relation) := {
 
     compatible_abs :  forall x t u,
@@ -89,7 +91,13 @@ Class compatible (R: relation) := {
       R t t' -> lc_tm u -> R (app t u) (app t' u) ;
 
     compatible_app2 : forall t u u', 
-      lc_tm t -> R u u' -> R (app t u) (app t u')
+      lc_tm t -> R u u' -> R (app t u) (app t u') ;
+
+    compatible_cons1 : forall t t' u, 
+      R t t' -> lc_tm u -> R (tcons t u) (tcons t' u) ;
+
+    compatible_cons2 : forall t u u', 
+      lc_tm t -> R u u' -> R (tcons t u) (tcons t u')
   }.
 
 (** In the case when the relation is reflexive and transitive, we can use the
@@ -107,6 +115,18 @@ Proof.
   eapply compatible_app1; eauto with lngen.  
   eapply compatible_app2; eauto with lngen.
 Qed. (* /WORKINCLASS *)
+
+Lemma compatible_cons {R} `{lc R} `{reflexive R} `{transitive R} `{compatible R} :
+  forall t u t' u',
+  R t t' -> R u u' -> R (tcons t u) (tcons t' u').
+Proof.
+  (* WORKINCLASS *)
+  intros. 
+  eapply transitivity with (t2 := (tcons t' u)).
+  eapply compatible_cons1; eauto with lngen.  
+  eapply compatible_cons2; eauto with lngen.
+Qed. (* /WORKINCLASS *)
+
 
 (* ================================================================= *)
 
@@ -138,13 +158,14 @@ Class reduction R := {
 
 (** Definition 3.1.14 *)
 Definition subst1 (R : relation) := 
-  forall t t' x u, lc_tm u ->
+  forall t t' x u, lc_tm u -> value u ->
     R t t' -> R (t [ x ~> u ]) (t' [ x ~> u ]) .
 Definition subst2 (R : relation) :=
-  forall x t u u', lc_tm t -> 
+  forall x t u u', lc_tm t -> value u ->
     R u u' -> R (t [ x ~> u ]) (t [ x ~> u' ]).
 Definition subst3 (R : relation) :=
   forall x t t' u u', 
+    value u -> value u' ->
     R t t' -> R u u' -> R (t [ x ~> u ]) ( t' [ x ~> u' ]).
 
 (** We'll also make a class for relations that satisfy the first substitution
@@ -210,12 +231,70 @@ Definition beta_convertibility := R_convertibility beta.
 
 (* ================================================================= *)
 
+Lemma lc_value : forall v, value v -> lc_tm v.
+Proof.
+  induction 1; eauto.
+Qed.
+
+#[export] Hint Resolve lc_value : core.
+
+Lemma lc_nth : forall v k w, lc_tm v -> nth v k = Some w -> lc_tm w.
+Proof.
+  move=>v k w V. move: k w.
+  induction V; simpl; intro h; try done; eauto.
+  move=> w h0; destruct h; try done.
+  inversion h0. subst. eauto. eauto.
+Qed.
+
+#[export] Hint Immediate lc_nth : core.
+
+Lemma value_nth : forall v k w, value v -> nth v k = Some w -> value w.
+Proof.
+  move=>v k w V. move: k w.
+  induction V; simpl; intro h; try done; eauto.
+  move=> w0 h0; destruct h; try done.
+  inversion h0. subst. eauto. eauto.
+Qed.
+
+#[export] Hint Immediate value_nth : core.
+
+
+Lemma subst_nth : forall v k w x u, nth v k = Some w ->  nth (v [x ~> u]) k = Some (w [x ~> u]).
+Proof.
+  induction v; simpl; intros; try done.
+  destruct k. inversion H. subst. auto. 
+  eauto.
+Qed.
+
+#[export] Hint Immediate subst_nth : core.
+
 (** We'll want to show that beta_reduction and beta_convertibility have the
     properties listed above. We can do so by proving those properties about
     the closure operations and asking Coq to glue these results together 
     via type class resolution. 
 
  *)
+
+Lemma  is_value_subst : forall v x u, is_value v -> is_value u -> is_value (v [x ~> u]).
+Proof. induction v; intros; simpl; eauto. 
+       destruct (x == x0); eauto.
+       inversion H.
+       split; eauto.
+Qed.
+
+#[export] Hint Resolve is_value_subst : core.
+
+
+Lemma  value_subst : forall v x u, value v -> value u -> value (v [x ~> u]).
+Proof. induction v; intros; simpl; eauto with lngen. 
+       destruct (x == x0); eauto.
+       admit.
+       inversion H.
+       inversion H; eauto.
+Admitted.
+
+#[export] Hint Resolve value_subst : core.
+
 
 (** ** Properties of the compatible closure operation *)
 
@@ -238,7 +317,7 @@ Proof. constructor. intros; eauto using cc_rel. Qed.
 Instance subst1_compatible_closure R { SR : substitutive R } : substitutive (compatible_closure R).
 Proof. 
 (* ADMITTED *)
-  constructor. intros t t' x u LCu CC. 
+  constructor. intros t t' x u LCu Vu CC. 
   induction CC.
   - eapply cc_rel; eauto. apply subst; eauto.
   - pick fresh y and apply cc_abs. fold subst_tm. 
@@ -246,6 +325,8 @@ Proof.
     autorewrite with lngen in H0; auto.
   - eapply cc_app1; eauto with lngen.
   - eapply cc_app2; eauto with lngen.
+  - eapply cc_cons1; eauto with lngen.
+  - eapply cc_cons2; eauto with lngen.
 Qed. (* /ADMITTED *)
 
 (** Due to the use of co-finite quantification in our definition of
@@ -263,7 +344,7 @@ Proof.
   rewrite (subst_tm_intro x t); auto.
   rewrite (subst_tm_intro x u); auto.
   eapply subst; eauto.
-Qed. (* /WORKINCLASS *)
+Admitted.
 
 (** ** Properties of refl_trans_closure operation **)
 
@@ -293,7 +374,7 @@ Proof. constructor. intros. eauto using rt_trans with lngen. Qed.
 Instance subst1_refl_trans_closure {R} `{substitutive R} : substitutive (refl_trans_closure R).
 Proof.
   constructor. unfold subst1.
-  intros t t' x u LC RTC.
+  intros t t' x u LC Vu RTC.
   induction RTC; eauto using subst with lngen.
 Qed.
 
@@ -318,6 +399,8 @@ Proof.
       autorewrite with lngen; auto.
   + dependent induction H1; eauto using compatible_app1.
   + dependent induction H0; eauto using compatible_app2.
+  + dependent induction H1; eauto using compatible_cons1.
+  + dependent induction H0; eauto using compatible_cons2.
 Qed. (* /WORKINCLASS *)
 
 
@@ -360,7 +443,7 @@ Proof. constructor. intros. apply embed. apply reflexivity. auto. Qed.
 #[local]
 Instance subst1_sym_trans_closure {R} {SR : substitutive R} : substitutive (sym_trans_closure R).
 Proof.
-  constructor. unfold subst1. intros t t' x u LCu STC.
+  constructor. unfold subst1. intros t t' x u LCu Vu STC.
   induction STC.
   - eapply embed; eauto using subst. 
   - eapply symmetry; eauto.
@@ -397,6 +480,17 @@ Proof.
      eapply compatible_app2; eauto.      
    - eapply symmetry; eauto.
    - eapply transitivity with (t2 := app t t2); eauto.
+ + intros.
+   dependent induction H.
+   - eapply embed; eauto. 
+     eapply compatible_cons1; eauto.
+   - eapply symmetry; eauto.
+   - eapply transitivity with (t2 := tcons t2 u); eauto.
+ + intros. dependent induction H0.
+   - eapply embed; eauto. 
+     eapply compatible_cons2; eauto.      
+   - eapply symmetry; eauto.
+   - eapply transitivity with (t2 := tcons t t2); eauto.
 Qed. (* /ADMITTED *)
 
 (* ================================================================= *)
@@ -431,11 +525,12 @@ Lemma subst2_R_reduction R `{lc R}`{substitutive R}: subst2 (R_reduction R).
 Proof.
   (* WORKINCLASS *)
   unfold subst2. 
-  intros x t u u' LCt Red.
+  intros x t u u' LCt Vu Red.
   have LC: lc (refl_trans_closure (compatible_closure R)). { typeclasses eauto. }
   have CC: compatible (refl_trans_closure (compatible_closure R)). { typeclasses eauto. }
   (* induction on the "syntax" of the term *)
   induction LCt; simpl; eauto.
+  all: try eapply reflexivity; eauto.
   + (* var *)
     destruct_var_eq.
     auto.
@@ -447,7 +542,9 @@ Proof.
     rewrite_subst_open_hyp; eauto with lngen.    
   + (* app *)
     eapply compatible_app; eauto.
-Qed. (* /WORKINCLASS *)
+  + (* list *) 
+    eapply compatible_cons; eauto.
+Qed.
 
 (* ================================================================= *)
 
@@ -564,7 +661,7 @@ Qed.
 #[local]
 Instance subst1_beta : substitutive beta.
 Proof. (* ADMITTED *)
-  constructor. intros t t' x u LCu Beta.
+  constructor. intros t t' x u LCu Vu Beta.
   inversion Beta. subst.
   simpl.
   autorewrite with lngen; auto.
@@ -573,15 +670,16 @@ Proof. (* ADMITTED *)
   inversion H. spec y.
   apply subst_tm_lc_tm with (t2 := u) (x1 := x) in H2; auto.
   autorewrite with lngen in H2; auto.
-Qed. (* /ADMITTED *)
+Admitted.
 
 #[local]
 Instance lc_beta : lc beta.
 Proof. 
   econstructor.
-  - intros. inversion H; auto.
-  - intros. inversion H; subst; auto.
+  - intros. inversion H; eauto.
+  - intros. inversion H; subst; auto;
     eauto with lngen.
+    inversion H0. eauto.
 Qed.
 
 (* ################################################################# *)
@@ -646,26 +744,31 @@ Proof.
   have: forall a b, parallel a b -> lc_tm a /\ lc_tm b.
   { intros a b P. induction P; split; split_hyp; eauto.
   eapply lc_abs_open; eauto.
+  
   pick fresh x. repeat spec x. split_hyp. eapply lc_abs_exists; eauto.
-  pick fresh x. repeat spec x. split_hyp. eapply lc_abs_exists; eauto. }
+  pick fresh x. repeat spec x. split_hyp. eapply lc_abs_exists; eauto. 
+  }
   intros h.
   split;  intros a b h1; edestruct h; eauto.
-Qed.
+Qed. 
 
 #[local]
 Instance parallel_reflexive : reflexive parallel.
 Proof.
   constructor. intros t LC.
   induction LC; eauto.
-   Unshelve. exact empty.
+  all: econstructor; try econstructor; eauto. 
+  Unshelve. exact empty.
 Qed.
+
 
 #[local]
 Instance subst1_parallel : substitutive parallel.
 Proof.
   constructor. unfold subst1.
-  intros t t' x u LCu Ptt'. 
+  intros t t' x u LCu Vu Ptt'. 
   induction Ptt'; simpl.
+  all: try eauto.
   - (* beta *)
     autorewrite with lngen; auto.
   - (* var *)
@@ -675,9 +778,7 @@ Proof.
     pick fresh y and apply p_abs.
     spec y.
     rewrite_subst_open_hyp.
-  - (* app *)
-    eauto.
-Qed.  
+Qed.
 
 #[local]
 Instance compatible_parallel : compatible parallel.
@@ -687,9 +788,12 @@ Proof.
     pick fresh y and apply p_abs.
     rewrite (subst_tm_intro x t); auto.
     rewrite (subst_tm_intro x u); auto.
-    eapply subst; eauto.
+    eapply subst; eauto. 
   + intros. eauto using reflexivity.
   + intros. eauto using reflexivity.
+  + intros. eauto using reflexivity.
+  + intros. eauto using reflexivity.
+
 Qed.
 
 (** ** Lemma 3.2.4  
@@ -703,8 +807,9 @@ Qed.
 Lemma subst2_parallel : subst2 parallel.
 Proof.
   unfold subst2.
-  intros x t u u' LC P.
+  intros x t u u' LC Vu P.
   induction LC; simpl.
+  all: auto.
   - (* var *)
     destruct_var_eq; auto. 
   - (* abs *)
@@ -712,19 +817,20 @@ Proof.
     spec y.
     rewrite_subst_open_hyp.
     eapply lc1; eauto.
+    eapply parallel_reflexive.
     eapply lc2; eauto. 
-  - (* app *)
-    eauto.
 Qed.
 
 (** Parallel reduction is *not* transitive. So we need to prove this by induction. *)
 Lemma subst3_parallel : subst3 parallel.
 Proof.
   unfold subst3.
-  intros x t t' u u' Ptt' Puu'.
+  intros x t t' u u' Vu Vu' Ptt' Puu'.
   have LCu : lc_tm u. { eapply lc1; eauto. }
   have LCu' : lc_tm u'. { eapply lc2; eauto. }
   induction Ptt'; simpl.
+  all: try move: (value_subst v x u' H Vu') => vh.
+  all: eauto.
   - (* beta *)
     autorewrite with lngen; auto.
   - (* var *)
@@ -733,8 +839,6 @@ Proof.
     pick fresh y and apply p_abs.
     spec y.
     rewrite_subst_open_hyp.
-  - (* app *)
-    eauto.
 Qed.
 
 (** A corollary of the above lets us reason about parallel reduction for opened terms. *)
@@ -746,6 +850,8 @@ Corollary parallel_open : forall x t t' u u',
   -> parallel (open t u) (open t' u').
 Proof.  
   intros x t t' u u' F1 F2 H0 P41.
+Admitted.
+(*
   move: (subst3_parallel x _ _ _ _ H0 P41) => h.
   repeat rewrite subst_tm_open_tm_wrt_tm in h; eauto.
   eapply lc1; eauto with lngen.
@@ -753,7 +859,7 @@ Proof.
   repeat rewrite subst_eq_var in h.
   repeat rewrite subst_tm_fresh_eq in h; auto.
 Qed.
-
+*)
 
 
 (* ================================================================= *)
@@ -772,6 +878,8 @@ Proof.
   induction H1; 
     intros t2 H2; inversion H2; subst.
   - (* beta / beta *)
+Admitted.
+(*
     destruct (IHparallel1 _ H1) as [t3' [P31 P32]].
     inversion P31. subst.
     inversion P32. subst.
@@ -810,6 +918,7 @@ Proof.
     exists (app t2 t3).
     split; auto.
 Qed. (* /WORKINCLASS *)
+*)
 
 (* ================================================================= *)
 
@@ -845,7 +954,7 @@ Import RelationNotation.
 *)
 
 
-
+(*
 Lemma refl_compatible_sub_parallel : refl_closure (compatible_closure beta) [<=] parallel.
 Proof.
   intros t u H. dependent induction H.
@@ -1023,3 +1132,4 @@ Proof.
   apply nf_false.
   intro h. inversion h.
 Qed.
+*)

@@ -2,6 +2,9 @@ embed {{ coq-preamble
 Require Export Metalib.LibLNgen. 
 }}
 
+%% call-by-value untyped lambda calculus
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% METAVARIABLES
@@ -16,7 +19,13 @@ metavar tmvar, x, y, z ::=
 
 grammar
 
-tm, t , u :: '' ::= {{ com terms }}
+j , k :: 'k_' ::= {{ coq nat }}
+  | 0      ::  M :: zero {{ coq 0 }} 
+  | 1      ::  M :: one  {{ coq 1 }}
+  | k + k' :: M  :: add  {{ coq ([[k]] + [[k']]) }}  
+
+
+tm, t , u, v, w :: '' ::= {{ com terms }}
 
   | x                  ::    :: var 
     {{ com variables }}
@@ -28,13 +37,22 @@ tm, t , u :: '' ::= {{ com terms }}
 
   | t u                ::   :: app 
     {{ tex [[t]] \; [[u]] }}
-    {{ com function application }}
+    {{ com function application, list indexing }}
     
-  | ( t )              :: M :: paren 
+  | ( t )               :: M :: paren 
     {{ coq ([[t]])}}
 
   | t [ x ~> u ]        :: S :: subst
      {{ coq (open_tm_wrt_tm[[x t]][[u]])}}
+
+  | k                   ::   :: lit
+
+  | add                 ::   :: add
+
+  | nil                 ::   :: tnil
+
+  | t , u               ::   :: tcons
+
 
 substitutions
   single t x     :: subst
@@ -46,20 +64,10 @@ freevars
 
 grammar
 
-v :: 'v_' ::= {{ com values (call-by-value) }}
-
-  | \ x . t            ::    :: abs 
-    (+ bind x in t +)
-    {{ tex \lambda [[x]] . [[t]] }}
-    {{ com function }}
-
 relation , R :: 'R_' ::= {{ com relation }} {{ coq tm -> tm -> Prop }} {{ coq-universe Type }}
   | beta               :: M :: beta {{ coq beta }}
   | eta                :: M :: eta {{ coq eta }}
   | betaeta            :: M :: betaeta {{ coq betaeta }}
-
-subrules 
-  v <:: t
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%  Terminals  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -155,6 +163,9 @@ formula :: 'formula_' ::=
   | t = u                    ::   :: equal
     {{ coq [[t]]=[[u]] }}
 
+  | nth v k = w              ::   :: nth
+    {{ coq [[nth]][[v]][[k]] = Some [[w]] }}
+
   | R t u                    ::   :: rel
     {{ coq [[R]][[t]][[u]]  }} 
 
@@ -185,9 +196,63 @@ formula :: 'formula_' ::=
   | ( formula )              ::   :: Paren
     {{ coq ([[formula]]) }}
 
+embed {{ coq
+
+Fixpoint is_value (t_5:tm) : Prop :=
+  match t_5 with
+  | (var_b nat) => False
+  | (var_f x) => True
+  | (abs t) => True
+  | (app t u) => False
+  | (lit k5) => True
+  | (tcons t1 t2) => ((is_value t1) /\ (is_value t2))
+  | tnil => True
+  | add => True
+end.
+
+Fixpoint nth (t : tm) (k : nat) :  option tm :=
+  match t , k with 
+  | tcons v w , 0 => Some v
+  | tcons v w , S j => nth w j
+  | _ , _  => None
+  end.
+
+
+
+}}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Rules
+
+defns
+JValue :: '' ::=
+
+defn
+value v :: :: value :: 'v_'
+by
+
+-------- :: var
+value x
+
+------------- :: abs
+value (\x.t)
+
+
+-------------- :: nil
+value nil
+
+
+---------------- :: nat
+value k
+
+value v
+value w       
+--------------- :: cons
+value v , w
+
+
+--------------- :: add
+value add
 
 defns 
 JBeta :: '' ::=
@@ -198,8 +263,21 @@ t beta u ::    :: beta :: 'beta_'
 {{ tex [[t]]\ \beta\mbox{-reduces to}\ [[u]] }}
 by
 
+value v
 ------------------------------ :: reduct
-(\ x . t) u  beta t [ x ~> u ] 
+(\ x . t) v  beta t [ x ~> v ] 
+
+value (v,w)
+------------------------------- :: app_0
+(v, w)  0  beta t
+
+value (v,w)
+------------------------------- :: app_k
+(v, w) (1 + k)  beta (w k)
+
+
+---------------------------------------- :: plus
+add (j , (k, nil)) beta (j + k)
 
 defns 
 JEta :: '' ::=
@@ -261,6 +339,15 @@ R |- t u -> t' u
 R |- u -> u'
 ----------------- :: app2
 R |- t u -> t u'
+
+R |- t -> t'
+-------------- :: cons1
+R |- t , u -> t' , u
+
+R |- u -> u'
+--------------------- :: cons2
+R |- t , u -> t ,  u'
+
 
 
 defns
@@ -356,9 +443,21 @@ t ==> u ::    :: parallel :: 'p_'
 by
 
 t ==> \ x. t'
-u ==> u'
+u ==> v
+value v
 ---------------------------- :: beta
-t u ==> t' [ x ~> u' ]
+t u ==> t' [ x ~> v ]
+
+t ==> v 
+u ==> k
+value v
+nth v k = w
+---------------------------- :: app_k
+t u ==> w
+
+t ==> j , (k , nil)
+------------------- :: add_beta
+add t ==> (j + k)
 
 ------- :: var
 x ==> x
@@ -372,6 +471,20 @@ u ==> u'
 ---------------------------- :: app
 t u ==> t' u'
 
+t ==> t'
+u ==> u'
+---------------------------- :: cons
+t , u ==> t' , u'
+
+------------- :: nil
+nil ==> nil
+
+
+------------- :: add
+add ==> add
+
+------------- :: nat
+k ==> k
 
 
 defns
@@ -382,12 +495,34 @@ t ~> t' ::     :: Step :: 'S_' {{ com Small-step evaluation }}
 by
 
 t ~> t'
------------------------------- :: app
+------------------------------ :: app1
 t u ~> t' t 
 
 ------------------------------ :: beta
 (\ x . t) u ~>  t [ x ~> u ] 
 
+
+t ~> t'
+------------------------------ :: cons1
+t , u ~> t' , t 
+
+t ~> t'
+value v
+------------------------------ :: cons2
+v , t ~> v ,  t' 
+
+
+value (v,w)
+------------------ :: prj_zero
+(v , w) 0 ~> v
+
+value (v,w)
+------------------------------ :: prj_suc
+(v , w) (1 + k) ~> (v , w) k
+
+
+----------------------------- :: add
+add (k1 , k2) ~> k1 + k2
 
 
 defns
@@ -402,12 +537,26 @@ t ~>> t'
 t u ~>> t' t 
 
 u ~>> u'
+value v
 ------------------------------ :: app2
 v u ~>> v u'
 
+value v
 ------------------------------ :: betav
 (\ x . t) v ~>>  t [ x ~> v ] 
 
+
+value (v,w)
+------------------ :: prj_zero
+(v , w) 0 ~>> v
+
+value (v,w)
+------------------------------ :: prj_suc
+(v , w) (1 + k) ~>> (v , w) k
+
+
+----------------------------- :: add
+add (k1 , k2) ~>> k1 + k2
 
 
 defns
@@ -458,19 +607,21 @@ t ≡ t'
 -------------- :: abs
 \x.t ≡ \x.t'
 
+
+t ≡ t' 
+------------- :: cons1
+t , u ≡ t' , u
+
+u ≡ u'
+------------- :: cons2
+t , u ≡ t , u'
+
+
 defns
 
 JRed :: '' ::=
 
-defn
-value t ::   :: value :: 'V_'
-by
 
--------- :: var
-value x
-
--------------- :: abs
-value (\x. t)
 
 defn 
 t --> u ::    :: full_reduction :: 'F_' 
@@ -478,9 +629,9 @@ t --> u ::    :: full_reduction :: 'F_'
 {{ tex [[t]][[-->]]_{\beta} [[u]] }}
 by
 
-value u
+value v
 -------------------------- :: beta
-(\x.t) u --> t [ x ~> u ]
+(\x.t) v --> t [ x ~> v ]
 
 t --> t'
 ---------------------- :: abs
@@ -496,6 +647,24 @@ u --> u'
 t u --> t u'
 
 
+t --> t'
+---------------------------- :: cons1
+t , u --> t' , u
+
+u --> u'
+---------------------------- :: cons2
+t , u --> t , u'
+
+value v
+------------------ :: prj_zero
+(v , w) 0 --> v
+
+value v
+------------------------------ :: prj_suc
+(v , w) (1 + k) --> (v , w) k
+
+----------------------------- :: add
+add (k1 , k2) --> k1 + k2
 
 defns
 Jredex :: '' ::=
@@ -573,6 +742,12 @@ R |- t => t'
 R |- u => u'
 ------------------------ :: app
 R |- t u => t' u'
+
+
+R |- t => t'  
+R |- u => u'
+------------------------ :: cons
+R |- t , u => t' , u'
 
 
 

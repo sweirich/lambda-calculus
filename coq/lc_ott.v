@@ -5,11 +5,17 @@ Require Export Metalib.LibLNgen.
 (** syntax *)
 Definition tmvar : Set := var. (*r variables *)
 
+Definition j : Set := nat.
+
 Inductive tm : Set :=  (*r terms *)
  | var_b (_:nat) (*r variables *)
  | var_f (x:tmvar) (*r variables *)
  | abs (t:tm) (*r abstractions *)
- | app (t:tm) (u:tm) (*r function application *).
+ | app (t:tm) (u:tm) (*r function application, list indexing *)
+ | lit (k:j)
+ | add : tm
+ | tnil : tm
+ | tcons (t:tm) (u:tm).
 
 Definition relation : Type := tm -> tm -> Prop.
 
@@ -17,14 +23,6 @@ Definition relation : Type := tm -> tm -> Prop.
 (** auxiliary functions on the new list types *)
 (** library functions *)
 (** subrules *)
-Definition is_v_of_tm (t5:tm) : Prop :=
-  match t5 with
-  | (var_b nat) => False
-  | (var_f x) => False
-  | (abs t) => (True)
-  | (app t u) => False
-end.
-
 (** arities *)
 (** opening up abstractions *)
 Fixpoint open_tm_wrt_tm_rec (k:nat) (t5:tm) (t_6:tm) {struct t_6}: tm :=
@@ -38,6 +36,10 @@ Fixpoint open_tm_wrt_tm_rec (k:nat) (t5:tm) (t_6:tm) {struct t_6}: tm :=
   | (var_f x) => var_f x
   | (abs t) => abs (open_tm_wrt_tm_rec (S k) t5 t)
   | (app t u) => app (open_tm_wrt_tm_rec k t5 t) (open_tm_wrt_tm_rec k t5 u)
+  | (lit k) => lit k
+  | add => add 
+  | tnil => tnil 
+  | (tcons t u) => tcons (open_tm_wrt_tm_rec k t5 t) (open_tm_wrt_tm_rec k t5 u)
 end.
 
 Definition open_tm_wrt_tm t5 t_6 := open_tm_wrt_tm_rec 0 t_6 t5.
@@ -55,7 +57,17 @@ Inductive lc_tm : tm -> Prop :=    (* defn lc_tm *)
  | lc_app : forall (t u:tm),
      (lc_tm t) ->
      (lc_tm u) ->
-     (lc_tm (app t u)).
+     (lc_tm (app t u))
+ | lc_lit : forall (k:j),
+     (lc_tm (lit k))
+ | lc_add : 
+     (lc_tm add)
+ | lc_tnil : 
+     (lc_tm tnil)
+ | lc_tcons : forall (t u:tm),
+     (lc_tm t) ->
+     (lc_tm u) ->
+     (lc_tm (tcons t u)).
 (** free variables *)
 Fixpoint fv_tm (t5:tm) : vars :=
   match t5 with
@@ -63,6 +75,10 @@ Fixpoint fv_tm (t5:tm) : vars :=
   | (var_f x) => {{x}}
   | (abs t) => (fv_tm t)
   | (app t u) => (fv_tm t) \u (fv_tm u)
+  | (lit k) => {}
+  | add => {}
+  | tnil => {}
+  | (tcons t u) => (fv_tm t) \u (fv_tm u)
 end.
 
 (** substitutions *)
@@ -72,17 +88,71 @@ Fixpoint subst_tm (t5:tm) (x5:tmvar) (t_6:tm) {struct t_6} : tm :=
   | (var_f x) => (if eq_var x x5 then t5 else (var_f x))
   | (abs t) => abs (subst_tm t5 x5 t)
   | (app t u) => app (subst_tm t5 x5 t) (subst_tm t5 x5 u)
+  | (lit k) => lit k
+  | add => add 
+  | tnil => tnil 
+  | (tcons t u) => tcons (subst_tm t5 x5 t) (subst_tm t5 x5 u)
 end.
+
+
+Fixpoint is_value (t_5:tm) : Prop :=
+  match t_5 with
+  | (var_b nat) => False
+  | (var_f x) => True
+  | (abs t) => True
+  | (app t u) => False
+  | (lit k5) => True
+  | (tcons t1 t2) => ((is_value t1) /\ (is_value t2))
+  | tnil => True
+  | add => True
+end.
+
+Fixpoint nth (t : tm) (k : nat) :  option tm :=
+  match t , k with 
+  | tcons v w , 0 => Some v
+  | tcons v w , S j => nth w j
+  | _ , _  => None
+  end.
+
+
+
 
 
 (** definitions *)
 
+(* defns JValue *)
+Inductive value : tm -> Prop :=    (* defn value *)
+ | v_var : forall (x:tmvar),
+     value (var_f x)
+ | v_abs : forall (t:tm),
+     lc_tm (abs t) ->
+     value  ( (abs t) ) 
+ | v_nil : 
+     value tnil
+ | v_nat : forall (k:j),
+     value (lit k)
+ | v_cons : forall (v w:tm),
+     value v ->
+     value w ->
+     value (tcons v w)
+ | v_add : 
+     value add.
+
 (* defns JBeta *)
 Inductive beta : tm -> tm -> Prop :=    (* defn beta *)
- | beta_reduct : forall (t u:tm),
+ | beta_reduct : forall (t v:tm),
      lc_tm (abs t) ->
-     lc_tm u ->
-     beta (app  ( (abs t) )  u)  (open_tm_wrt_tm t u ) .
+     value v ->
+     beta (app  ( (abs t) )  v)  (open_tm_wrt_tm t v ) 
+ | beta_app_0 : forall (v w t:tm),
+     lc_tm t ->
+     value  ( (tcons v w) )  ->
+     beta (app  ( (tcons v w) )  (lit  0 )) t
+ | beta_app_k : forall (v w:tm) (k:j),
+     value  ( (tcons v w) )  ->
+     beta (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) )  ( (app w (lit k)) ) 
+ | beta_plus : forall (j5 k:j),
+     beta (app add  ( (tcons (lit j5)  ( (tcons (lit k) tnil) ) ) ) )  ( (lit  ( j5  +  k ) ) ) .
 
 (* defns JEta *)
 Inductive eta : tm -> tm -> Prop :=    (* defn eta *)
@@ -114,7 +184,15 @@ Inductive compatible_closure : relation -> tm -> tm -> Prop :=    (* defn compat
  | cc_app2 : forall (R:relation) (t u u':tm),
      lc_tm t ->
      compatible_closure R u u' ->
-     compatible_closure R (app t u) (app t u').
+     compatible_closure R (app t u) (app t u')
+ | cc_cons1 : forall (R:relation) (t u t':tm),
+     lc_tm u ->
+     compatible_closure R t t' ->
+     compatible_closure R (tcons t u) (tcons t' u)
+ | cc_cons2 : forall (R:relation) (t u u':tm),
+     lc_tm t ->
+     compatible_closure R u u' ->
+     compatible_closure R (tcons t u) (tcons t u').
 
 (* defns JRC *)
 Inductive refl_closure : relation -> tm -> tm -> Prop :=    (* defn refl_closure *)
@@ -163,10 +241,20 @@ Inductive sym_trans_closure : relation -> tm -> tm -> Prop :=    (* defn sym_tra
 
 (* defns JPar *)
 Inductive parallel : tm -> tm -> Prop :=    (* defn parallel *)
- | p_beta : forall (t u t' u':tm),
+ | p_beta : forall (t u t' v:tm),
      parallel t (abs t') ->
-     parallel u u' ->
-     parallel (app t u)  (open_tm_wrt_tm t' u' ) 
+     parallel u v ->
+     value v ->
+     parallel (app t u)  (open_tm_wrt_tm t' v ) 
+ | p_app_k : forall (t u w v:tm) (k:j),
+     parallel t v ->
+     parallel u (lit k) ->
+     value v ->
+      nth v k  = Some  w  ->
+     parallel (app t u) w
+ | p_add_beta : forall (t:tm) (j5 k:j),
+     parallel t (tcons (lit j5)  ( (tcons (lit k) tnil) ) ) ->
+     parallel (app add t)  ( (lit  ( j5  +  k ) ) ) 
  | p_var : forall (x:tmvar),
      parallel (var_f x) (var_f x)
  | p_abs : forall (L:vars) (t t':tm),
@@ -175,18 +263,44 @@ Inductive parallel : tm -> tm -> Prop :=    (* defn parallel *)
  | p_app : forall (t u t' u':tm),
      parallel t t' ->
      parallel u u' ->
-     parallel (app t u) (app t' u').
+     parallel (app t u) (app t' u')
+ | p_cons : forall (t u t' u':tm),
+     parallel t t' ->
+     parallel u u' ->
+     parallel (tcons t u) (tcons t' u')
+ | p_nil : 
+     parallel tnil tnil
+ | p_add : 
+     parallel add add
+ | p_nat : forall (k:j),
+     parallel (lit k) (lit k).
 
 (* defns JOp *)
 Inductive Step : tm -> tm -> Prop :=    (* defn Step *)
- | S_app : forall (t u t':tm),
+ | S_app1 : forall (t u t':tm),
      lc_tm u ->
      Step t t' ->
      Step (app t u) (app t' t)
  | S_beta : forall (t u:tm),
      lc_tm (abs t) ->
      lc_tm u ->
-     Step (app  ( (abs t) )  u)  (open_tm_wrt_tm t u ) .
+     Step (app  ( (abs t) )  u)  (open_tm_wrt_tm t u ) 
+ | S_cons1 : forall (t u t':tm),
+     lc_tm u ->
+     Step t t' ->
+     Step (tcons t u) (tcons t' t)
+ | S_cons2 : forall (v t t':tm),
+     Step t t' ->
+     value v ->
+     Step (tcons v t) (tcons v t')
+ | S_prj_zero : forall (v w:tm),
+     value  ( (tcons v w) )  ->
+     Step (app  ( (tcons v w) )  (lit  0 )) v
+ | S_prj_suc : forall (v w:tm) (k:j),
+     value  ( (tcons v w) )  ->
+     Step (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) ) (app  ( (tcons v w) )  (lit k))
+ | S_add : forall (k1 k2:j),
+     Step (app add  ( (tcons (lit k1) (lit k2)) ) ) (lit  ( k1  +  k2 ) ).
 
 (* defns JOpV *)
 Inductive StepV : tm -> tm -> Prop :=    (* defn StepV *)
@@ -194,26 +308,29 @@ Inductive StepV : tm -> tm -> Prop :=    (* defn StepV *)
      lc_tm u ->
      StepV t t' ->
      StepV (app t u) (app t' t)
- | SV_app2 : forall (u u' v5:tm),
-     is_v_of_tm v5 ->
-     is_v_of_tm v5 ->
-     lc_tm v5 ->
+ | SV_app2 : forall (v u u':tm),
      StepV u u' ->
-     StepV (app v5 u) (app v5 u')
- | SV_betav : forall (t v5:tm),
-     is_v_of_tm v5 ->
-     is_v_of_tm v5 ->
+     value v ->
+     StepV (app v u) (app v u')
+ | SV_betav : forall (t v:tm),
      lc_tm (abs t) ->
-     lc_tm v5 ->
-     StepV (app  ( (abs t) )  v5)  (open_tm_wrt_tm t v5 ) .
+     value v ->
+     StepV (app  ( (abs t) )  v)  (open_tm_wrt_tm t v ) 
+ | SV_prj_zero : forall (v w:tm),
+     value  ( (tcons v w) )  ->
+     StepV (app  ( (tcons v w) )  (lit  0 )) v
+ | SV_prj_suc : forall (v w:tm) (k:j),
+     value  ( (tcons v w) )  ->
+     StepV (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) ) (app  ( (tcons v w) )  (lit k))
+ | SV_add : forall (k1 k2:j),
+     StepV (app add  ( (tcons (lit k1) (lit k2)) ) ) (lit  ( k1  +  k2 ) ).
 
 (* defns JEval *)
 Inductive Eval : tm -> tm -> Prop :=    (* defn Eval *)
- | E_beta : forall (t u v5 t':tm),
-     is_v_of_tm v5 ->
+ | E_beta : forall (t u v t':tm),
      Eval t (abs t') ->
-     Eval  (open_tm_wrt_tm t' u )  v5 ->
-     Eval (app t u) v5.
+     Eval  (open_tm_wrt_tm t' u )  v ->
+     Eval (app t u) v.
 
 (* defns JEq *)
 Inductive conversion : tm -> tm -> Prop :=    (* defn conversion *)
@@ -241,20 +358,22 @@ Inductive conversion : tm -> tm -> Prop :=    (* defn conversion *)
      conversion (app t u) (app t u')
  | eq_abs : forall (L:vars) (t t':tm),
       ( forall x , x \notin  L  -> conversion  ( open_tm_wrt_tm t (var_f x) )   ( open_tm_wrt_tm t' (var_f x) )  )  ->
-     conversion (abs t) (abs t').
+     conversion (abs t) (abs t')
+ | eq_cons1 : forall (t u t':tm),
+     lc_tm u ->
+     conversion t t' ->
+     conversion (tcons t u) (tcons t' u)
+ | eq_cons2 : forall (t u u':tm),
+     lc_tm t ->
+     conversion u u' ->
+     conversion (tcons t u) (tcons t u').
 
 (* defns JRed *)
-Inductive value : tm -> Prop :=    (* defn value *)
- | V_var : forall (x:tmvar),
-     value (var_f x)
- | V_abs : forall (t:tm),
+Inductive full_reduction : tm -> tm -> Prop :=    (* defn full_reduction *)
+ | F_beta : forall (t v:tm),
      lc_tm (abs t) ->
-     value  ( (abs t) ) 
-with full_reduction : tm -> tm -> Prop :=    (* defn full_reduction *)
- | F_beta : forall (t u:tm),
-     lc_tm (abs t) ->
-     value u ->
-     full_reduction (app  ( (abs t) )  u)  (open_tm_wrt_tm t u ) 
+     value v ->
+     full_reduction (app  ( (abs t) )  v)  (open_tm_wrt_tm t v ) 
  | F_abs : forall (L:vars) (t t':tm),
       ( forall x , x \notin  L  -> full_reduction  ( open_tm_wrt_tm t (var_f x) )   ( open_tm_wrt_tm t' (var_f x) )  )  ->
      full_reduction (abs t) (abs t')
@@ -265,7 +384,25 @@ with full_reduction : tm -> tm -> Prop :=    (* defn full_reduction *)
  | F_app2 : forall (t u u':tm),
      lc_tm t ->
      full_reduction u u' ->
-     full_reduction (app t u) (app t u').
+     full_reduction (app t u) (app t u')
+ | F_cons1 : forall (t u t':tm),
+     lc_tm u ->
+     full_reduction t t' ->
+     full_reduction (tcons t u) (tcons t' u)
+ | F_cons2 : forall (t u u':tm),
+     lc_tm t ->
+     full_reduction u u' ->
+     full_reduction (tcons t u) (tcons t u')
+ | F_prj_zero : forall (v w:tm),
+     lc_tm w ->
+     value v ->
+     full_reduction (app  ( (tcons v w) )  (lit  0 )) v
+ | F_prj_suc : forall (v w:tm) (k:j),
+     lc_tm w ->
+     value v ->
+     full_reduction (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) ) (app  ( (tcons v w) )  (lit k))
+ | F_add : forall (k1 k2:j),
+     full_reduction (app add  ( (tcons (lit k1) (lit k2)) ) ) (lit  ( k1  +  k2 ) ).
 
 (* defns Jredex *)
 Inductive redex : relation -> tm -> Prop :=    (* defn redex *)
@@ -308,7 +445,11 @@ Inductive cc_parallel : relation -> tm -> tm -> Prop :=    (* defn cc_parallel *
  | cc_par_app : forall (R:relation) (t u t' u':tm),
      cc_parallel R t t' ->
      cc_parallel R u u' ->
-     cc_parallel R (app t u) (app t' u').
+     cc_parallel R (app t u) (app t' u')
+ | cc_par_cons : forall (R:relation) (t u t' u':tm),
+     cc_parallel R t t' ->
+     cc_parallel R u u' ->
+     cc_parallel R (tcons t u) (tcons t' u').
 
 (* defns JParSynCC *)
 Inductive cc_parallel2 : relation -> tm -> tm -> Prop :=    (* defn cc_parallel2 *)
@@ -337,6 +478,6 @@ Inductive cc_parallel2 : relation -> tm -> tm -> Prop :=    (* defn cc_parallel2
 
 
 (** infrastructure *)
-Hint Constructors beta eta betaeta compatible_closure refl_closure trans_closure refl_trans_closure sym_trans_closure parallel Step StepV Eval conversion value full_reduction redex terminal nf cc_parallel cc_parallel2 lc_tm : core.
+Hint Constructors value beta eta betaeta compatible_closure refl_closure trans_closure refl_trans_closure sym_trans_closure parallel Step StepV Eval conversion full_reduction redex terminal nf cc_parallel cc_parallel2 lc_tm : core.
 
 
