@@ -4,7 +4,6 @@ Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
 Require Export lc.tactics.
-Require Import lc.AssocList.
 Require Import lc.List.
 
 Require Import lc.SetsAsPredicates.

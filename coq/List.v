@@ -14,9 +14,9 @@ Inductive ExistsT {A : Type} (P : A -> Type) : list A -> Type :=
 
 Inductive Exists2 {A B : Type} (P : A -> B -> Prop) : 
   list A -> list B -> Prop :=
-    Exists2_cons_hd : forall x y l l',
+    Exists2_cons1 : forall x y l l',
       P x y -> Exists2 P (x :: l) (y :: l')
-  | Exists2_cons_tl : forall x y l l', 
+  | Exists2_cons2 : forall x y l l', 
       Exists2 P l l' -> Exists2 P (x :: l) (y :: l').
 
 #[export] Hint Constructors ExistsT Exists2 : core.

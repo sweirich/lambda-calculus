@@ -4,12 +4,19 @@ Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
 Require Export lc.tactics.
-Require Import lc.List.
-Require Import lc.AssocList.
 
-Require Import Monad.
+Require Import lc.List.
+Require Import lc.Env.
+
+Require Import lc.SetsAsPredicates.
+Import SetNotations.
+Local Open Scope set_scope.
+
+Require Import lc.Monad.
 Import MonadNotation.
 Open Scope monad_scope.
+
+Require Import lc.Container.
 
 (* ------------------------------------------------------------ *)
 
@@ -28,15 +35,15 @@ Open Scope monad_scope.
 
 *)
 
-(* The values of the model and when they are consistent. *)
+(* The values of the model and when they are consistent with eachother. *)
 Require Import lc.Value.
 
-(* The denotation of a lambda-calculus value is `P Value` a set of model values.
-   The elements of this set approximate the actual values (and are self consistent). *)
+(* The denotation of a lambda-calculus value is `P Value`,
+   a set of model values.
+   The elements of this set approximate the actual values 
+   (and are self consistent).
+*)
 
-Require Import lc.SetsAsPredicates.
-Import SetNotations.
-Local Open Scope set_scope.
 
 
 (* Valid ---- -------------------------------------- *)
@@ -407,12 +414,15 @@ Qed.
 
 (* Environments ---------------------- *)
 
-Definition Env := GEnv (P Value).
+Definition Rho := Env (P Value).
+
+Definition sub_env : Rho -> Rho -> Prop := Env.Forall2 Included.
+
 
 Module EnvNotations.
 Notation "ρ ⋅ x" := (access ⌈ v_wrong ⌉ ρ x) (at level 50).
-Infix "⊔e" := (map2 Union) (at level 60).
-Infix "⊆e" := (all2 Included) (at level 50).
+Infix "⊔e" := (Env.map2 Union) (at level 60).
+Infix "⊆e" := (Env.Forall2 Included) (at level 50).
 End EnvNotations.
 Import EnvNotations.
 
@@ -429,26 +439,19 @@ Ltac gather_atoms ::=
 
 (* Sub environments *)
 
-(* Can we make a container instance for GEnv??? *)
-
-Definition sub_env : Env -> Env -> Prop := all2 Included.
-
-Lemma all2_refl {F : P Value -> P Value -> Prop} `{Reflexive _ F} {ρ} : uniq ρ -> all2 F ρ ρ.
-Proof. induction 1; eauto. Qed.
-
-#[export] Hint Resolve all2_refl : core.
-
-Lemma Reflexive_sub_env {ρ:Env} : uniq ρ -> ρ ⊆e ρ.
+Lemma Reflexive_sub_env {ρ:Env (P Value)} : uniq ρ -> ρ ⊆e ρ.
 Proof.
-  intros. eapply all2_refl; auto.
+  intros. eapply Env.Forall2_refl; eauto.
+  typeclasses eauto.
 Qed.
 
 #[export] Hint Resolve Reflexive_sub_env : core.
 
-#[export] Instance Transitive_sub_env : Transitive sub_env.
+#[export] Instance Transitive_sub_env : 
+  Transitive (@Env.Forall2 (P Value) (P Value) Included).
 Proof. typeclasses eauto. Qed.
 
-Lemma extend_sub_env {ρ ρ':Env}{y X} :
+Lemma extend_sub_env {ρ ρ': Env (P Value)}{y X} :
   y `notin` dom ρ ->
   ρ ⊆e ρ' -> (y ~ X ++ ρ) ⊆e (y ~ X ++ ρ' ).
 Proof. intros; econstructor; eauto. reflexivity. Qed.
@@ -457,25 +460,20 @@ Proof. intros; econstructor; eauto. reflexivity. Qed.
 
 (* Nonempty environments *)
 
-(* This is the same as nonemptyT *)
-(* 
-Definition ne (s : P Value) : Type := { x : Value & (x ∈ s) }. *)
+Definition nonempty_env : Rho -> Type := Env.ForallT nonemptyT.
 
-Definition nonempty_env : Env -> Type := allT nonemptyT.
-
-Definition valid_env : Env -> Type := allT valid. 
+Definition valid_env : Rho -> Type := Env.ForallT valid. 
 
 Lemma valid_nil : valid_env nil.
 Proof. unfold valid_env. eauto. Qed.
 
 #[export] Hint Resolve valid_nil : core.
 
-
 Lemma extend_valid_env {ρ x X} : 
   x `notin` dom ρ ->
   valid X -> 
   valid_env ρ -> valid_env (x ~ X ++ ρ).
-Proof. intros Fr NEP NEX. eapply allT_cons; eauto. Qed.
+Proof. intros Fr NEP NEX.  eapply ForallT_cons; eauto. Qed.
 
 #[export] Hint Resolve extend_valid_env : core.
 
@@ -483,13 +481,13 @@ Proof. intros Fr NEP NEX. eapply allT_cons; eauto. Qed.
 
 Definition finite (X : P Value) : Prop := exists E, (X ≃ mem E) /\ E <> nil.
 
-Definition finite_env : Env -> Type := allT finite.
+Definition finite_env : Rho -> Type := Env.ForallT finite.
 
 Lemma extend_nonempty_env {ρ x X} : 
   x `notin` dom ρ ->
   nonemptyT X -> 
   nonempty_env ρ -> nonempty_env (x ~ X ++ ρ).
-Proof. intros Fr NEP NEX. eapply allT_cons; eauto. Qed.
+Proof. intros Fr NEP NEX. eapply ForallT_cons; eauto. Qed.
 
 #[export] Hint Resolve extend_nonempty_env : core.
 
@@ -582,7 +580,7 @@ Proof.
   + assert False. inversion sc. subst. done. done.
 Qed.
 
-Lemma join_lub {ρ ρ1 :Env} :
+Lemma join_lub {ρ ρ1 : Rho} :
   same_scope ρ1 ρ ->
   forall ρ2, same_scope ρ2 ρ ->
   ρ1 ⊆e ρ -> ρ2 ⊆e ρ -> (ρ1 ⊔e ρ2) ⊆e ρ.
@@ -594,7 +592,7 @@ Proof.
   simpl.
   inversion H1. inversion H2. subst.
   rewrite eq_dec_refl.
-  eapply all2_cons; eauto.
+  eapply Env.Forall2_cons; eauto.
   rewrite sub_dom1. auto.
   rewrite -> H21.
   rewrite -> H13.
@@ -602,44 +600,44 @@ Proof.
   reflexivity.
 Qed.
   
-Lemma join_sub_left {ρ1 ρ2 : Env} : 
+Lemma join_sub_left {ρ1 ρ2 : Rho} : 
   same_scope ρ1 ρ2 ->
   ρ1 ⊆e (ρ1 ⊔e ρ2).
 Proof.
   intros h.
-  induction h; simpl; eauto. 
-  destruct (x == x); try done.
+  induction h; simpl; eauto.
+  rewrite eq_dec_refl.
   econstructor; eauto. 
 Qed.
 
-Lemma join_sub_right {ρ1 ρ2 : Env} : 
+Lemma join_sub_right {ρ1 ρ2 : Rho} : 
   same_scope ρ1 ρ2 ->
   ρ2 ⊆e (ρ1 ⊔e ρ2).
 Proof.
   induction 1; simpl; eauto. 
-  destruct (x == x); try done.
+  rewrite eq_dec_refl.
   econstructor; eauto. 
-  erewrite all2_dom in H0; eauto.
+  erewrite Forall2_dom in H0; eauto.
 Qed.
 
 (* --- Monotone --------------- *)
 
-Definition monotone_env (D : Env -> P Value) := 
+Definition monotone_env (D : Rho -> P Value) := 
  forall ρ ρ' , ρ ⊆e ρ' -> (D ρ) ⊆ D ρ'.
 
 
 (* Continuous ----------------------------------------- *)
 
-Definition continuous_In (D:Env -> P Value) (ρ:Env) (v:Value) : Prop :=
+Definition continuous_In (D:Rho -> P Value) (ρ:Rho) (v:Value) : Prop :=
   v ∈ D ρ -> exists ρ' , exists (pf : finite_env ρ'),  ρ' ⊆e ρ /\ (v ∈ D ρ').
 
-Definition continuous_env (D:Env -> P Value) (ρ:Env) : Prop :=
+Definition continuous_env (D:Rho -> P Value) (ρ:Rho) : Prop :=
   forall v, continuous_In D ρ v.
 
 (* creates an environment that maps each variable x to a singleton 
    set of some element in ρ x *)
 (* can we make this nonempty_env instead of valid_env *)
-Definition initial_finite_env (ρ : Env) (NE : valid_env ρ) : Env.
+Definition initial_finite_env (ρ : Rho) (NE : valid_env ρ) : Rho.
   induction NE. exact nil.
   destruct f as [[V _] _].
   exact (cons (x, ⌈ V ⌉) IHNE).
@@ -661,7 +659,7 @@ Qed.
 #[export] Hint Resolve finite_singleton : core. 
 
 
-Lemma initial_fin (ρ : Env) (NE : valid_env ρ) :
+Lemma initial_fin (ρ : Rho) (NE : valid_env ρ) :
   finite_env (initial_finite_env ρ NE).
 Proof.
   induction NE.
@@ -674,7 +672,7 @@ Qed.
 #[global] Hint Resolve initial_fin : core. 
 
 
-Lemma initial_fin_sub (ρ : Env) (NE : valid_env ρ) :
+Lemma initial_fin_sub (ρ : Rho) (NE : valid_env ρ) :
   initial_finite_env ρ NE ⊆e ρ.
 Proof.
   induction NE; simpl. econstructor.
@@ -688,8 +686,8 @@ Qed.
 
 
 (* single-env maps x to D and any other variable y to something in ρ y. *)
-Definition single_env (x : atom) (D : P Value) (ρ : Env) 
-  (NE : valid_env ρ) : Env :=
+Definition single_env (x : atom) (D : P Value) (ρ : Rho) 
+  (NE : valid_env ρ) : Rho :=
   update x D (initial_finite_env ρ NE).
 
   
@@ -729,7 +727,7 @@ Proof.
     simpl in vpe.
     destruct (x == x0).
     ++ subst. econstructor; eauto.
-       simpl_env. auto.
+       simpl_env.  eauto.
        intros x h. inversion h. subst. auto.
     ++ econstructor; eauto. 
        eapply IHNE; eauto. fsetdec.
@@ -737,7 +735,7 @@ Proof.
        intros y h. inversion h. subst. unfold In. auto.
 Qed.
 
-#[global] Hint Resolve single_sub : core. 
+#[export] Hint Resolve single_sub : core. 
 
 
 (* v∈single[xv]x  *)
@@ -754,7 +752,7 @@ Proof.
   simpl. rewrite EQ. simpl in h. eapply IHNE; auto. fsetdec.
 Qed.  
 
-#[global] Hint Resolve v_single_xvx : core. 
+#[export] Hint Resolve v_single_xvx : core. 
 
 
 
@@ -779,8 +777,8 @@ Proof.
     econstructor; eauto.
     eapply VE. econstructor; eauto.
     exists (ρ1 ⊔e ρ2).
-    have S1: same_scope ρ1 ρ. eapply all2_same_scope; eauto.
-    have S2: same_scope ρ2 ρ. eapply all2_same_scope; eauto. 
+    have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+    have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto. 
     have SS: same_scope ρ1 ρ2. 
     { transitivity ρ; auto. symmetry; auto. }
     eexists. eapply join_finite_env; eauto.
@@ -812,8 +810,8 @@ Proof.
       [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
   destruct (IHE (v_list l) El) as 
       [ ρ2 [ fρ2 [ ρ2ρ VwDp2 ]]].
-  have S1: same_scope ρ1 ρ. eapply all2_same_scope; eauto.
-  have S2: same_scope ρ2 ρ. eapply all2_same_scope; eauto.
+  have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+  have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
   have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
   exists (ρ1 ⊔e ρ2).
     repeat split.
@@ -852,8 +850,8 @@ Proof.
     destruct 
       (continuous_In_sub E ρ NE mE V)
       as [ ρ2 [ fρ2 [ ρ2ρ VEp2 ]]]; eauto.
-    have S1: same_scope ρ1 ρ. eapply all2_same_scope; eauto.
-    have S2: same_scope ρ2 ρ. eapply all2_same_scope; eauto.
+    have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+    have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
     have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
     exists (ρ1 ⊔e ρ2).
     repeat split.
@@ -869,8 +867,8 @@ Proof.
     eapply BETA with (V:=V); auto.
  + destruct (IHD (v_list VS)) as [ρ1 [F1 [h1 h2]]]; auto.
    destruct (IHE (v_nat k)) as [ρ2 [F2 [h3 h4]]]; auto.
-    have S1: same_scope ρ1 ρ. eapply all2_same_scope; eauto.
-    have S2: same_scope ρ2 ρ. eapply all2_same_scope; eauto.
+    have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+    have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
     have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
    exists (ρ1 ⊔e ρ2).
     repeat split.
@@ -922,7 +920,7 @@ Proof.
     exists E1. exists X.
     repeat split; eauto.
     eapply mE. 2: exact wEρ'.
-    have SS: E1 ⊆e E1. eapply Reflexive_sub_env.  eapply all2_uniq1; eauto. 
+    have SS: E1 ⊆e E1. eapply Reflexive_sub_env.  eapply Forall2_uniq1; eauto. 
     auto.
   - exists (initial_finite_env ρ NE).
     repeat split; eauto.
@@ -990,7 +988,7 @@ Proof.
 Qed.    
 
 (* Denotation function: unbound variables have no denotation. *)
-Fixpoint denot_n (n : nat) (a : tm) (ρ : Env) : P Value :=
+Fixpoint denot_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
   match n with
   | O => fun _ => False
   | S m => 
@@ -1273,7 +1271,7 @@ Qed.
 
 (* Scoping predicates *)
 
-Inductive scoped t (ρ : Env) :=
+Inductive scoped t (ρ : Rho) :=
   scoped_intro : 
     fv_tm t [<=] dom ρ -> uniq ρ -> lc_tm t -> scoped t ρ.
 
@@ -1425,7 +1423,7 @@ Proof.
 Qed.
 
 Lemma subst_denot1 :
-  forall (t : tm) (x : atom) (u : tm) (ρ : Env),
+  forall (t : tm) (x : atom) (u : tm) (ρ : Rho),
     scoped t (x ~ denot u ρ ++ ρ) 
     -> scoped u ρ 
     -> denot t (x ~ denot u ρ ++ ρ) = denot (t [x ~> u]) ρ.
@@ -1442,7 +1440,7 @@ Qed.
 (* Note: sub_env forces ρ and ρ' to have the same domain *)
 
 
-Lemma access_monotone {ρ ρ':Env}{x} : ρ ⊆e ρ' -> ρ ⋅ x ⊆ ρ' ⋅ x.
+Lemma access_monotone {ρ ρ':Rho}{x} : ρ ⊆e ρ' -> ρ ⋅ x ⊆ ρ' ⋅ x.
 Proof.
   induction 1. simpl. reflexivity.
   simpl. destruct (x == x0) eqn:E. auto.
@@ -1526,7 +1524,7 @@ Proof.
        eapply IH; eauto.
     ++ eapply denot_monotone.
     ++ exists ρ'. exists Fρ'. 
-       erewrite <- all2_dom in Fr. 2: eapply S.
+       erewrite <- Forall2_dom in Fr. 2: eapply S.
        rewrite (denot_abs x). fsetdec.
        split; auto.
   + edestruct (CONS_continuous vIn) as [ρ' [F SS]]; eauto.
@@ -1552,7 +1550,7 @@ Proof.
 Qed.
 
 
-Definition Same_env : Env -> Env -> Prop := all2 Same_set.
+Definition Same_env : Rho -> Rho -> Prop := Env.Forall2 Same_set.
 
 (* The denotation respects ≃ *)
 Instance Proper_denot : Proper (eq ==> Same_env ==> Same_set) denot.
@@ -1565,9 +1563,9 @@ Proof.
   all: try solve [reflexivity].
   all: eauto using APPLY_cong, CONS_cong.
   - destruct (FSetDecideAuxiliary.dec_In  x (dom ρ1)).
-    + apply all2_access with (f := Same_set); auto.
+    + apply Forall2_access with (f := Same_set); auto.
     + rewrite access_fresh. auto.
-      rewrite access_fresh. erewrite all2_dom in H; eauto.
+      rewrite access_fresh. erewrite Forall2_dom in H; eauto.
       reflexivity.
   - pick fresh x. 
     repeat rewrite (denot_abs x). fsetdec. fsetdec.
@@ -1579,7 +1577,7 @@ Proof.
 Qed.
 
 (* The denotation respects ⊆ *)
-Instance Proper_sub_denot : Proper (eq ==> all2 Included ==> Included) denot.
+Instance Proper_sub_denot : Proper (eq ==> Env.Forall2 Included ==> Included) denot.
 Proof.
   intros t1 t ->.
   eapply tm_induction with (t := t);
@@ -1589,9 +1587,9 @@ Proof.
   all: try solve [reflexivity].
   all: eauto using APPLY_mono_sub, CONS_mono_sub.
   - destruct (FSetDecideAuxiliary.dec_In  x (dom ρ1)).
-    + apply all2_access with (f := Included); auto.
+    + apply Forall2_access with (f := Included); auto.
     + rewrite access_fresh. auto.
-      rewrite access_fresh. erewrite all2_dom in H; eauto.
+      rewrite access_fresh. erewrite Forall2_dom in H; eauto.
       reflexivity.
   - pick fresh x. 
     repeat rewrite(denot_abs x). fsetdec. fsetdec.
@@ -1621,7 +1619,7 @@ Proof.
     exists D. split.
     rewrite <- S. auto.
     split. 
-    have SUB: all2 Included (x ~ a1 ++ E1) (x ~ mem D ++ ρ).
+    have SUB: Env.Forall2 Included (x ~ a1 ++ E1) (x ~ mem D ++ ρ).
     econstructor; eauto. 
     rewrite <- S. reflexivity.
     rewrite <- SUB.
@@ -1644,11 +1642,12 @@ Proof.
   +  (* continuity *)
     eapply denot_continuous_one; auto.
   + eapply denot_monotone_one; auto.
-    eapply allT_uniq; eauto.
+    eapply ForallT_uniq; eauto.
 Qed.
 
+
 Lemma Consistent_denot :
-  forall t ρ1 ρ2, allT2 ConsistentSet ρ1 ρ2 -> valid_env ρ1 -> valid_env ρ2 ->
+  forall t ρ1 ρ2, Env.ForallT2 ConsistentSet ρ1 ρ2 -> valid_env ρ1 -> valid_env ρ2 ->
              ConsistentSet (denot t ρ1) (denot t ρ2).
 Proof.
   intro t.
@@ -1828,21 +1827,26 @@ Lemma value_nonempty {t}{ρ} :
   -> valid_env ρ -> value t -> valid (denot t ρ).
 Proof. 
   intros FV NEρ vv.
-  destruct t.
+  induction t.
   all: try solve [assert False; try inversion vv; done].
   all: autorewrite with denot.
   + unfold nonempty_env in NEρ.
-    eapply (@allT_access _ ⌈ v_wrong ⌉ _ _) in NEρ.
+    eapply (@ForallT_access _ ⌈ v_wrong ⌉ _ _) in NEρ.
     2: instantiate (1:= x); auto.
     destruct NEρ. split; auto.
     simpl in FV. fsetdec.
   + pick fresh x.
     erewrite denot_abs with (x:=x); eauto.
     eapply valid_Λ.
-  + (* valid_NAT *) admit.
-  + (* valid_ADD *) admit.
-  + (* valid_NIL *) admit.
-  + (* valid_CONS *) admit.
+  + eapply valid_NAT; eauto. 
+  + eapply valid_ADD; eauto. 
+  + eapply valid_NIL; eauto.
+  + simpl in FV. eapply valid_CONS; eauto. 
+    eapply IHt1; eauto. fsetdec.
+    inversion vv; eauto.
+    eapply IHt2; eauto. fsetdec. 
+    inversion vv; eauto.
+    admit. (* !! *)
 Admitted.
 
 

@@ -54,20 +54,6 @@ Class PointwiseContainer (M : Type -> Type) `{Container M} := {
        Exists (fun x => P x x) l <-> Exists2 P l l 
 }.
 
-Fixpoint rec_list {A} (P : A -> Prop)  (rec : forall v, P v) 
-  (vs : list A) : List.Forall P vs :=
-  match vs with 
-  | nil => Forall_nil _
-  | cons w ws => @Forall_cons A P w ws (rec w) (rec_list P rec ws)
-    end.
-Fixpoint recT_list {A} (P : A -> Type)  (rec : forall v, P v) 
-  (vs : list A) : List.ForallT P vs :=
-  match vs with 
-  | nil => ForallT_nil _
-  | cons w ws => @ForallT_cons A P w ws (rec w) (recT_list P rec ws)
-    end.
-
-
 
 #[export] Instance Container_list : Container list :=
   { In := List.In;
@@ -111,7 +97,7 @@ Inductive option_Exists {A : Type} (P : A -> Prop) : option A -> Prop :=
 Inductive option_ExistsT {A : Type} (P : A -> Type) : option A -> Type :=
   | ExistsT_Some : forall x, P x -> option_ExistsT P (Some x).
 
-#[export] Hint Constructors When WhenT When2 option_Exists option_ExistsT.
+#[export] Hint Constructors When WhenT When2 option_Exists option_ExistsT : core.
 
 Lemma When_forall : forall {A} (P : A -> Prop) (l : option A), 
       When P l <-> (forall x, option_In x l -> P x).
