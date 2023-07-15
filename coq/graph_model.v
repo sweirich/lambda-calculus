@@ -4,53 +4,19 @@ Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
 Require Export lc.tactics.
+Require Import lc.List.
 Require Import lc.AssocList.
-
-Require Import lc.SetsAsPredicates.
-Import SetNotations.
-Local Open Scope set_scope.
 
 Require Import Monad.
 Import MonadNotation.
 Open Scope monad_scope.
 
-(* stuff that should be in a library *)
-
-Inductive ExistsT {A : Type} (P : A -> Type) : list A -> Type :=
-  | ExistsT_cons1 : forall (x : A) (l : list A), 
-      P x  -> ExistsT P (x :: l)
-  | ExistsT_cons2 : forall (x : A) (l : list A), 
-      ExistsT P l -> ExistsT P (x :: l).
-
-Inductive Exists2 {A : Type} (P : A -> A -> Prop) : 
-  list A -> list A -> Prop :=
-    Exists2_cons_hd : forall (x y : A) (l l' : list A), 
-      P x y -> Exists2 P (x :: l) (y :: l')
-  | Exists2_cons_tl : forall (x y : A) (l l' : list A), 
-      Exists2 P l l' -> Exists2 P (x :: l) (y :: l').
-
-Hint Constructors ExistsT Exists2 : core.
-
-Lemma Forall_Forall2 {A} {P : A -> A -> Prop} l : 
-  Forall (fun x : A => P x x) l <->
-  Forall2 P l l.
-Proof.
-  induction l; split; intro h; inversion h; subst; eauto.
-  econstructor; eauto. rewrite <- IHl. auto.
-  econstructor; eauto. rewrite -> IHl. auto.
-Qed.
-
-Lemma Forall2_length {A} {P : A -> A -> Prop} l1 l2 : 
-  Forall2 P l1 l2 -> 
-  length l1 = length l2.
-Proof.
-  move: l2.
-  induction l1; intros l2 h;
-  inversion h; subst; simpl in *; eauto.
-Qed.  
+(* ------------------------------------------------------------ *)
 
 (* This a "Graph Model" of the CBV lambda calculus based on Jeremy Siek's Agda
    development.
+
+   https://github.com/jsiek/denotational_semantics/blob/master/agda/PValueCBV.agda
 
    Expressions are mapped to sets of values. The interpretation of a function
    is a set of its mappings. We need an infinite set to fully represent a
@@ -62,398 +28,71 @@ Qed.
 
 *)
 
-(* https://github.com/jsiek/denotational_semantics/blob/master/agda/PValueCBV.agda *)
+(* The values of the model and when they are consistent. *)
+Require Import lc.Value.
 
-(* Λ  \Lambda
-   ▩  \squarecrossfill 
-   ↦  \mapsto  
-   ⤇ \Mapsto  
-   ●  \CIRCLE 
-   ⊆  \subseteq   (Included)
-*)
+(* The denotation of a lambda-calculus value is `P Value` a set of model values.
+   The elements of this set approximate the actual values (and are self consistent). *)
 
-(* ----------------------------------------------- *)
+Require Import lc.SetsAsPredicates.
+Import SetNotations.
+Local Open Scope set_scope.
 
-(* Values *)
-
-Inductive Value : Type :=
-  (* natural number *)
-  | v_nat : nat -> Value
-
-  (* one entry in a function's table *)
-  | v_map : list Value -> Value -> Value
-
-  (* trivial function value, evaluated to a value but never applied *)
-  | v_fun : Value
-
-  (* list/tuple of values *)
-  | v_list : list Value -> Value
-
-  (* dynamic type error *)
-  | v_wrong : Value
-.
-
-(* 
-   The default induction principle for values is not
-   strong enough for lists in the v_map and v_list case. So we prove a stronger
-   version below.
-
-   Value_ind
-     : forall P : Value -> Prop,
-       (forall n : nat, P (v_nat n)) ->
-       (forall (l : list Value) (v : Value), P v -> P (v_map l v)) ->
-       P v_fun -> 
-       (forall l : list Value, P (v_list l)) -> 
-       P v_wrong -> 
-       forall v : Value, P v 
-*)
-
-Fixpoint Value_ind' (P : Value -> Prop)
-       (n : forall n : nat, P (v_nat n)) 
-       (m : forall (l : list Value) (v : Value), Forall P l -> P v -> P (v_map l v)) 
-       (f : P v_fun)
-       (l : (forall l : list Value, Forall P l -> P (v_list l)))
-       (w : P v_wrong) 
-       (v : Value) : P v := 
-  let rec := Value_ind' P n m f l w 
-  in
-  let fix rec_list (vs : list Value) : Forall P vs :=
-    match vs with 
-    | nil => Forall_nil _
-    | cons w ws => @Forall_cons Value P w ws (rec w) (rec_list ws)
-    end
-  in 
-  match v with 
-  | v_nat k => n k
-  | v_map X v => 
-      m X v (rec_list X) (rec v)
-  | v_fun => f
-  | v_list X => l X (rec_list X)
-  | v_wrong => w 
-  end.
-
-(* We do the same thing for Value_rect *)
-
-Inductive ForallT {A : Type} (P : A -> Type) : list A -> Type :=
-    ForallT_nil : ForallT P nil
-  | ForallT_cons : forall (x : A) (l : list A), P x -> ForallT P l -> ForallT P (x :: l).
-
-Fixpoint Value_rec' (P : Value -> Type)
-       (n : forall n : nat, P (v_nat n)) 
-       (m : forall (l : list Value) (v : Value),
-           ForallT P l -> P v -> P (v_map l v)) 
-       (f : P v_fun)
-       (l : (forall l : list Value, ForallT P l -> P (v_list l)))
-       (w : P v_wrong) (v : Value) : P v := 
-  let rec := Value_rec' P n m f l w 
-  in
-  let fix rec_list (vs : list Value) : ForallT P vs :=
-    match vs with 
-    | nil => ForallT_nil _
-    | cons w ws => @ForallT_cons Value P w ws (rec w) (rec_list ws)
-    end
-  in 
-  match v with 
-  | v_nat k => n k
-  | v_map X v => 
-      m X v (rec_list X) (rec v)
-  | v_fun => f
-  | v_list X => l X (rec_list X)
-  | v_wrong => w 
-  end.
-
-
-
-(* ----------------------------------------------- *)
-
-(* Consistent values: we will model function values as a set of approximations
-
-   But now that we have different sorts of values, those approximations should
-   all agree with eachother.
-
-   We can define this concept by first identifying the head of a value. 
-   Two values will *definitely* be inconsistent if they have different heads.
-   But they could have the same head if inside the value
-
-*)
-
-Inductive v_head := 
-   h_nat  : nat -> v_head 
-  | h_fun  : v_head
-  | h_list : v_head
-  | h_wrong : v_head 
-.
-
-Definition head (v : Value) : v_head := 
-  match v with 
-  | v_nat k => h_nat k
-  | v_map _ _ => h_fun
-  | v_fun => h_fun
-  | v_list _ => h_list
-  | v_wrong => h_wrong
-  end.
-
-
-Inductive Consistent : Value -> Value -> Prop :=
-  | c_nat : forall i, Consistent (v_nat i) (v_nat i)
-  | c_list : forall XS YS, Forall2 Consistent XS YS ->
-      Consistent (v_list XS) (v_list YS)
-  | c_wrong : Consistent v_wrong v_wrong
-
-  | c_fun : Consistent v_fun v_fun
-  | c_fun1 : forall X r, Consistent v_fun (v_map X r)
-  | c_fun2 : forall X r, Consistent (v_map X r) v_fun
-
-    (* maps that produce consistent results are consistent *)
-  | c_map2 : forall X1 X2 r1 r2,
-      Consistent r1 r2 -> 
-      Consistent (v_map X1 r1) (v_map X2 r2)
-
-    (* maps that don't overlap in their inputs are consistent *)
-    (* note: should this be exists or forall? *)
-  | c_map1 : forall X1 X2 r1 r2, 
-      (exists x1 x2, List.In x1 X1 /\ List.In x2 X2 /\ Inconsistent x1 x2) ->
-      Consistent (v_map X1 r1) (v_map X2 r2)
-
-with Inconsistent : Value -> Value -> Prop :=
-  | i_head : forall x y, 
-      head x <> head y ->
-      Inconsistent x y
-  | i_list_l : forall XS YS, 
-      length XS <> length YS ->
-      Inconsistent (v_list XS) (v_list YS)      
-  | i_list_e : forall XS YS,
-      Exists2 Inconsistent XS YS ->
-      Inconsistent (v_list XS) (v_list YS)
-  | i_map : forall X1 X2 r1 r2,
-      (forall x1 x2, List.In x1 X1 -> List.In x2 X2 -> Consistent x1 x2) ->
-      Inconsistent r1 r2 ->
-      Inconsistent (v_map X1 r1) (v_map X2 r2).
-
-Hint Constructors Consistent Inconsistent : core.
-
-(* There are two ways to compare lists of values for consistency:
-
-     Pointwise - corresponding elements must be consistent
-     Any - all pairs of elements from the two lists must be consistent
-
- *)
-
-Definition ConsistentPointwiseList XS YS := 
-  Forall2 Consistent XS YS.
-Definition InconsistentPointwiseList XS YS := 
-  length XS <> length YS \/ Exists2 Inconsistent XS YS.
-Definition ConsistentAnyList XS YS := 
-  forall x y, List.In x XS -> List.In y YS -> Consistent x y.
-Definition InconsistentAnyList XS YS := 
-  (exists x y, List.In x XS /\ List.In y YS /\ Inconsistent x y).
-
-
-(* A set of values is consistent if all members are 
-   consistent with eachother *)
-Definition ConsistentSet := 
-  fun V : P Value => 
-    forall x y, x ∈ V -> y ∈ V -> Consistent x y.
-
-(* Two values cannot be both consistent and inconsistent. *)
-
-Lemma Consistent_Inconsistent_disjoint : 
-  forall x y, Consistent x y -> Inconsistent x y -> False.
-Proof.
-  intros x.
-  eapply Value_ind' with (P := fun x => 
-  forall y : Value, Consistent x y -> Inconsistent x y -> False).
-  all: intros.
-  all: try solve [inversion H; inversion H0; subst; done].
-  + inversion H2; inversion H1; subst.
-    all: try simpl in H3; try done.
-    - inversion H9; subst. clear H9.
-      eapply H0; eauto.
-    - inversion H9; subst. clear H9.
-    destruct H11 as [x1 [x2 [I1 [I2 ii]]]].
-    specialize (H5 _ _ I1 I2).
-    rewrite Forall_forall in H.
-    eapply H; eauto.
-  + inversion H0; inversion H1; subst. simpl in H5; try done.
-    - inversion H7; subst. eauto using Forall2_length.
-    - inversion H7; subst; clear H7.
-      clear H1 H0. move: YS H3 H6.
-      induction H; intros YS h1 h2;
-        inversion h1; inversion h2; subst.  
-      inversion H7; subst. eauto.
-      inversion H7; subst. eauto.
-Qed.
-
-(* Determining whether two values are consistent or inconsistent 
-   is decidable *)
-
-Definition ConsistentDecidable := fun v1 => forall v2 : Value, 
-                     {Consistent v1 v2} + {Inconsistent v1 v2}.
-
-
-
-Lemma dec_any : forall XS, ForallT ConsistentDecidable XS -> forall YS, { ConsistentAnyList XS YS } + {InconsistentAnyList XS YS}.
-induction XS.
-- intros h. intros ys. left. intros x y h1 h2. inversion h1.
-- intros h. inversion h. subst. clear h.
-  intros YS. unfold ConsistentDecidable in H1.
-  destruct (IHXS H2 YS).
-  + induction YS. left. intros x y h1 h2. inversion h2.
-    have CE: (ConsistentAnyList XS YS).
-    intros x y h1 h2. 
-    eapply c; eauto. simpl. eauto.
-    specialize (IHYS CE). destruct IHYS.
-    ++ destruct (H1 a0).       
-       left. 
-       { intros x y h1 h2.
-         destruct h1 as [EQ|INXS]; destruct h2 as [EQ2|INYS]; subst.
-         -- auto.
-         -- apply c0; eauto. simpl; auto.
-         -- apply c; eauto. simpl; auto.
-         -- apply CE; eauto.
-       } 
-       right. exists a . exists a0. simpl. split; auto.
-    ++ right. destruct i as [x [y [h1 [h2 h3]]]].
-       exists x. exists y. simpl. eauto.
-
-  + right. destruct i as [x1 [x2 [h1 [h2]]]].
-    exists x1. exists x2. simpl. split; eauto. 
-Qed.
-
-Lemma dec_point : forall XS,  ForallT ConsistentDecidable XS -> forall YS, { ConsistentPointwiseList XS YS } + {InconsistentPointwiseList XS YS}.
-Proof.  
-induction XS; intros IH [|y YS].
-+ left. unfold ConsistentPointwiseList. eauto.
-+ right. unfold InconsistentPointwiseList. simpl; left; auto.
-+ right. left; simpl; auto.
-+ inversion IH; subst. 
-  destruct (H1 y); destruct (IHXS H2 YS); unfold ConsistentPointwiseList in *; 
-    unfold InconsistentPointwiseList in *.
-  all: try solve [simpl; left; eauto].
-  all: try solve [right; destruct i; simpl; right; eauto].
-  right; destruct i; simpl. left; eauto. right; eauto.
-Qed.  
-  
-Lemma dec_con : forall v1 v2, {Consistent v1 v2 } + {Inconsistent v1 v2 }.
-intros v1. 
-eapply Value_rec' with 
-(P := fun v1 =>  forall v2 : Value, {Consistent v1 v2} + {Inconsistent v1 v2}).
-all: intros.
-all: destruct v2.
-all: try solve [right; eapply i_head; simpl; done].
-all: try solve [left; eauto].
-+ destruct (Nat.eq_dec n n0). subst.
-  left. eauto. right. eapply i_head; simpl. intro h.
-  inversion h. subst.  done.
-+ destruct (H0 v2).
-  left. eapply c_map2; eauto.
-  destruct (dec_any l H l0).
-  right. eapply i_map; eauto.
-  left. eauto.
-+ destruct (dec_point l H l0).
-  left; eauto.
-  right. destruct i; eauto.
-Qed.
-
-(* Consistency is also reflexive *)
-
-Definition ConsistentReflexive (x : Value) := Consistent x x.
-
-Lemma ConsistentPointwiseList_refl : forall XS, ForallT ConsistentReflexive XS -> ConsistentPointwiseList XS XS. 
-Proof.
-  induction 1; unfold ConsistentPointwiseList; eauto.
-Qed.
-
-#[export] Instance Consistent_refl : Reflexive Consistent.
-intro x.
-eapply Value_ind' with (P := ConsistentReflexive).
-all: unfold ConsistentReflexive; intros; eauto using ConsistentPointwiseList_refl.
-econstructor. rewrite <- Forall_Forall2. auto.
-Qed.
-
-(* ------------------------------------------------- *)
-(* Consistent sets *)
-
-(*
-Section ConsistentSets.
-
-
-(* Can we restrict ⊆ so that consistent sets stay consistent? *)
-
-Definition IncludedConsistent (w1 w2 : P Value) := 
-  forall x : Value, 
-  (x ∈ w1 -> x ∈ w2) /\ (x ∈ w2 -> forall y, y ∈ w1 -> Consistent x y).
-
-Class CS (X : Type) := 
-  { consistent : X -> X -> Prop;
-    inconsistent : X -> X -> Prop;
-    exclusive : forall x y, consistent x y -> inconsistent x y -> False;
-    decidable : forall x y, { consistent x y } + { inconsistent x y };
-    reflexive : forall x, consistent x x
-  }.
-
-
-End ConsistentSets.
-*)
 
 (* Valid ---- -------------------------------------- *)
 
 (* A `P Value` is the denotation of an actual lambda-calculus value if it is
-   inhabited and does not contain wrong.
+   inhabited and does not contain wrong (or fail).
+
+   We could also call this "succeeds".
 *)
 
-Definition valid_witness (x : Value) (V : P Value) : Prop :=
-   (x ∈ V) /\ not (v_wrong ∈ V).
-
 Definition valid (V : P Value) : Type :=
-  { x : Value & valid_witness x V }.
+  nonemptyT V * not (v_wrong ∈ V).
+
+(* A valid finite set *)
+Definition valid_mem (V : list Value) : Prop :=
+  V <> nil /\ not (List.In v_wrong V).
 
 (* valid sets are inhabited *)
-Lemma valid_is_nonempty V : valid V -> nonemptyT V.
-  intros [x [P _]]. econstructor; eauto. Defined.
+Definition valid_is_nonempty V : valid V -> nonemptyT V := fst.
 
-(* A valid finite set: The witness is the first element in the list *)
-Definition valid_mem (V : list Value) : Prop :=
-  match V with 
-    | x :: _ => valid_witness x (mem V)
-    | _ => False
-  end.
+(* And do not contain wrong *)
+Lemma valid_not_wrong {X} : valid X -> not (v_wrong ∈ X).
+Proof. intros [x h1]; done. Qed.
 
-Lemma valid_mem_valid : forall V, valid_mem V -> valid (mem V).
+Lemma valid_mem_valid {V} : valid_mem V -> valid (mem V).
 Proof.
-  intros V VM.
+  intros [V1 V2].
   destruct V; simpl in *. done.
-  exists v. auto.
+  split. exists v. auto. eauto.
 Qed.
 
-#[export] Hint Immediate valid_mem_valid : core.
+Lemma valid_mem_nonnil {V} : valid_mem V -> V <> nil.
+Proof. intros [h _]; auto. Qed.
 
-Lemma wrong_not_valid : forall X, valid X -> not (v_wrong ∈ X).
-Proof.
-  intros X V h.
-  destruct V as [x [h0 h1]]. done.
-Qed.
+Lemma valid_mem_not_wrong {V} : valid_mem V -> not (List.In v_wrong V).
+Proof. intros [h j]; auto. Qed.
 
 (* A finite, inhabited subset of a valid set is valid *)
-Lemma valid_sub_valid_mem {D a} : D <> nil -> valid a -> mem D ⊆ a -> valid_mem D.
+Lemma valid_sub_valid_mem {D a} :
+  D <> nil -> valid a -> mem D ⊆ a -> valid_mem D.
 Proof.
-  intros NE V S.
-  inversion V.
-  unfold valid_mem.
-  unfold valid_witness in *.
-  destruct D. done.
-  move: H => [ii cc].
+  intros NE [V1 V2] S.
+  inversion V1.
   split; auto.
 Qed.
+
+#[export] Hint Immediate valid_is_nonempty valid_not_wrong valid_mem_valid valid_mem_nonnil valid_mem_not_wrong valid_sub_valid_mem : core.
 
 Lemma valid_join : forall v1 v2, 
     valid v1 -> 
     valid v2 ->
     valid (v1 ∪ v2).
 Proof.
-  intros v1 v2 [x1 [I1 h1]] [x2 [I2 h2]].
-  exists x1. unfold valid_witness. split.
-  eapply Union_introl; eauto.
+  intros v1 v2 [[x1 I1] h1] [[x2 I2] h2].
+  split. 
+  exists x1. eapply Union_introl; eauto.
   intro h. inversion h; subst; done.
 Qed.
 
@@ -462,7 +101,7 @@ Qed.
 Definition LIST : list (P Value) -> P Value  :=
   fun DS w => 
     match w with 
-    | v_list WS => Forall2 In DS WS
+    | v_list WS => Forall2 Ensembles.In DS WS
     | _ => False
     end.
 
@@ -475,6 +114,7 @@ Definition CONS : P Value -> P Value -> P Value :=
     | _ => False
     end.
         
+
 Lemma CONS_mono_sub { D1 D2 D3 D4 } :
     D1 ⊆ D3 -> D2 ⊆ D4 -> ((CONS D1 D2) ⊆ (CONS D3 D4)).
 Proof.  
@@ -496,10 +136,26 @@ Proof.
 Qed.
 
 
+Lemma valid_NIL : valid NIL.
+Proof.
+  unfold NIL, valid.
+  split. econstructor; eauto. intro h; inversion h.
+Qed.
+
+Lemma valid_CONS {x y z} : valid x -> valid y -> v_list z ∈ y -> valid (CONS x y).
+Proof.
+  intros [[vx h1] nx] [[vl h2] nl] In. unfold CONS.
+  split.
+  - exists (v_list (vx :: z)). cbv. eauto.
+  - intro h. inversion h.
+Qed. 
+
 (* ------------ Functions ------------------ *)
 
 Infix "↦" := v_map (at level 85, right associativity).
 
+(* Call by value means that we require the argumnet to 
+   be valid. *)
 Definition Λ : (P Value -> P Value) -> P Value :=
   fun f => fun v => match v with 
           | (V ↦ w) => (w ∈ f (mem V)) /\ valid_mem V
@@ -507,7 +163,7 @@ Definition Λ : (P Value -> P Value) -> P Value :=
           | _ => False
           end.
 
-(* 4 possibilities in application: 
+(* Application: 
    1. v_wrong e |-> v_wrong
    2. e v_wrong |-> v_wrong  
          -- should this ensure that e is a function or list?
@@ -517,8 +173,8 @@ Definition Λ : (P Value -> P Value) -> P Value :=
  *)
 Inductive APPLY : P Value -> P Value -> Value -> Prop :=
   | FUNWRONG : forall D1 D2,
-     (v_wrong ∈ D1)
-     -> APPLY D1 D2 v_wrong
+     (v_wrong ∈ D1) ->
+     APPLY D1 D2 v_wrong
   | ARGWRONG : forall D1 D2,
      (v_wrong ∈ D2) 
      -> APPLY D1 D2 v_wrong
@@ -528,6 +184,16 @@ Inductive APPLY : P Value -> P Value -> Value -> Prop :=
   | PROJ   : forall D1 D2 w VS k, 
      (v_list VS ∈ D1) -> (v_nat k ∈ D2) -> nth_error VS k = Some w
      -> APPLY D1 D2 w.
+(* ADD these two for more wrong *)
+(*
+  | FUNWRONG2 : forall D1 D2 x,
+     x ∈ D1 -> (Inconsistent x v_fun /\ forall XS, Inconsistent x (v_list XS)) ->
+     APPLY D1 D2 v_wrong
+  | ARGWRONG2 : forall D1 D2 VS x, 
+     (v_list VS ∈ D1) -> 
+     (x ∈ D2) -> 
+     (forall k, Inconsistent x (v_nat k)) ->
+     APPLY D1 D2 v_wrong. *)
 
 (*  < 1 , 2 > (\x.x)  --> wrong?? 
 
@@ -536,9 +202,9 @@ Inductive APPLY : P Value -> P Value -> Value -> Prop :=
 *)
 
 
-
-
 Infix "▩" := APPLY (at level 90).
+
+(* ------------ Numbers ------------------ *)
 
 Definition NAT : nat -> P Value :=
   fun j v => match v with 
@@ -556,14 +222,28 @@ Definition ADD : P Value :=
   fun w => 
     match w with 
     | (V ↦ v_nat k) => 
-        exists i j, (v_list (v_nat i :: v_nat j :: nil) ∈ mem V) /\ k = i + j
+        exists i j, ((v_list (v_nat i :: v_nat j :: nil)) ∈ mem V) /\ k = i + j
     | V ↦ v_wrong => 
         not (exists i j, v_list (v_nat i :: v_nat j :: nil) ∈ mem V)
     | _ => False
     end.
 
+Lemma valid_NAT : forall k, valid (NAT k).
+Proof.
+  intros k. unfold NAT, valid. split.
+  exists (v_nat k); eauto. cbn. auto.
+  intro h; inversion h.
+Qed.
 
-(* -- Basic Properties of Denotational Operators --------------------------------- *) 
+Lemma valid_ADD : valid ADD.
+Proof. 
+  unfold ADD, valid.
+  split.
+  exists ( (v_list (v_nat 0 :: v_nat 0 :: nil) :: nil) ↦ v_nat 0). 
+  cbn.
+  exists 0. exists 0. split.  auto. auto.
+  intro h. inversion h.
+Qed.
 
 (* k∈℘k *)
 Lemma k_in_den_k : forall k, v_nat k ∈ NAT k.
@@ -602,31 +282,36 @@ Qed.
 
 Lemma valid_Λ : forall F, valid (Λ F).
 Proof. 
-  intros F. unfold Λ, valid.
-  exists v_fun. split. cbv. auto.
+  intros F. 
+  split. cbv.
+  exists v_fun. auto. 
   unfold In. done.
 Qed.
 
  
 Lemma valid_LIST : forall D, ForallT valid D -> valid (LIST D).
-induction 1; unfold LIST, valid, valid_witness, In. 
-exists (v_list nil). split; auto.
-destruct IHX as [xs [nin h]].
-destruct p as [y [niny hy]]. 
-Abort.
-
-
-(* #[export] Hint Resolve valid_Λ : core. *)
+induction 1. 
+split; auto.
+exists (v_list nil); done. 
+destruct IHX as [[xs nin] h].
+destruct p as [[y niny] hy]. 
+destruct xs; try done.
+split. 
+exists (v_list (y :: l0)). econstructor; eauto.
+eauto.
+Qed.
 
 (*  Abstraction is Extensional ---- -------------------------------------- *)
 
 (* Λ-ext-⊆  *)
+(* By restricting the hypothesis to only valid sets, we strengthen 
+   the result. But this depends on Λ quantifying over valid sets. *)
 Lemma Λ_ext_sub {F1 F2} :
   (forall {X : P Value}, valid X -> F1 X ⊆ F2 X) -> Λ F1 ⊆ Λ F2.
 Proof.
-  intros F1F2 v Iv. destruct v eqn:E; inversion Iv.
-  - split; auto. eapply F1F2; eauto. 
-  - trivial.
+  intros F1F2 v Iv. destruct v eqn:E; inversion Iv; auto.
+  - split; auto. 
+    eapply F1F2; eauto. 
 Qed.
 
 Lemma Λ_ext {F1 F2} :
@@ -648,14 +333,14 @@ Definition monotone (F : P Value -> P Value) : Set :=
 
 (* Λ-▪-id *)
 Lemma Λ_APPLY_id { F X } :
-  continuous F -> monotone F -> valid X 
+  continuous F -> monotone F -> valid X
   -> (Λ F) ▩ X ≃ F X.
 Proof. 
-  intros Fcont Fmono NEX .
+  intros Fcont Fmono NEX.
   split.
   + intros w APP. inversion APP; subst. 
     - inversion H.
-    - exfalso. eapply wrong_not_valid; eauto. 
+    - exfalso; eapply valid_not_wrong; eauto. 
     - inversion H.
       eapply (Fmono (mem V) X); eauto. 
     - inversion H.
@@ -664,12 +349,12 @@ Proof.
     { intros d y. inversion y; subst. auto. done. }
     move: (Fcont X (cons w nil) M NEX) => 
     [ D [ DltX [ wInFD NED ]]].
-    move: NEX => [ x [ h0 h1]].
+    move: NEX => [ [x h0] h1].
     eapply BETA with (V:=D); eauto.
-    split; auto.
+    repeat split; eauto.
 Qed.
 
-(*  Primitive Abstraction followed by Application is the identity --------- *)
+(*  Adding actually adds --------- *)
 
 Lemma den_list : forall i j V, mem V ⊆ LIST (NAT i :: NAT j :: nil) ->
                  forall x, x ∈ mem V -> x = v_list (v_nat i :: v_nat j :: nil).
@@ -705,7 +390,7 @@ Proof.
       move: (den_list _ _ _ H0 _ h0) => h1. inversion h1. subst. clear h1.
       eapply k_in_den_k.
     - assert False. eapply H.
-      destruct V; try done.
+      destruct V; try done. destruct H1. done.
       move: (den_list _ _ _ H0 v ltac:(auto)) => h1. subst. 
       eauto.
       done.
@@ -716,7 +401,8 @@ Proof.
      - intros x xIn. inversion xIn. subst.
        cbn. eauto using k_in_den_k.
        inversion H.
-     - cbn. split. eauto. unfold In, mem. intro h. inversion h. done. done.
+     - cbn. split. eauto. unfold In, mem. intro h. inversion h. 
+       intro h. inversion h; done.
 Qed.
 
 (* Environments ---------------------- *)
@@ -742,6 +428,8 @@ Ltac gather_atoms ::=
 (* ---------------------------------------------------- *)
 
 (* Sub environments *)
+
+(* Can we make a container instance for GEnv??? *)
 
 Definition sub_env : Env -> Env -> Prop := all2 Included.
 
@@ -770,9 +458,10 @@ Proof. intros; econstructor; eauto. reflexivity. Qed.
 (* Nonempty environments *)
 
 (* This is the same as nonemptyT *)
-Definition ne (s : P Value) : Type := { x : Value & (x ∈ s) }.
+(* 
+Definition ne (s : P Value) : Type := { x : Value & (x ∈ s) }. *)
 
-Definition nonempty_env : Env -> Type := allT ne.
+Definition nonempty_env : Env -> Type := allT nonemptyT.
 
 Definition valid_env : Env -> Type := allT valid. 
 
@@ -790,8 +479,7 @@ Proof. intros Fr NEP NEX. eapply allT_cons; eauto. Qed.
 
 #[export] Hint Resolve extend_valid_env : core.
 
-(* A finite environment has a list of values for 
-   each variable. *)
+(* A finite environments *)
 
 Definition finite (X : P Value) : Prop := exists E, (X ≃ mem E) /\ E <> nil.
 
@@ -799,140 +487,68 @@ Definition finite_env : Env -> Type := allT finite.
 
 Lemma extend_nonempty_env {ρ x X} : 
   x `notin` dom ρ ->
-  ne X -> 
+  nonemptyT X -> 
   nonempty_env ρ -> nonempty_env (x ~ X ++ ρ).
 Proof. intros Fr NEP NEX. eapply allT_cons; eauto. Qed.
 
 #[export] Hint Resolve extend_nonempty_env : core.
 
+(* ---------------------------------------------------- *)
 
-(* A consistent finite value is one where all 
-   
-Definition Consistent_finite := fun V : P Value => 
- forall E, (V ≃ mem E) -> ConsistentAnyList E E.
 
-Lemma disjoint_Consistent : forall x y, Consistent x y -> Inconsistent x y -> False.
-Admitted.
-*)
-
-Definition APPLY_Consistent : forall w1 w2, 
-    ConsistentSet w1 -> 
-    ConsistentSet w2 ->
-    ConsistentSet (APPLY w1 w2). 
+Definition APPLY_ConsistentSet : forall w1 w2 w1' w2', 
+    ConsistentSet w1 w1' -> 
+    ConsistentSet w2 w2' -> 
+    ConsistentSet (APPLY w1 w2) (APPLY w1' w2'). 
 Proof.
-  intros w1 w2 C1 C2.
+  intros w1 w2 w1' w2' C1 C2.
   unfold ConsistentSet in *.
-  intros x y h1 h2. 
-  inversion h1; inversion h2; subst; eauto.
+  intros x y h1 h2.
+
+  inversion h1; inversion h2; subst; eauto; clear h1 h2.
   all: try (move: (C1 _ _ H H3) => h; inversion h; subst; auto).
-  all: try (move: (C2 _ _ H H4) => h; inversion h; subst; auto).
   all: try (move: (C1 _ _ H H5) => h; inversion h; subst; auto).
+  all: try (move: (C2 _ _ H H4) => h; inversion h; subst; auto).
   all: try (move: (C2 _ _ H0 H5) => h; inversion h; subst; auto).
 
+  (* Application of a function to "wrong". This case is impossible because
+     the map's domain is valid and all elements of w2 are consistent with wrong. *) 
+  move: H5 => [NE NW]. 
+  exfalso.
+  have L: forall y, y ∈ w2' -> Consistent v_wrong y.
+  { intros. eauto. }
   destruct V; try done.
-  move: H5 => [h3 h4]. 
-  have h5: v ∈ w2. eapply H4. eauto.
-  move: (C2 _ _ H h5) => Cwv.
-  inversion Cwv. subst.
-  assert False. eapply h4. eauto. done.
+  specialize (L v ltac:(eauto)). inversion L. subst; simpl in NW. auto.
 
+  move: H1 => [NE NW]. 
+  exfalso.
+  have L: forall y, y ∈ w2 -> Consistent y v_wrong.
+  { intros. eauto. }
   destruct V; try done.
-  move: H1 => [h3 h4]. 
-  have h5: v ∈ w2. eapply H0. eauto.
-  move: (C2 _ _ H5 h5) => Cwv.
-  inversion Cwv. subst.
-  assert False. eapply h4. eauto. done.
+  specialize (L v ltac:(eauto)). inversion L. subst; simpl in NW. auto.
 
-  clear h.
   move: H3 => [x1 [x2 [I1 [I2 ii]]]].
   have h3 : x1 ∈ w2. eapply H0; eauto.
-  have h4 : x2 ∈ w2. eapply H6; eauto.
-  move: (C2 x1 x2 h3 h4) => h.
+  have h4 : x2 ∈ w2'. eapply H6; eauto.
+  move: (C2 x1 x2 h3 h4) => h5.
   assert False. eapply Consistent_Inconsistent_disjoint; eauto. done.
 
   move: (C2 _ _ H0 H6)=> c1. inversion c1; subst; clear c1; eauto. 
-  clear h1 h2 h H H0 H5 H6.
+  clear h H H0 H5 H6.
   move: k0 H1 H7.
   induction H4; intros k0; destruct k0; simpl;  try done.
   + intros h1 h2; inversion h1; inversion h2; subst. auto.
   + intros h1 h2. eauto.
 Qed.
 
-(*
-inversion h1'; subst; inversion h2'; subst; eauto.
-all: try solve [rewrite E1 in H; rewrite E1 in H0;
-  move: (C1 _ _ H H0) => h; inversion h].
-rewrite E2 in H. rewrite E2 in H1. admit. (* need to keep v_wrong out of D2 *)
-all: try solve [rewrite E2 in H; rewrite E2 in H1;
-  move: (C2 _ _ H H1) => h; inversion h].
-all: try solve [rewrite E1 in H; rewrite E1 in H2;
-  move: (C1 _ _ H H2) => h; inversion h].
-all: try solve [rewrite E2 in H0; rewrite E2 in H2;
-  move: (C2 _ _ H0 H2) => h; inversion h]. admit. 
-+ (* both beta *)
-rewrite E1 in H; rewrite E1 in H2;
-move: (C1 _ _ H H2) => h.
-inversion h; subst. auto.
-rewrite E2 in H0. rewrite E2 in H3.
-move: H6 => [x1 [x2 [G1 [G2 I3]]]].
-have I4: List.In x1 F2. eapply H0. eauto. 
-have I5: List.In x2 F2. eapply H3. eauto.
-specialize (C2 _ _ I4 I5).
-assert False. eapply (disjoint_Consistent x1 x2); eauto. done.
-+ (* both nth *)
-  rewrite E1 in H. rewrite E1 in H2.
-  rewrite E2 in H0. rewrite E2 in H3.
-  move: (C1 _ _ H H2) => h. inversion h. subst. clear h.
-  move: (C2 _ _ H0 H3) => h. inversion h. subst. clear h.
-  clear H0 H3 H H2.
-  move: k0 H1 H4.
-  induction H7. 
-  intros k0 hk; destruct k0; simpl in hk; try done.
-  intros k0 n1 n2; destruct k0; simpl in n1, n2.
-  inversion n1. inversion n2. subst. auto.
-  eapply IHForall2; eauto.
-Admitted.  
-
-specialize (C1 F1 E1).
-specialize (C2 F2 E2).
-unfold ConsistentAnyList in *.
-intros x y I1 I2.
-move: (h2 _ I1) => h1'.
-move: (h2 _ I2) => h2'.
-inversion h1'; subst; inversion h2'; subst; eauto.
-all: try solve [rewrite E1 in H; rewrite E1 in H0;
-  move: (C1 _ _ H H0) => h; inversion h].
-rewrite E2 in H. rewrite E2 in H1. admit. (* need to keep v_wrong out of D2 *)
-all: try solve [rewrite E2 in H; rewrite E2 in H1;
-  move: (C2 _ _ H H1) => h; inversion h].
-all: try solve [rewrite E1 in H; rewrite E1 in H2;
-  move: (C1 _ _ H H2) => h; inversion h].
-all: try solve [rewrite E2 in H0; rewrite E2 in H2;
-  move: (C2 _ _ H0 H2) => h; inversion h]. admit. 
-+ (* both beta *)
-rewrite E1 in H; rewrite E1 in H2;
-move: (C1 _ _ H H2) => h.
-inversion h; subst. auto.
-rewrite E2 in H0. rewrite E2 in H3.
-move: H6 => [x1 [x2 [G1 [G2 I3]]]].
-have I4: List.In x1 F2. eapply H0. eauto. 
-have I5: List.In x2 F2. eapply H3. eauto.
-specialize (C2 _ _ I4 I5).
-assert False. eapply (disjoint_Consistent x1 x2); eauto. done.
-+ (* both nth *)
-  rewrite E1 in H. rewrite E1 in H2.
-  rewrite E2 in H0. rewrite E2 in H3.
-  move: (C1 _ _ H H2) => h. inversion h. subst. clear h.
-  move: (C2 _ _ H0 H3) => h. inversion h. subst. clear h.
-  clear H0 H3 H H2.
-  move: k0 H1 H4.
-  induction H7. 
-  intros k0 hk; destruct k0; simpl in hk; try done.
-  intros k0 n1 n2; destruct k0; simpl in n1, n2.
-  inversion n1. inversion n2. subst. auto.
-  eapply IHForall2; eauto.
-Admitted.  
-*)
+Definition APPLY_ConsistentW : forall w1 w2, 
+    ConsistentW w1 -> 
+    ConsistentW w2 -> 
+    ConsistentW (APPLY w1 w2). 
+Proof.
+  intros.  unfold ConsistentW in *.
+  eapply APPLY_ConsistentSet; eauto.
+Qed.
 
 (* ----------------------------------------------------- *)
 
@@ -1011,13 +627,6 @@ Qed.
 Definition monotone_env (D : Env -> P Value) := 
  forall ρ ρ' , ρ ⊆e ρ' -> (D ρ) ⊆ D ρ'.
 
-(* --- Relations on results and products --------------- *)
-
-(* TODO.
-   This part seems to be not connected to the rest. 
-   Skipping for now.
-*)
-
 
 (* Continuous ----------------------------------------- *)
 
@@ -1029,16 +638,17 @@ Definition continuous_env (D:Env -> P Value) (ρ:Env) : Prop :=
 
 (* creates an environment that maps each variable x to a singleton 
    set of some element in ρ x *)
+(* can we make this nonempty_env instead of valid_env *)
 Definition initial_finite_env (ρ : Env) (NE : valid_env ρ) : Env.
   induction NE. exact nil.
-  destruct f as [V _].
+  destruct f as [[V _] _].
   exact (cons (x, ⌈ V ⌉) IHNE).
 Defined.
 
 Lemma initial_finite_dom : forall E NE, dom (initial_finite_env E NE) = dom E.
 Proof.
   induction NE; simpl. auto.
-  destruct f as [v w]. simpl. congruence.
+  destruct f as [[v _] w].  simpl. congruence.
 Qed. 
 
 #[export] Hint Rewrite initial_finite_dom : rewr_list.
@@ -1056,7 +666,7 @@ Lemma initial_fin (ρ : Env) (NE : valid_env ρ) :
 Proof.
   induction NE.
   simpl. econstructor.
-  simpl. destruct f as [v w1 ].
+  simpl. destruct f as [[v _] w1 ].
   econstructor; eauto.
   rewrite initial_finite_dom. auto.
 Qed.
@@ -1068,7 +678,7 @@ Lemma initial_fin_sub (ρ : Env) (NE : valid_env ρ) :
   initial_finite_env ρ NE ⊆e ρ.
 Proof.
   induction NE; simpl. econstructor.
-  destruct f as [v [wpx _]].
+  destruct f as [[v wpx] _].
   econstructor. auto.
   rewrite initial_finite_dom. auto.
   intros z y. inversion y. subst. unfold In. auto.
@@ -1088,7 +698,8 @@ Lemma single_fin { v x ρ NE } :
 Proof.
   induction NE; unfold finite_env; eauto.
   unfold single_env; econstructor.
-  unfold single_env. simpl. destruct f.
+  unfold single_env. simpl. 
+  destruct f as [[v1 I1] v2].
   destruct (x == x0) eqn:EQ.
   + subst. rewrite update_eq_var. 
     econstructor.
@@ -1114,7 +725,7 @@ Proof.
   + (* cons case *)
     unfold single_env in *.
     simpl. simpl_env in Indom.
-    destruct f as [w [h1 h2]]. simpl.
+    destruct f as [[w h1] h2]. simpl.
     simpl in vpe.
     destruct (x == x0).
     ++ subst. econstructor; eauto.
@@ -1137,7 +748,7 @@ Proof.
   unfold single_env.
   move: NE.
   induction NE; intro h. fsetdec.
-  simpl. destruct f. simpl.
+  simpl. destruct f as [[w h1] h2]. simpl.
   destruct (x == x0) eqn:EQ. subst. simpl.
   rewrite eq_dec_refl. econstructor; eauto.
   simpl. rewrite EQ. simpl in h. eapply IHNE; auto. fsetdec.
@@ -1183,8 +794,7 @@ Qed.
 
 
 Lemma CONS_continuous {D E ρ}{w} :
-  (valid_env ρ)
-  -> w ∈ (CONS (D ρ) (E ρ))
+    w ∈ (CONS (D ρ) (E ρ))
   -> continuous_env D ρ 
   -> continuous_env E ρ
   -> monotone_env D 
@@ -1193,7 +803,7 @@ Lemma CONS_continuous {D E ρ}{w} :
     exists (pf : finite_env ρ3) , ρ3 ⊆e  ρ 
                              /\ (w ∈ (CONS (D ρ3) (E ρ3))).
 Proof.  
-  intros NE C. unfold CONS, In in C. destruct w.
+  intros C. unfold CONS, In in C. destruct w.
   all: try done.
   destruct l. try done.
   move: C => [Dv El].
@@ -1214,7 +824,6 @@ Proof.
   - eapply mE. instantiate (1:= ρ2).
     eapply join_sub_right; eauto. auto.
 Qed.
-
 
 
 Lemma APPLY_continuous {D E ρ}{w} :
@@ -1304,8 +913,9 @@ Proof.
   induction v.
   all: try solve [intros; cbv in H; done].
   - (* v is l ↦ v *)
-    intros [ wEVρ NW ] IH mE.
-    destruct (IH l NW v wEVρ) as
+    intros [ wEVρ [NW CL] ] IH mE.
+    have VV: valid_mem l. unfold valid_mem. split; eauto.
+    destruct (IH l ltac:(eauto) v wEVρ) as
       [ ρ' [ fρ' [ ρ'Vρ wEρ' ]]]. 
     inversion ρ'Vρ. subst. clear ρ'Vρ.
     inversion fρ'. subst. clear fρ'.
@@ -1317,73 +927,6 @@ Proof.
   - exists (initial_finite_env ρ NE).
     repeat split; eauto.
 Qed.
-
-(*
-
-(* Exists *)
-
-Definition ExistsFinite (F : P Value -> P Value) : P Value :=
-  fun V => exists W , finite W /\ (V ∈ F W).
-
-Lemma ExistsFinite_ext_sub: forall {F1 F2 : P Value -> Ensemble Value}, 
-    (forall X : P Value, nonemptyT X -> F1 X ⊆ F2 X) -> ExistsFinite F1 ⊆ ExistsFinite F2.
-Proof.
-  intros.
-  unfold ExistsFinite, Included.
-  intros v [W [[L [W1 W2]] h]].
-  apply Extensionality_Ensembles in W1. subst.
-  have NL: nonemptyT (mem L) by (eauto using nonnil_nonempty_mem).
-  exists (mem L).
-  split. unfold finite. exists L; split; auto. reflexivity.
-  eapply H; eauto.
-Qed.
-
-Lemma ExistsFinite_ext: 
-  forall {F1 F2 : P Value -> Ensemble Value}, 
-    (forall X : P Value, nonemptyT X -> F1 X ≃ F2 X) 
-    -> ExistsFinite F1 ≃ ExistsFinite F2.
-Proof.
-  intros.
-  split.
-  eapply ExistsFinite_ext_sub. intros X h. destruct (H X); auto.
-  eapply ExistsFinite_ext_sub. intros X h. destruct (H X); auto.
-Qed.
-
-Lemma ExistsFinite_continuous {E}{ρ}
-  {NE : valid_env ρ}{v x} :
-  x `notin` dom ρ
-  -> uniq ρ
-  -> v ∈ ExistsFinite (fun D => E (x ~ D ++ ρ)) 
-  -> (forall V, V <> nil -> 
-          continuous_env E (x ~ mem V ++ ρ))
-  -> monotone_env E
-  -> exists ρ', exists (pf:finite_env ρ'),
-            ρ' ⊆e ρ /\
-            (v ∈ (ExistsFinite (fun D => E (x ~ D ++ ρ')))).
-Proof.
-  intros Fx Uρ [X [FX inX]] CE ME.
-  move: FX => [V [MV NN]].
-  specialize (CE V NN).
-  unfold continuous_env, continuous_In in CE.
-  have SE: (x ~ X ++ ρ) ⊆e (x ~ mem V ++ ρ).
-    econstructor; eauto. rewrite MV. reflexivity.
-  unfold monotone_env in ME.
-  apply ME in SE. 
-  move: (SE _ inX) => inV.
-  destruct (CE _ inV) as [ρ' [Fp [h1 h2]]].
-  inversion h1. subst.
-  inversion Fp. subst.
-  exists E1.  eexists. eauto.
-  split. auto.
-  unfold ExistsFinite.
-  unfold "∈".
-  exists a1.
-  split. auto.
-  auto.
-Qed.
-
-*)
-
 
 (* ---------------------------------------------------------- *)
 
@@ -1944,10 +1487,7 @@ Qed.
   
 Lemma valid_nonempty_mem : forall V, 
       valid_mem V -> nonemptyT (mem V).
-Proof. intros.
-       destruct V. inversion H. 
-       unfold nonemptyT. exists v. eauto.
-Qed.
+Proof. intros. eapply valid_is_nonempty. eauto. Qed.
 
 (* ⟦⟧-continuous *)
 Lemma denot_continuous {t} : forall ρ,
@@ -1989,7 +1529,7 @@ Proof.
        erewrite <- all2_dom in Fr. 2: eapply S.
        rewrite (denot_abs x). fsetdec.
        split; auto.
-  + edestruct (CONS_continuous NE vIn) as [ρ' [F SS]]; eauto.
+  + edestruct (CONS_continuous vIn) as [ρ' [F SS]]; eauto.
     eapply denot_monotone.
     eapply denot_monotone.
     exists ρ'. exists F.
@@ -2107,26 +1647,84 @@ Proof.
     eapply allT_uniq; eauto.
 Qed.
 
+Lemma Consistent_denot :
+  forall t ρ1 ρ2, allT2 ConsistentSet ρ1 ρ2 -> valid_env ρ1 -> valid_env ρ2 ->
+             ConsistentSet (denot t ρ1) (denot t ρ2).
+Proof.
+  intro t.
+  eapply tm_induction with (t := t);
+  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
+  all: intros ρ1 ρ2 CR VR1 VR2.
+  all: autorewrite with denot.
+  all: intros x1 x2 I1 I2.
+  all: try solve [inversion I1; inversion I2; eauto].
+
+  - (* var *) 
+    induction CR; simpl in I1, I2.
+    ++ inversion I1. inversion I2. subst. auto.
+    ++ destruct (x == x0) eqn:E; rewrite E in I1, I2. eapply f; eauto.
+       inversion VR1. inversion VR2. eauto.
+
+  - (* app *)
+    move: (IH1 ρ1 ρ2 ltac:(eauto) ltac:(eauto) ltac:(eauto)) => C1.
+    move: (IH2 ρ1 ρ2 ltac:(eauto) ltac:(eauto) ltac:(eauto)) => C2.
+
+    move: (APPLY_ConsistentSet _ _ _ _ C1 C2) => CA.
+
+    eapply (CA x1 x2 I1 I2).
+
+  - (* abs *)
+    pick fresh y.
+    rewrite (denot_abs y) in I1; eauto.
+    rewrite (denot_abs y) in I2; eauto.
+    destruct x1; unfold In, Λ in I1; try done;
+    destruct x2; unfold In, Λ in I2; try done.
+    move: I1 => [I1 [Vl Cl]].
+    move: I2 => [I2 [Vl0 Cl0]].
+    destruct (dec_any l (DecSetList l) l0).
+    destruct (dec_con x1 x2). eapply c_map2; eauto.
+    ++ (* Domains are consistent, ranges are not. Should be a contradiction. *)
+      have CS: ConsistentSet (mem l) (mem l0). admit.
+      have V1:  valid_env (y ~ mem l ++ ρ1). econstructor; eauto. admit.
+      have V2:  valid_env (y ~ mem l0 ++ ρ2). admit.
+      move: (IH y ltac:(auto) (y ~ mem l ++ ρ1) (y ~ mem l0 ++ ρ2) ltac:(eauto)      
+            ltac:(eauto) ltac:(eauto)) => h.
+      move: (h x1 x2 I1 I2) => C12.
+      exfalso. eapply Consistent_Inconsistent_disjoint; eauto.
+    ++ unfold InconsistentAnyList in i. 
+       eapply c_map1; eauto.
+  - (* nat *)
+    unfold NAT in *. 
+    destruct x1; try done.
+    destruct x2; try done.
+    inversion I1; inversion I2; subst; eauto.
+  - (* ADD: need a lemma that ADD is consistent *) 
+    admit.
+  - (* CONS: need a lemma about CONS *)
+    admit.
+Admitted.
+
 (* Example semantics *)
 
 
 Definition tm_Id : tm := abs (var_b 0).
 
-Lemma denot_Id : (v_fun :: nil ↦ v_fun) ∈ denot tm_Id nil.
+Lemma denot_Id {v} : (v <> v_wrong) -> (v :: nil ↦ v) ∈ denot tm_Id nil.
 Proof.
+  intro NE.
   unfold tm_Id.
   pick fresh x.
   rewrite (denot_abs x). simpl. auto.
-  cbv.
-  destruct (KeySetFacts.eq_dec x x); try done.
-  split. left. auto.
-  split. left. auto.  
-  intros [v1| v2]; done.
+  unfold Λ. unfold Ensembles.In.
+  split. 2: { split. done. intro h. inversion h. done. done. }
+  cbn.
+  destruct (x == x); try done.
+  cbn. left. auto.
 Qed. 
 
 
 Lemma denot_Id_inv : forall x ρ, x ∈ denot tm_Id ρ ->
-                          forall w, Consistent x (w :: nil ↦ w).
+                          forall w,  Consistent x (w :: nil ↦ w).
 Proof.
   intros x ρ.
   unfold tm_Id. 
@@ -2135,15 +1733,15 @@ Proof.
   intro h. unfold In in h. 
   unfold Λ in h.
   destruct x; try done.
-  move: h => [h0 h1].
+  move: h => [h0 [h1 h2]].
   cbn in h0. rewrite eq_dec_refl in h0.
-  unfold valid_mem in h1. destruct l. done.
-  unfold valid_witness in h1. destruct h1 as [_ h3].
-  unfold mem in h0, h3.
-  unfold In in h3.
-  intro w.
-Admitted.
-
+  intros w.
+  destruct (dec_con x w). eauto.
+  eapply c_map1.
+  exists x. exists w. 
+  repeat split; eauto.
+  unfold List.In. eauto.
+Qed.
 
 Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
 
@@ -2159,15 +1757,15 @@ Proof.
   rewrite (denot_abs y); auto.
   cbn. rewrite eq_dec_refl.
   unfold Λ. destruct x; try done.
-  move=> [h0 h1].
-  inversion h0; subst. 
-  + unfold valid_mem, valid_witness in h1.
-    destruct l. done. destruct h1. done.
-  + unfold valid_mem, valid_witness in h1.  
-    destruct l. done. destruct h1. done.
-  + unfold In in H. unfold mem in H. 
-    admit.
-Admitted.
+  move=> [h0 [h1 h2]].
+  inversion h0; subst; try done.
+  + exists (l ↦ x). exists x.
+    eapply c_map2. reflexivity.
+  + exists (l ↦ x). exists x.
+    eapply c_map2. reflexivity.
+  + cbn. intros.
+    exists v_fun. exists v_fun. eauto.
+Qed.
 
 Lemma denot_Delta : forall (v w : Value), v <> v_wrong ->
     (((v :: nil ↦ w) :: v :: nil) ↦ w) ∈ denot tm_Delta nil.
@@ -2176,19 +1774,18 @@ Proof.
   pick fresh x.
   unfold tm_Delta.
   rewrite (denot_abs x); auto.
-  cbn.
-  destruct (x==x); try done.
-  split.
+  cbn. rewrite eq_dec_refl.
+  split. 2: { unfold valid_mem. split. intro h. done. intro h.
+              inversion h; try done. inversion H; try done. }
   cbv.
   eapply BETA with (V := v :: nil).
   unfold In. left. auto.
   rewrite -> mem_singleton. 
   intros x0 II. inversion II. subst. cbv. right. left. auto.
-  unfold valid_mem, valid_witness.
+  unfold valid_mem.
   split; eauto.
-  intro h. inversion h. done. inversion H.
-  split. eauto. 
-  intros [v1|[v2|v3]]; try done.
+  intro h. done. 
+  intro h; inversion h; try done.
 Qed.
 
 
@@ -2200,10 +1797,14 @@ unfold tm_Omega.
 rewrite denot_app.
 intro v.
 intro h.
-inversion h; subst.
-+ admit.
-+ admit.
-+ 
+inversion h; subst; clear h.
++ apply denot_Delta_inv in H.
+  move: H => [v [w C]]. inversion C.
++ apply denot_Delta_inv in H.
+  move: H => [v [w C]]. inversion C.
++ apply denot_Delta_inv in H.
+  move: H => [v1 [w2 C]]. 
+  inversion C; subst.
 Admitted.
 
 (* A term with an unbound variable has no value. *)
@@ -2221,6 +1822,7 @@ Qed.
 (* Soundness of reduction with respect to denotation *)
 (* ISWIMPValue.agda *)
 
+
 Lemma value_nonempty {t}{ρ} : 
   fv_tm t [<=] dom ρ
   -> valid_env ρ -> value t -> valid (denot t ρ).
@@ -2228,17 +1830,21 @@ Proof.
   intros FV NEρ vv.
   destruct t.
   all: try solve [assert False; try inversion vv; done].
-  + rewrite denot_var.
-    unfold nonempty_env in NEρ.
+  all: autorewrite with denot.
+  + unfold nonempty_env in NEρ.
     eapply (@allT_access _ ⌈ v_wrong ⌉ _ _) in NEρ.
     2: instantiate (1:= x); auto.
-    destruct NEρ. exists x0. auto.
+    destruct NEρ. split; auto.
     simpl in FV. fsetdec.
   + pick fresh x.
     erewrite denot_abs with (x:=x); eauto.
     eapply valid_Λ.
-  + 
+  + (* valid_NAT *) admit.
+  + (* valid_ADD *) admit.
+  + (* valid_NIL *) admit.
+  + (* valid_CONS *) admit.
 Admitted.
+
 
 Lemma soundness: 
   forall t u, 
@@ -2300,6 +1906,22 @@ Proof.
     repeat rewrite denot_app.
     eapply APPLY_cong; eauto.
     reflexivity.
+  - repeat rewrite denot_tcons; eauto.
+    eapply CONS_cong; eauto.
+    have SC1: scoped t ρ.  eapply scoped_tcons_inv1; eauto.
+    have SC2: scoped u ρ.  eapply scoped_tcons_inv2; eauto.
+    have SC3: scoped t' ρ.  eapply scoped_tcons_inv1; eauto.
+    eapply IHRED; eauto.
+    reflexivity.
+
 Admitted.
 
 
+
+(* Λ  \Lambda
+   ▩  \squarecrossfill 
+   ↦  \mapsto  
+   ⤇ \Mapsto  
+   ●  \CIRCLE 
+   ⊆  \subseteq   (Included)
+*)

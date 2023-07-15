@@ -139,13 +139,20 @@ Qed.
 
 
 
-(* Finite lists `mem` *)
+(* Finite lists `mem` as sets *)
 
 Require Import Coq.Lists.List.
 
 Definition mem {A} : list A -> P A :=
   fun ls x => In x ls.
 
+
+
+Lemma mem_one_inv : forall A (h v : A),  
+ h ∈ mem (v :: nil) -> h = v.
+Proof. 
+  intros. cbn in H. destruct H; try done.
+Qed. 
 
 (* E≢[]⇒nonempty-mem *)
 Lemma nonnil_nonempty_mem : forall{T}{E : list T}, E <> nil -> nonemptyT (mem E).
@@ -171,7 +178,7 @@ Proof.
   eapply in_cons.
 Qed.
 
-#[export] Hint Resolve mem_head mem_cons : core.
+#[export] Hint Resolve mem_head mem_cons mem_one_inv : core.
 
 
 Lemma union_mem {A:Type}{E1 E2 : list A} : mem (E1 ++ E2) = (mem E1 ∪ mem E2).
