@@ -18,6 +18,8 @@ Open Scope monad_scope.
 
 Require Import lc.Container.
 
+Require Import lc.Scoped.
+
 (* ------------------------------------------------------------ *)
 
 (* This a "Graph Model" of the CBV lambda calculus based on Jeremy Siek's Agda
@@ -933,59 +935,36 @@ Qed.
 Import LCNotations.
 Open Scope tm.
 
-Lemma open_app : forall t1 t2 x, 
-    (app t1 t2) ^ x = app (t1 ^ x) (t2 ^ x).
-Proof. intros. reflexivity. Qed.
+Check lt_wf.
 
-Lemma open_var : forall x, (var_b 0) ^ x = var_f x.
-Proof. intros. reflexivity. Qed.
-
-#[global] Hint Rewrite 
-  subst_tm_open_tm_wrt_tm 
-  fv_tm_open_tm_wrt_tm_upper  
-  size_tm_open_tm_wrt_tm_var 
-  open_app open_var : lngen.
-
-(* Find a new variable that isn't in a given set. *)
-Definition fresh_for (VS : atoms) := fresh (AtomSetImpl.elements VS).
-Lemma fresh_for_fresh : forall x VS, x = fresh_for VS -> x `notin` VS.
-Proof.
-  intros. unfold fresh_for in H.
-  move: (Atom.fresh_not_in (AtomSetImpl.elements VS)) => Frx0.
-  rewrite <- H in Frx0.
-  intro h.
-  apply AtomSetImpl.elements_1 in h.
-  eapply InA_In in h.
-  done.
-Qed.
-
-Lemma tm_induction : forall (P : tm -> Prop), 
-    (forall i, P (var_b i)) 
-    -> (forall x, P (var_f x)) 
-    -> (forall t1 t2, P t1 -> P t2 -> P (app t1 t2))
-    -> (forall t, 
-          (forall x , x `notin` fv_tm t -> P (t ^ x)) 
-          -> P (abs t))
-    -> (forall k, P (lit k))
-    -> P add
-    -> P tnil
-    -> (forall t1 t2, P t1 -> P t2 -> P (tcons t1 t2))
-    -> forall t, P t.
-Proof.
-  intros P VARB VARF APP ABS LIT ADD NIL CONS t.
+Definition denot1 (t : tm) (ρ : Rho) : P Value.
   remember (size_tm t) as n.
   have GE: n >= size_tm t. subst. auto. clear Heqn.
-  move: t GE.
-  induction (lt_wf n) as [n _ IH].
-  intros [ i | x | u | t | k | (* add *) | (* nil *) | t ] SZ; simpl in SZ; eauto.
-  + eapply ABS.
-    intros x FV.
-    eapply (IH (size_tm u)). lia.
-    autorewrite with lngen.
-    lia.
-  + eapply APP; eapply IH; eauto; lia. 
-  + eapply CONS; eapply IH; eauto; lia. 
-Qed.    
+  move: t GE ρ.
+  induction (lt_wf n) as [n _ denot].
+  Print tm.
+  intros [ i | x | u | t | k | (* add *) | (* nil *) | t ] SZ; simpl in SZ.
+  all: intros ρ.
+  - exact ⌈ v_wrong ⌉.
+  - exact (ρ ⋅ x).
+  - move: (fresh_for (dom ρ \u fv_tm u)) => x.
+    have F : P Value -> P Value.
+    intro D.
+    have LT: size_tm (u ^ x) < n. {  autorewrite with lngen; lia. }
+    specialize (denot (size_tm (u ^ x)) LT (u ^ x) ltac:(auto) (x ~ D ++ ρ)).
+    exact denot.
+    exact (Λ F).
+  - move: (denot (size_tm t) ltac:(lia) t ltac:(lia) ρ) => t'.
+    move: (denot (size_tm u) ltac:(lia) u ltac:(lia) ρ) => u'.
+    exact (t' ▩ u').
+  - exact (NAT k). 
+  - exact ADD.
+  - exact NIL.    
+  - move: (denot (size_tm t) ltac:(lia) t ltac:(lia) ρ) => t'.
+    move: (denot (size_tm u) ltac:(lia) u ltac:(lia) ρ) => u'.
+    exact (CONS t' u').
+Defined. 
+
 
 (* Denotation function: unbound variables have no denotation. *)
 Fixpoint denot_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
@@ -1074,7 +1053,7 @@ Ltac name_binder x0 Frx0 :=
     match goal with 
       [ |- context[fresh_for ?ρ] ] => 
          remember (fresh_for ρ) as x0;
-         move: (fresh_for_fresh x0 ρ ltac:(auto)) => Frx0;
+         move: (@fresh_for_fresh x0 ρ ltac:(auto)) => Frx0;
          simpl_env in Frx0
     end.    
 
@@ -1270,98 +1249,6 @@ Proof.
 Qed.
 
 (* Scoping predicates *)
-
-Inductive scoped t (ρ : Rho) :=
-  scoped_intro : 
-    fv_tm t [<=] dom ρ -> uniq ρ -> lc_tm t -> scoped t ρ.
-
-#[global] Hint Constructors scoped : core.
-
-Lemma scoped_app : forall t1 t2 ρ,
-    scoped t1 ρ -> scoped t2 ρ -> 
-    scoped (app t1 t2) ρ.
-Proof.
-  intros. inversion H. inversion H0. econstructor; eauto.
-  simpl. fsetdec.
-Qed.
-
-Lemma scoped_app_inv1 : forall t1 t2 ρ,
-    scoped (app t1 t2) ρ ->
-    scoped t1 ρ.
-Proof.
-  intros. inversion H.
-  simpl in *. inversion H2.
-  econstructor; eauto. 
-  fsetdec.
-Qed.
-
-Lemma scoped_app_inv2 : forall t1 t2 ρ,
-    scoped (app t1 t2) ρ ->
-    scoped t2 ρ.
-Proof.
-  intros. inversion H.
-  simpl in *. inversion H2.
-  econstructor; eauto. 
-  fsetdec.
-Qed.
-
-
-Lemma scoped_tcons : forall t1 t2 ρ,
-    scoped t1 ρ -> scoped t2 ρ -> 
-    scoped (tcons t1 t2) ρ.
-Proof.
-  intros. inversion H. inversion H0. econstructor; eauto.
-  simpl. fsetdec.
-Qed.
-
-Lemma scoped_tcons_inv1 : forall t1 t2 ρ,
-    scoped (tcons t1 t2) ρ ->
-    scoped t1 ρ.
-Proof.
-  intros. inversion H.
-  simpl in *. inversion H2.
-  econstructor; eauto. 
-  fsetdec.
-Qed.
-
-Lemma scoped_tcons_inv2 : forall t1 t2 ρ,
-    scoped (tcons t1 t2) ρ ->
-    scoped t2 ρ.
-Proof.
-  intros. inversion H.
-  simpl in *. inversion H2.
-  econstructor; eauto. 
-  fsetdec.
-Qed.
-
-Lemma scoped_abs : forall x t1 D ρ, 
-  x `notin` dom ρ \u fv_tm t1
-  -> scoped (t1 ^ x) (x ~ D ++ ρ)
-  -> scoped (abs t1) ρ.
-Proof. 
-  intros. destruct H0.
-  simpl_env in s.
-  rewrite <- fv_tm_open_tm_wrt_tm_lower in s.
-  destruct_uniq.
-  constructor. simpl. fsetdec.
-  auto.
-  eapply (lc_abs_exists x).
-  auto.
-Qed.
-
-Lemma scoped_abs_inv : forall x t1 D ρ, 
-  x `notin` dom ρ \u fv_tm t1
-  -> scoped (abs t1) ρ
-  -> scoped (t1 ^ x) (x ~ D ++ ρ).
-Proof.
-  intros.
-  destruct H0. simpl in s. inversion l.
-  econstructor; eauto.
-  autorewrite with lngen.
-  simpl_env.
-  subst.
-  simpl. fsetdec.
-Qed.
 
 Lemma subst_denot : forall t x u ρ1 ρ2, 
     scoped t (ρ1 ++ x ~ (denot u ρ2) ++ ρ2) ->

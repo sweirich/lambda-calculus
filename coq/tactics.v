@@ -1,6 +1,7 @@
 Require Export Metalib.LibTactics.
 Require Export ssreflect.
 Require Export Coq.Program.Equality.  (* for dependent induction *) 
+Require Import Lia.
 
 Require Export lc.lc_ott.
 Require Export lc.lc_inf.
@@ -137,4 +138,61 @@ Ltac rewrite_subst_open_hyp :=
         repeat rewrite subst_neq_var in H0; auto
     end.
 
+(* ------------------------------------------------------------ *)
+(* Working with syntax                                          *)
+(* ------------------------------------------------------------ *)
 
+
+Lemma open_app : forall t1 t2 x, 
+    (app t1 t2) ^ x = app (t1 ^ x) (t2 ^ x).
+Proof. intros. reflexivity. Qed.
+
+Lemma open_var : forall x, (var_b 0) ^ x = var_f x.
+Proof. intros. reflexivity. Qed.
+
+#[export] Hint Rewrite 
+  subst_tm_open_tm_wrt_tm 
+  fv_tm_open_tm_wrt_tm_upper  
+  size_tm_open_tm_wrt_tm_var 
+  open_app open_var : lngen.
+
+(* Find a new variable that isn't in a given set. *)
+Definition fresh_for (VS : atoms) := fresh (AtomSetImpl.elements VS).
+Lemma fresh_for_fresh : forall x VS, x = fresh_for VS -> x `notin` VS.
+Proof.
+  intros. unfold fresh_for in H.
+  move: (Atom.fresh_not_in (AtomSetImpl.elements VS)) => Frx0.
+  rewrite <- H in Frx0.
+  intro h.
+  apply AtomSetImpl.elements_1 in h.
+  eapply InA_In in h.
+  done.
+Qed.
+
+Lemma tm_induction : forall (P : tm -> Prop), 
+    (forall i, P (var_b i)) 
+    -> (forall x, P (var_f x)) 
+    -> (forall t1 t2, P t1 -> P t2 -> P (app t1 t2))
+    -> (forall t, 
+          (forall x , x `notin` fv_tm t -> P (t ^ x)) 
+          -> P (abs t))
+    -> (forall k, P (lit k))
+    -> P add
+    -> P tnil
+    -> (forall t1 t2, P t1 -> P t2 -> P (tcons t1 t2))
+    -> forall t, P t.
+Proof.
+  intros P VARB VARF APP ABS LIT ADD NIL CONS t.
+  remember (size_tm t) as n.
+  have GE: n >= size_tm t. subst. auto. clear Heqn.
+  move: t GE.
+  induction (lt_wf n) as [n _ IH].
+  intros [ i | x | u | t | k | (* add *) | (* nil *) | t ] SZ; simpl in SZ; eauto.
+  + eapply ABS.
+    intros x FV.
+    eapply (IH (size_tm u)). lia.
+    autorewrite with lngen.
+    lia.
+  + eapply APP; eapply IH; eauto; lia. 
+  + eapply CONS; eapply IH; eauto; lia. 
+Qed.    

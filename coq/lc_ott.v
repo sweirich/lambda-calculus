@@ -102,7 +102,12 @@ Fixpoint is_value (t_5:tm) : Prop :=
   | (abs t) => True
   | (app t u) => False
   | (lit k5) => True
-  | (tcons t1 t2) => ((is_value t1) /\ (is_value t2))
+  | (tcons t1 t2) => (is_value t1) /\
+      match t2 with 
+        | tnil => True
+        | tcons _ _ => is_value t2
+        | _ => False
+      end
   | tnil => True
   | add => True
 end.
@@ -121,21 +126,27 @@ Fixpoint nth (t : tm) (k : nat) :  option tm :=
 (** definitions *)
 
 (* defns JValue *)
-Inductive value : tm -> Prop :=    (* defn value *)
- | v_var : forall (x:tmvar),
+Inductive listvalue : tm -> Prop :=    (* defn listvalue *)
+ | lv_nil : 
+     listvalue tnil
+ | lv_cons : forall (v w:tm),
+     value v ->
+     listvalue w ->
+     listvalue (tcons v w)
+with value : tm -> Prop :=    (* defn value *)
+ | sv_var : forall (x:tmvar),
      value (var_f x)
- | v_abs : forall (t:tm),
+ | sv_abs : forall (t:tm),
      lc_tm (abs t) ->
      value  ( (abs t) ) 
- | v_nil : 
+ | sv_nil : 
      value tnil
- | v_nat : forall (k:j),
+ | sv_nat : forall (k:j),
      value (lit k)
- | v_cons : forall (v w:tm),
-     value v ->
-     value w ->
-     value (tcons v w)
- | v_add : 
+ | sv_list : forall (v:tm),
+     listvalue v ->
+     value v
+ | sv_add : 
      value add.
 
 (* defns JBeta *)
@@ -394,15 +405,15 @@ Inductive full_reduction : tm -> tm -> Prop :=    (* defn full_reduction *)
      full_reduction u u' ->
      full_reduction (tcons t u) (tcons t u')
  | F_prj_zero : forall (v w:tm),
-     lc_tm w ->
      value v ->
+     listvalue w ->
      full_reduction (app  ( (tcons v w) )  (lit  0 )) v
  | F_prj_suc : forall (v w:tm) (k:j),
-     lc_tm w ->
      value v ->
-     full_reduction (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) ) (app  ( (tcons v w) )  (lit k))
+     listvalue w ->
+     full_reduction (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) ) (app w (lit k))
  | F_add : forall (k1 k2:j),
-     full_reduction (app add  ( (tcons (lit k1) (lit k2)) ) ) (lit  ( k1  +  k2 ) ).
+     full_reduction (app add  ( (tcons (lit k1)  ( (tcons (lit k2) tnil) ) ) ) ) (lit  ( k1  +  k2 ) ).
 
 (* defns Jredex *)
 Inductive redex : relation -> tm -> Prop :=    (* defn redex *)
@@ -478,6 +489,6 @@ Inductive cc_parallel2 : relation -> tm -> tm -> Prop :=    (* defn cc_parallel2
 
 
 (** infrastructure *)
-Hint Constructors value beta eta betaeta compatible_closure refl_closure trans_closure refl_trans_closure sym_trans_closure parallel Step StepV Eval conversion full_reduction redex terminal nf cc_parallel cc_parallel2 lc_tm : core.
+Hint Constructors listvalue value beta eta betaeta compatible_closure refl_closure trans_closure refl_trans_closure sym_trans_closure parallel Step StepV Eval conversion full_reduction redex terminal nf cc_parallel cc_parallel2 lc_tm : core.
 
 
