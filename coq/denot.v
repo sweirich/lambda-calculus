@@ -8,7 +8,7 @@ Require Export lc.tactics.
 Require Import lc.List.
 Require Import lc.Env.
 
-Require Import lc.SetsAsPredicates.
+Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
 

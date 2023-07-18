@@ -4,12 +4,12 @@ Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
 Require Export lc.tactics.
-Require Import lc.List.
 
-Require Import lc.SetsAsPredicates.
+Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
 
+Require Import lc.List.
 
 Require Import lc.model_definitions.
 Require Import lc.denot.
@@ -60,9 +60,9 @@ Fixpoint Value_ind' (P : Value -> Prop)
 Fixpoint Value_rec' (P : Value -> Type)
        (n : forall n : nat, P (v_nat n)) 
        (m : forall (l : list Value) (v : Value),
-           ForallT P l -> P v -> P (v_map l v)) 
+           List.ForallT P l -> P v -> P (v_map l v)) 
        (f : P v_fun)
-       (l : (forall l : list Value, ForallT P l -> P (v_list l)))
+       (l : (forall l : list Value, List.ForallT P l -> P (v_list l)))
        (w : P v_wrong) (v : Value) : P v := 
   let rec := Value_rec' P n m f l w 
   in
@@ -86,9 +86,9 @@ Fixpoint Value_rec' (P : Value -> Type)
 
 
 Definition ConsistentPointwiseList XS YS := 
-  Forall2 Consistent XS YS.
+  List.Forall2 Consistent XS YS.
 Definition InconsistentPointwiseList XS YS := 
-  length XS <> length YS \/ Exists2 Inconsistent XS YS.
+  length XS <> length YS \/ List.Exists2 Inconsistent XS YS.
 Definition ConsistentAnyList XS YS := 
   forall x y, List.In x XS -> List.In y YS -> Consistent x y.
 Definition InconsistentAnyList XS YS := 
@@ -253,10 +253,13 @@ Proof.
   intros x y h1 h2.
 
   inversion h1; inversion h2; subst; eauto; clear h1 h2.
+
   all: try (move: (C1 _ _ H H3) => h; inversion h; subst; auto).
   all: try (move: (C1 _ _ H H5) => h; inversion h; subst; auto).
   all: try (move: (C2 _ _ H H4) => h; inversion h; subst; auto).
   all: try (move: (C2 _ _ H0 H5) => h; inversion h; subst; auto).
+
+  all: try solve [  match goal with [ H : ~ applicable ?X |- _ ] => exfalso; apply H; auto end ].
 
   (* Application of a function to "wrong". This case is impossible because
      the map's domain is valid and all elements of w2 are consistent with wrong. *) 
@@ -265,27 +268,37 @@ Proof.
   have L: forall y, y ∈ w2' -> Consistent v_wrong y.
   { intros. eauto. }
   destruct V; try done.
-  specialize (L v ltac:(eauto)). inversion L. subst; simpl in NW. auto.
+  specialize (L v ltac:(eauto)). inversion L. subst; simpl in NW. inversion NW; simpl in *; done.
 
   move: H1 => [NE NW]. 
   exfalso.
   have L: forall y, y ∈ w2 -> Consistent y v_wrong.
   { intros. eauto. }
   destruct V; try done.
-  specialize (L v ltac:(eauto)). inversion L. subst; simpl in NW. auto.
+  specialize (L v ltac:(eauto)). inversion L. subst; simpl in NW. inversion NW; simpl in *; done.
 
+  (* two successful betas *)
   move: H3 => [x1 [x2 [I1 [I2 ii]]]].
   have h3 : x1 ∈ w2. eapply H0; eauto.
   have h4 : x2 ∈ w2'. eapply H6; eauto.
   move: (C2 x1 x2 h3 h4) => h5.
   assert False. eapply Consistent_Inconsistent_disjoint; eauto. done.
 
+  (* two successful projections *)
   move: (C2 _ _ H0 H6)=> c1. inversion c1; subst; clear c1; eauto. 
   clear h H H0 H5 H6.
   move: k0 H1 H7.
   induction H4; intros k0; destruct k0; simpl;  try done.
-  + intros h1 h2; inversion h1; inversion h2; subst. auto.
-  + intros h1 h2. eauto.
+  intros h1 h2; inversion h1; inversion h2; subst. auto.
+  intros h1 h2. eauto.
+
+  move: (C2 _ _ H0 H6) => c. inversion c; subst; clear c.
+  specialize (H8 k). done.
+
+  move: (C1 _ _ H H6) => c. inversion c; subst; clear c.
+
+  move: (C2 _ _ H0 H7) => c. inversion c; subst; clear c.
+  specialize (H2 k). done.
 Qed.
 
 Definition APPLY_ConsistentSet : forall w1 w2, 
@@ -361,7 +374,20 @@ Proof.
     destruct x2; try done.
     inversion I1; inversion I2; subst; eauto.
   - (* ADD: need a lemma that ADD is consistent *) 
-    admit.
+    destruct x1; try done.
+    destruct x2; try done.
+    destruct x1; try done.
+    destruct x2; try done. 
+    + move: I1 => [i1 [j1 [h1 m1]]].
+      move: I2 => [i2 [j2 [h2 m2]]].
+      destruct (eq_dec n n0).
+      ++ subst. rewrite e. eauto.
+      ++ admit.
+    + move: I1 => [i1 [j1 [h1 m1]]].
+      cbn in I2. 
+      (* decide whether l0 and l are consistent. *)
+      admit.
+    + admit.
   - (* CONS: need a lemma about CONS *)
     admit.
 Admitted.

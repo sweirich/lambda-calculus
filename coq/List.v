@@ -72,3 +72,14 @@ Qed.
 Lemma Exists_Exists2 : forall {A} (P : A -> A -> Prop) (l:list A), 
     Exists (fun x => P x x) l <-> Exists2 P l l.
 Admitted. 
+
+
+Definition Forall2_any {A B:Type} : 
+  forall (P : A -> B -> Prop), list A -> list B -> Prop :=
+  fun P XS YS =>
+      forall x y, List.In x XS -> List.In y YS -> P x y.
+
+Definition Exists2_any {A B:Type} : 
+  forall (P : A -> B -> Prop), list A -> list B -> Prop :=
+  fun P XS YS =>
+      exists x y, List.In x XS /\ List.In y YS /\ P x y.

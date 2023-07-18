@@ -6,7 +6,7 @@ Require Import Lia.
 Require Export lc.tactics.
 Require Import lc.List.
 Require Import lc.Env.
-Require Import lc.SetsAsPredicates.
+Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
 Require Import lc.Monad.
@@ -65,7 +65,30 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma ADD_APPLY {i j} : 
+Lemma CONS_LIST {k1 k2 } : CONS (NAT k1) (CONS (NAT k2) NIL) ≃ LIST (NAT k1 :: NAT k2 :: nil).
+Proof.
+  intros.
+  split.
+  + intros w In. destruct w; try done.
+    destruct l; try done.
+    destruct In as [x In]. apply v_in_den_k_inv in x.
+    destruct l; try done.
+    destruct In as [y In]. apply v_in_den_k_inv in y.
+    destruct l; try done. 
+    subst. cbn. 
+    econstructor; eauto. reflexivity. 
+    econstructor; eauto. reflexivity. 
+    cbv in In. inversion In.
+  + intros w In.
+    eapply den_list in In. 2: { reflexivity.  }
+    subst. 
+    econstructor; eauto using k_in_den_k.
+    econstructor; eauto using k_in_den_k.
+    econstructor.
+Qed.
+
+
+Lemma ADD_APPLY_LIST {i j} : 
   ADD ▩ (LIST (NAT i :: NAT j :: nil)) ≃ NAT (i + j).
 Proof.
   split.
@@ -81,6 +104,7 @@ Proof.
       move: (den_list _ _ _ H0 v ltac:(auto)) => h1. subst. 
       eauto.
       done.
+    - destruct x; try done.
    + intros w wIn.
      apply v_in_den_k_inv in wIn. subst.
      eapply BETA with (V := v_list (v_nat i :: v_nat j :: nil) :: nil).
@@ -89,19 +113,71 @@ Proof.
        cbn. eauto using k_in_den_k.
        inversion H.
      - cbn. split. eauto. unfold In, mem. intro h. inversion h. 
-       intro h. inversion h; done.
+       econstructor; eauto. done.
 Qed.
 
-Lemma CONS_ZERO1 {D1 D2} : (CONS D1 D2 ▩ NAT 0) ⊆ D1.
+Lemma ADD_APPLY_CONS {k1 k2} : 
+  (ADD ▩ CONS (NAT k1) (CONS (NAT k2) NIL)) ≃ NAT (k1 + k2).
+Proof.
+  rewrite CONS_LIST.
+  eapply ADD_APPLY_LIST.
+Qed. 
+
+Lemma CONS_APPLY_ZERO1 {D1 D2} : (CONS D1 D2 ▩ NAT 0) ⊆ D1.
   intros w APP. inversion APP; try inversion H.
   + subst.
     apply v_in_den_k_inv in H0. inversion H0. subst.
     destruct VS; simpl in H1. done. inversion H1. subst.
     inversion H.
     auto.
+  + destruct x; try done.
+  + destruct x; try done. 
+    apply v_in_den_k_inv in H0.  
+    exfalso; eapply H2; eauto.
 Qed.
 
+Lemma CONS_APPLY_ZERO2 {D1 D2 VS} : 
+  v_list VS ∈ D2 ->
+  D1 ⊆ (CONS D1 D2 ▩ NAT 0).
+Proof.
+  intros VV w In.
+  eapply PROJ with (k := 0)(VS := w :: VS); eauto using k_in_den_k.
+  econstructor; eauto.
+Qed. 
+
+Lemma CONS_APPLY_SUCC1 {D1 D2 k} : (CONS D1 D2 ▩ NAT (1 + k)) ⊆ (D2 ▩ NAT k).
+  intros w APP. inversion APP; try inversion H.
+  + subst.
+    apply v_in_den_k_inv in H0. inversion H0. subst.
+    destruct VS; simpl in H1. done. 
+    inversion H.
+    eapply PROJ; eauto using k_in_den_k.
+  + destruct x; try done.
+  + destruct x; try done.
+    exfalso; eapply H2; eauto.
+Qed.
+
+Lemma CONS_APPLY_SUCC2 {D1 D2 k w} : w ∈ D1 -> valid D2 -> (D2 ▩ NAT k) ⊆  (CONS D1 D2 ▩ NAT (1 + k)).
+Proof.
+  intros wIn [h1 h2]  v vIn.
+  inversion vIn; subst; try done.
+Abort.
+
+
 (*  Abstraction followed by Application is the identity ------------------- *)
+
+Lemma Forall_sub_mem : forall D X, 
+    mem D ⊆ X -> 
+    Sets.Forall success X ->
+    List.Forall success D.
+Proof.
+  induction D; intros X SUB F.
+  eauto.
+  econstructor; eauto. eapply F. eapply SUB. eauto.
+  eapply IHD with (X:=X); auto. intros x xIn. eapply SUB; eauto.
+Qed.
+
+
 
 (* Λ-▪-id *)
 Lemma Λ_APPLY_id { F X } :
@@ -116,6 +192,8 @@ Proof.
     - inversion H.
       eapply (Fmono (mem V) X); eauto. 
     - inversion H.
+    - destruct x; try done.
+    - destruct x; try done.
   + intros w wInFX.
     have M: mem (cons w nil) ⊆ F X. 
     { intros d y. inversion y; subst. auto. done. }
@@ -124,6 +202,7 @@ Proof.
     move: NEX => [ [x h0] h1].
     eapply BETA with (V:=D); eauto.
     repeat split; eauto.
+    eapply Forall_sub_mem; eauto.
 Qed.
 
 (* ---------------------------------------------------- *)
@@ -453,6 +532,24 @@ Proof.
   - eapply join_finite_env; eauto.    
   - eapply join_lub; eauto.
   - eapply PROJ with (VS := VS) (k:=k); eauto.
+    eapply mD. eapply join_sub_left; auto. auto.
+    eapply mE. eapply join_sub_right; auto. auto.
+ +  destruct (IHD x) as [ρ1 [F1 [h1 h2]]]; auto.
+    eexists.
+    eexists.
+    eauto.
+    split; eauto.
+    eapply APPWRONG with (x:=x); auto.
+ +  destruct (IHE x) as [ρ2 [F1 [h1 h2]]]; auto.
+    destruct (IHD (v_list VS)) as [ρ1 [F2 [h01 h02]]]; auto.
+    have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+    have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
+    have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+    exists (ρ1 ⊔e ρ2).
+    repeat split.
+    - eapply join_finite_env; eauto.    
+    - eapply join_lub; eauto.
+    - eapply PROJWRONG with (VS := VS); eauto.
     eapply mD. eapply join_sub_left; auto. auto.
     eapply mE. eapply join_sub_right; auto. auto.
 Qed.
@@ -843,30 +940,18 @@ Proof.
     rewrite IHRED; eauto.
     reflexivity.
   - autorewrite with denot.
-    split. eapply CONS_ZERO1.
-
     destruct SCt. simpl in s.
-    move: (@denot_value_valid v ρ ltac:(fsetdec) NE) => [h1 h2].
     move: (@denot_value_valid w ρ ltac:(fsetdec) NE) => [w1 w2].
-    move: (h1 H) => [[vv rr] NW]. clear h1 h2.
-    move: (w1 (sv_list _ H0)) => [[uu ss] NW1]. 
+    move: (w1 (sv_list _ H0)) => [[uu ss] NW].
     move: (w2 H0 uu ss) => [ll tt]. subst.
-    intros x Inx.
-    eapply PROJ with (k:= 0) (VS := x :: ll).
-    cbn. split; auto. constructor. simpl.
-    reflexivity.
     
-(*    intros x Inx.
-    eapply PROJ with (VS := (x :: ll)) (k:= 0).
-    cbn. split; auto. constructor. simpl.
-    reflexivity. *)
-  - autorewrite with denot.
+    split. eapply CONS_APPLY_ZERO1.
+    eapply CONS_APPLY_ZERO2; eauto.
+
+  - (* prj_suc *)
+    autorewrite with denot.
     split.
-    + intros x In. inversion In; clear In; try inversion H1; subst.
-      inversion H2. subst. clear H2.
-      destruct VS; simpl in H3. done.
-      inversion H1.
-      eapply PROJ; eauto. econstructor.
+    + eapply CONS_APPLY_SUCC1.
     + intros x In.
       destruct SCt. simpl in s.
       move: (@denot_value_valid v ρ ltac:(fsetdec) NE) => [h1 h2].
@@ -875,15 +960,21 @@ Proof.
       move: (w1 (sv_list _ H0)) => [[uu ss] NW2].
       move: (w2 H0) => mm.  
       inversion In; try done; subst.
-      move: (mm _ H1) => [o OO]. done.
+      ++ move: (mm _ H1) => [o OO]. done.
+      ++ move: (mm _ H1) => [o OO]. done.
+      ++ move: (mm _ H1) => [o OO]. 
       inversion H2. subst.
       eapply PROJ. instantiate (1 := (vv :: VS)).
       econstructor; eauto.
       instantiate (1:= (1 + k0)). econstructor.
       simpl.
       auto.
-  - autorewrite with denot.
-Admitted.
+      ++ move: (mm _ H1) => [o OO].  subst. simpl in H3; done.
+      ++ destruct x0; try done. exfalso.  eapply H4; eauto. 
+  - (* add *) 
+    autorewrite with denot.
+    eapply ADD_APPLY_CONS; eauto.
+Qed.
 
 
 (* --------------------------------------------------------------- *)
@@ -893,17 +984,15 @@ Admitted.
 
 Definition tm_Id : tm := abs (var_b 0).
 
-Lemma denot_Id {v} : (v <> v_wrong) -> (v :: nil ↦ v) ∈ denot tm_Id nil.
+Lemma denot_Id {v} : success v  -> (v :: nil ↦ v) ∈ denot tm_Id nil.
 Proof.
   intro NE.
-  unfold tm_Id.
   pick fresh x.
-  rewrite (denot_abs x). simpl. auto.
-  unfold Λ. unfold Ensembles.In.
-  split. 2: { split. done. intro h. inversion h. done. done. }
+  rewrite (denot_abs x); simpl; auto.
   cbn.
   destruct (x == x); try done.
-  cbn. left. auto.
+  cbn. split. left. auto. 
+  econstructor; eauto. done.
 Qed. 
 
 
@@ -914,17 +1003,17 @@ Proof.
   unfold tm_Id. 
   pick fresh y.
   rewrite (denot_abs y); auto.
-  intro h. unfold In in h. 
-  unfold Λ in h.
+  intro h. 
   destruct x; try done.
   move: h => [h0 [h1 h2]].
   cbn in h0. rewrite eq_dec_refl in h0.
   intros w.
   destruct (dec_con x w). eauto.
   eapply c_map1.
-  exists x. exists w. 
-  repeat split; eauto.
-  unfold List.In. eauto.
+  exists x. exists w.
+  
+  repeat split; eauto. 
+  unfold In. eauto.
 Qed.
 
 Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
@@ -932,26 +1021,39 @@ Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
 
 #[global] Hint Rewrite access_eq_var : lngen.
 
+Lemma wrong_not_successful {l}: 
+  Forall success l -> v_wrong ∈ mem l -> False.
+Proof. 
+  induction l; intros h1 h2. done.
+  inversion h1. subst. 
+  inversion h2. subst. done.
+  eauto.
+Qed.
+
 Lemma denot_Delta_inv :
   forall x, x ∈ denot tm_Delta nil -> 
        exists v w, Consistent x (((v :: nil ↦ w) :: v :: nil) ↦ w).
 Proof.
-  intro x.  unfold In, tm_Delta.
+  intro x. unfold tm_Delta.
   pick fresh y.
   rewrite (denot_abs y); auto.
   cbn. rewrite eq_dec_refl.
-  unfold Λ. destruct x; try done.
+  destruct x; try done.
   move=> [h0 [h1 h2]].
-  inversion h0; subst; try done.
-  + exists (l ↦ x). exists x.
-    eapply c_map2. reflexivity.
-  + exists (l ↦ x). exists x.
-    eapply c_map2. reflexivity.
-  + cbn. intros.
-    exists v_fun. exists v_fun. eauto.
+  - inversion h0; subst; try done.
+    + exfalso. eapply wrong_not_successful; eauto.
+    + exfalso. eapply wrong_not_successful; eauto.
+    + exists (l ↦ x). exists x.
+      eapply c_map2. reflexivity.
+    + exists (l ↦ x). exists x.
+      eapply c_map2. reflexivity.
+    + exists (v_nat 0). exists v_wrong. eauto.
+    + exists (v_nat 0). exists v_wrong. eauto.
+  - cbn. intros.
+      exists v_fun. exists v_fun. eauto.
 Qed.
 
-Lemma denot_Delta : forall (v w : Value), v <> v_wrong ->
+Lemma denot_Delta : forall (v w : Value), success v ->
     (((v :: nil ↦ w) :: v :: nil) ↦ w) ∈ denot tm_Delta nil.
 Proof.
   intros v w NW.
@@ -959,8 +1061,8 @@ Proof.
   unfold tm_Delta.
   rewrite (denot_abs x); auto.
   cbn. rewrite eq_dec_refl.
-  split. 2: { unfold valid_mem. split. intro h. done. intro h.
-              inversion h; try done. inversion H; try done. }
+  split. 2: { unfold valid_mem. split. intro h. done. 
+              econstructor; eauto. done. }
   cbv.
   eapply BETA with (V := v :: nil).
   unfold In. left. auto.
@@ -969,9 +1071,8 @@ Proof.
   unfold valid_mem.
   split; eauto.
   intro h. done. 
-  intro h; inversion h; try done.
 Qed.
-
+  
 
 Definition tm_Omega : tm := app tm_Delta tm_Delta.
 

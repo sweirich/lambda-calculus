@@ -4,15 +4,16 @@ Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
 Require Export lc.tactics.
+Require Import lc.Container.
+
 Require Import lc.List.
 Require Import lc.Env.
-Require Import lc.Container.
 
 Require Import lc.Monad.
 Import MonadNotation.
 Open Scope monad_scope.
 
-Require Import lc.SetsAsPredicates.
+Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
 
@@ -38,14 +39,21 @@ Inductive Value : Type :=
 
 Infix "↦" := v_map (at level 85, right associativity).
 
+(* A successful value is not wrong. *)
+Definition success (v : Value) : Prop :=
+  match v with 
+  | v_wrong => False
+  | _ => True
+  end.
+
 
 (* ------------ Valid or "succeeds" ------------------ *)
 
 Definition valid (V : P Value) : Type :=
-  nonemptyT V * not (v_wrong ∈ V).
+  nonemptyT V * Sets.Forall success V.
 
 Definition valid_mem (V : list Value) : Prop :=
-  V <> nil /\ not (List.In v_wrong V).
+  V <> nil /\ List.Forall success V.
 
 (* ------------ Semantic Operators ------------------ *)
 
@@ -58,7 +66,7 @@ Definition NAT : nat -> P Value :=
 Definition LIST : list (P Value) -> P Value  :=
   fun DS w => 
     match w with 
-    | v_list WS => Forall2 Ensembles.In DS WS
+    | v_list WS => List.Forall2 Ensembles.In DS WS
     | _ => False
     end.
 
@@ -83,29 +91,51 @@ Definition Λ : (P Value -> P Value) -> P Value :=
    to know that at definition time.
 *)
 
+
+(* When does APPLY diverge? (i.e. there is no w, s.t. APPLY D1 D2 w holds)
+    - D1 is empty
+    - D2 is empty
+    - D1 contains a vfun or V ↦ x, but cannot be applied to D2
+           << should this be empty or wrong??? >> 
+
+   When does APPLY propagate wrong?
+    - wrong in D1 or D2  (FUNWRONG / ARGWRONG) 
+    - V ↦ wrong in D1 and valid V in D2  (BETA case)
+
+   When does APPLY create a new wrong? 
+    - D1 contains a successful Value that is not a v_fun, v_map or v_list  (APPWRONG)
+    - D1 contains a v_list and D2 contains a successful Value that is not a nat (PROJWRONG)
+           
+*)
+
+Inductive applicable : Value -> Prop :=
+  | a_fun  : applicable v_fun
+  | a_list : forall VS, applicable (v_list VS)
+  | a_map  : forall V w, applicable (v_map V w).
+
+#[export] Hint Constructors applicable : core.
+
 Inductive APPLY : P Value -> P Value -> Value -> Prop :=
   | FUNWRONG : forall D1 D2,
      (v_wrong ∈ D1) ->
      APPLY D1 D2 v_wrong
   | ARGWRONG : forall D1 D2,
-     (v_wrong ∈ D2) 
-     -> APPLY D1 D2 v_wrong
+     (v_wrong ∈ D2) ->
+     APPLY D1 D2 v_wrong
   | BETA : forall D1 D2 w V,
      (V ↦ w ∈ D1) -> (mem V ⊆ D2) -> valid_mem V ->
      APPLY D1 D2 w
   | PROJ   : forall D1 D2 w VS k, 
-     (v_list VS ∈ D1) -> (v_nat k ∈ D2) -> nth_error VS k = Some w
-     -> APPLY D1 D2 w.
-(* ADD these two for more wrong *)
-(*
-  | FUNWRONG2 : forall D1 D2 x,
-     x ∈ D1 -> (Inconsistent x v_fun /\ forall XS, Inconsistent x (v_list XS)) ->
-     APPLY D1 D2 v_wrong
-  | ARGWRONG2 : forall D1 D2 VS x, 
+     (v_list VS ∈ D1) -> (v_nat k ∈ D2) -> nth_error VS k = Some w ->
+     APPLY D1 D2 w
+  | APPWRONG : forall D1 D2 x, 
+      x ∈ D1 -> success x -> not (applicable x) ->      
+      APPLY D1 D2 v_wrong
+  | PROJWRONG : forall D1 D2 VS x, 
      (v_list VS ∈ D1) -> 
-     (x ∈ D2) -> 
-     (forall k, Inconsistent x (v_nat k)) ->
-     APPLY D1 D2 v_wrong. *)
+     (x ∈ D2) -> success x ->
+     (forall k, x <> (v_nat k)) ->
+     APPLY D1 D2 v_wrong. 
 
 Infix "▩" := APPLY (at level 90).
 
@@ -233,7 +263,7 @@ Definition head (v : Value) : v_head :=
 
 Inductive Consistent : Value -> Value -> Prop :=
   | c_nat : forall i, Consistent (v_nat i) (v_nat i)
-  | c_list : forall XS YS, Forall2 Consistent XS YS ->  Consistent (v_list XS) (v_list YS)
+  | c_list : forall XS YS, List.Forall2 Consistent XS YS ->  Consistent (v_list XS) (v_list YS)
   | c_wrong : Consistent v_wrong v_wrong
 
   | c_fun : Consistent v_fun v_fun
@@ -255,7 +285,7 @@ with Inconsistent : Value -> Value -> Prop :=
       length XS <> length YS ->
       Inconsistent (v_list XS) (v_list YS)      
   | i_list_e : forall XS YS,
-      Exists2 Inconsistent XS YS ->
+      List.Exists2 Inconsistent XS YS ->
       Inconsistent (v_list XS) (v_list YS)
   | i_map : forall X1 X2 r1 r2,
       Forall2_any Consistent X1 X2 ->

@@ -120,7 +120,6 @@ Qed.
 
 (* Facts about union *)
 
-(* These should be in the SetsAsPredicates module *)
 Lemma sub_union_left {A} (X Y : P A) : X ⊆ (X ∪ Y).
 Proof. intros x I.  econstructor; eauto. Qed.
 
@@ -145,8 +144,6 @@ Require Import Coq.Lists.List.
 
 Definition mem {A} : list A -> P A :=
   fun ls x => In x ls.
-
-
 
 Lemma mem_one_inv : forall A (h v : A),  
  h ∈ mem (v :: nil) -> h = v.
@@ -210,3 +207,52 @@ Lemma mem_singleton {A} : forall v : A, mem (v :: nil) ⊆ ⌈ v ⌉.
 Proof. intro v. cbv. intros. inversion H. subst. econstructor; eauto. done. Qed.
 
 #[export] Hint Resolve singleton_mem mem_singleton : core. 
+
+(* ----------------------------------------- *)
+
+
+Definition In : forall {A}, A -> P A -> Prop := 
+  fun {A} x p => Ensembles.In p x.
+
+Definition Forall  : forall {A} (Pr : A -> Prop), P A -> Prop := 
+  fun {A} Pr p => forall x, In x p -> Pr x.
+
+Definition Exists : forall {A} (Pr : A -> Prop), P A -> Prop :=
+  fun {A} Pr p => exists x, In x p /\ Pr x.
+
+Definition  ForallT : forall {A} (Pr : A -> Type), P A -> Type := 
+  fun {A} Pr p => forall x, In x p -> Pr x.
+
+Definition ExistsT :  forall {A} (Pr : A -> Type), P A -> Type :=
+  fun {A} Pr p => { x & (In x p * Pr x)%type }.
+
+Definition Forall_forall : forall {A} (Pr : A -> Prop) (l : P A), 
+      Forall Pr l <-> (forall x, In x l -> Pr x).
+Proof. intros. unfold Forall. reflexivity. Qed.
+
+Definition Exists_exists : forall {A} (Pr : A -> Prop) (l : P A), 
+      Exists Pr l <-> (exists x, In x l /\ Pr x).
+Proof. intros. unfold Exists. reflexivity. Qed.
+
+
+
+(* ----------------------------------------- *)
+
+Lemma Forall_sub : forall A (X Y : P A) Pr, 
+    X ⊆ Y -> 
+    Sets.Forall Pr X ->
+    Sets.Forall Pr Y.
+Proof.
+Admitted.
+
+Lemma Forall_sub_mem : forall A (D:list A) X Pr, 
+    mem D ⊆ X -> 
+    Sets.Forall Pr X ->
+    List.Forall Pr D.
+Proof.
+  intros A D.
+  induction D; intros X Pr SUB F.
+  eauto.
+  econstructor; eauto. eapply F. eapply SUB. eauto.
+  eapply IHD with (X:=X); auto. intros x xIn. eapply SUB; eauto.
+Qed.

@@ -12,7 +12,7 @@ Require Import lc.Monad.
 Import MonadNotation.
 Open Scope monad_scope.
 
-Require Import lc.SetsAsPredicates.
+Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
 

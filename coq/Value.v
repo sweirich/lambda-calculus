@@ -6,10 +6,11 @@ Require Import Lia.
 Require Export lc.tactics.
 Require Import lc.List.
 
-Require Import lc.SetsAsPredicates.
+Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
 
+Require Import lc.Container.
 
 (* Values *)
 
@@ -172,9 +173,9 @@ Hint Constructors Consistent Inconsistent : core.
  *)
 
 Definition ConsistentPointwiseList XS YS := 
-  Forall2 Consistent XS YS.
+  List.Forall2 Consistent XS YS.
 Definition InconsistentPointwiseList XS YS := 
-  length XS <> length YS \/ Exists2 Inconsistent XS YS.
+  length XS <> length YS \/ List.Exists2 Inconsistent XS YS.
 Definition ConsistentAnyList XS YS := 
   forall x y, List.In x XS -> List.In y YS -> Consistent x y.
 Definition InconsistentAnyList XS YS := 
@@ -272,17 +273,17 @@ all: try solve [left; eauto].
 + destruct (Nat.eq_dec n n0). subst.
   left. eauto. right. eapply i_head; simpl. intro h.
   inversion h. subst.  done.
-+ destruct (H0 v2).
++ destruct (H v2).
   left. eapply c_map2; eauto.
-  destruct (dec_any l H l0).
+  destruct (dec_any l X l0).
   right. eapply i_map; eauto.
   left. eauto.
-+ destruct (dec_point l H l0).
++ destruct (dec_point l X l0).
   left; eauto.
   right. destruct i; eauto.
 Qed.
 
-Lemma DecSetList : forall XS, ForallT ConsistentDecidable XS.
+Lemma DecSetList : forall XS, List.ForallT ConsistentDecidable XS.
 intros XS. induction XS. econstructor; eauto.
 econstructor; eauto. unfold ConsistentDecidable. eapply dec_con; eauto.
 Qed.

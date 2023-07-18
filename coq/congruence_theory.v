@@ -8,7 +8,7 @@ Require Import Lia.
 Require Export lc.tactics.
 Require Import lc.List.
 Require Import lc.Env.
-Require Import lc.SetsAsPredicates.
+Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
 
@@ -66,6 +66,8 @@ Proof.
   + apply BETA with (V:=V); eauto.
     intros d z. eauto.
   + apply PROJ with (VS := VS) (k := k); eauto.
+  + eapply APPWRONG; eauto.
+  + eapply PROJWRONG; eauto.
 Qed.
 
 Lemma APPLY_cong { D1 D2 D3 D4 } :
