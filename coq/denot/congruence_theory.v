@@ -5,22 +5,17 @@ Require Import Coq.Classes.RelationClasses.
 Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
+Require Import structures.Structures.
 Require Export lc.tactics.
-Require Import lc.List.
-Require Import lc.Env.
-Require Import lc.Sets.
-Import SetNotations.
-Local Open Scope set_scope.
-
-Require Import lc.Container.
-Require Import lc.Scoped.
+Require Import lc.scoped.
 
 (* Definitions *)
-Require Import lc.model_definitions.
+Require Import denot.definitions.
+Require Import denot.denot.
+Require Import denot.valid_theory.
 
-Require Import lc.denot.
-
-Require Import lc.valid_theory.
+Import SetNotations.
+Local Open Scope set_scope.
 
 Import EnvNotations.
 Import LCNotations.

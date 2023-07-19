@@ -1,22 +1,52 @@
+(* Definitions related to the denotational semantics.
+   
+   The semantic domain: `P Value` 
+
+   Predicates:
+
+      success : Value -> Prop     (Does this result approximate a lambda-calculus value?)
+
+      valid : P Value -> Prop     (is the set nonempty & only contain successful values?)
+
+   Semantic operators:
+
+    WRONG : P Value   
+
+    NAT   : nat -> P Value
+    NIL   : P Value
+    CONS  : P Value -> P Value -> P Value
+    Λ     : (P Value -> P Value) -> P Value :=
+    APPLY : P Value -> P Value -> P Value
+
+   Environments:    
+   
+       Rho := Env (P Value)
+
+   Environment Notations:
+
+   Environment predicates:
+
+       valid_env : Rho -> Prop
+
+   Denotation function:
+
+       denot : tm -> Rho -> P Value
+
+ *)
+
+
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Classes.RelationClasses.
 Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
 Require Export lc.tactics.
-Require Import lc.Container.
+Require Import structures.Structures.
 
-Require Import lc.List.
-Require Import lc.Env.
-
-Require Import lc.Monad.
 Import MonadNotation.
 Open Scope monad_scope.
-
-Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
-
 
 Inductive Value : Type :=
   (* natural number *)
@@ -46,8 +76,7 @@ Definition success (v : Value) : Prop :=
   | _ => True
   end.
 
-
-(* ------------ Valid or "succeeds" ------------------ *)
+(* ------------ Valid or a denotation that "succeeds" ------------------ *)
 
 Definition valid (V : P Value) : Type :=
   nonemptyT V * Sets.Forall success V.
@@ -56,6 +85,8 @@ Definition valid_mem (V : list Value) : Prop :=
   V <> nil /\ List.Forall success V.
 
 (* ------------ Semantic Operators ------------------ *)
+
+Definition WRONG : P Value := ⌈ v_wrong ⌉.
 
 Definition NAT : nat -> P Value :=
   fun j v => match v with 
@@ -85,6 +116,8 @@ Definition Λ : (P Value -> P Value) -> P Value :=
           | v_fun => True
           | _ => False
           end.
+
+(* ------------ APPLY ----------------- *)
 
 (* It is a little easier to specify this as an inductive relation 
    than as a function. The cases don't overlap, but we don't need
@@ -148,21 +181,9 @@ Definition ADD : P Value :=
     | (V ↦ v_nat k) => 
         exists i j, ((v_list (v_nat i :: v_nat j :: nil)) ∈ mem V) /\ k = i + j
     | V ↦ v_wrong => 
-        not (exists i j, v_list (v_nat i :: v_nat j :: nil) ∈ mem V)
+        not (exists i j, v_list (v_nat i :: v_nat j :: nil) ∈ mem V) /\ valid_mem V
     | _ => False
     end.
-
-(* ------------------------------------------------------- *)
-
-Definition finite (X : P Value) : Prop := 
-  exists E, (X ≃ mem E) /\ E <> nil.
-
-Definition continuous (F : P Value -> P Value) : Set :=
-  forall X E, mem E ⊆ F X -> valid X 
-         -> exists D, (mem D ⊆ X) /\ ((mem E) ⊆ F (mem D)) /\ valid_mem D.
-
-Definition monotone (F : P Value -> P Value) : Set := 
-  forall D1 D2, (D1 ⊆ D2) -> F D1 ⊆ F D2.
 
 (* ------------------------------------------------------- *)
 
@@ -177,28 +198,17 @@ Ltac gather_atoms ::=
   constr:(A \u B \u C \u D \u E).
 
 Module EnvNotations.
-Notation "ρ ⋅ x" := (access ⌈ v_wrong ⌉ ρ x) (at level 50).
-Infix "⊔e" := (map2 Union) (at level 60).
+Notation "ρ ⋅ x" := (Env.access ⌈ v_wrong ⌉ ρ x) (at level 50).
+Infix "⊔e" := (Env.map2 Union) (at level 60).
 Infix "⊆e" := (Env.Forall2 Included) (at level 50).
 End EnvNotations.
 Import EnvNotations.
 
+(* ------------------------------------------------------- *)
+
 Definition nonempty_env : Rho -> Type := Env.ForallT nonemptyT.
 
 Definition valid_env : Rho -> Type := Env.ForallT valid. 
-
-Definition finite_env : Rho -> Type := Env.ForallT finite.
-
-Definition monotone_env (D : Rho -> P Value) := 
-  forall ρ ρ' , ρ ⊆e ρ' -> (D ρ) ⊆ D ρ'.
-
-Definition continuous_In (D:Rho -> P Value) (ρ:Rho) (v:Value) : Prop :=
-  v ∈ D ρ -> exists ρ' , exists (pf : finite_env ρ'),  ρ' ⊆e ρ /\ (v ∈ D ρ').
-
-Definition continuous_env (D:Rho -> P Value) (ρ:Rho) : Prop :=
-  forall v, continuous_In D ρ v.
-
-(* ------------------------------------------------------- *)
 
 Definition sub_env : Rho -> Rho -> Prop := Env.Forall2 Included.
 
@@ -230,79 +240,8 @@ Fixpoint denot_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
      end
   end.
 
+Definition denot (a : tm) := denot_n (size_tm a) a.
 
-(* ------------------------------------------------- *)
+Hint Opaque denot.
 
-(* Consistent values: we model function values as a set of approximations
-
-   But now that we have different sorts of values, those approximations should
-   all agree with eachother.
-
-   We can define this concept by first identifying the head of a value. 
-   Two values will *definitely* be inconsistent if they have different heads.
-   But they could have the same head if inside the value
-
-*)
-
-Inductive v_head := 
-   h_nat  : nat -> v_head 
-  | h_fun  : v_head
-  | h_list : v_head
-  | h_wrong : v_head 
-.
-
-Definition head (v : Value) : v_head := 
-  match v with 
-  | v_nat k => h_nat k
-  | v_map _ _ => h_fun
-  | v_fun => h_fun
-  | v_list _ => h_list
-  | v_wrong => h_wrong
-  end.
-
-
-Inductive Consistent : Value -> Value -> Prop :=
-  | c_nat : forall i, Consistent (v_nat i) (v_nat i)
-  | c_list : forall XS YS, List.Forall2 Consistent XS YS ->  Consistent (v_list XS) (v_list YS)
-  | c_wrong : Consistent v_wrong v_wrong
-
-  | c_fun : Consistent v_fun v_fun
-  | c_fun1 : forall X r, Consistent v_fun (X ↦ r)
-  | c_fun2 : forall X r, Consistent (X ↦ r) v_fun
-
-  | c_map2 : forall X1 X2 r1 r2, 
-      Consistent r1 r2 -> 
-      Consistent (X1 ↦ r1) (X2 ↦ r2)
-  | c_map1 : forall X1 X2 r1 r2, 
-      Exists2_any Inconsistent X1 X2 ->
-      Consistent (X1 ↦ r1) (X2 ↦ r2)
-
-with Inconsistent : Value -> Value -> Prop :=
-  | i_head : forall x y, 
-      head x <> head y ->
-      Inconsistent x y
-  | i_list_l : forall XS YS, 
-      length XS <> length YS ->
-      Inconsistent (v_list XS) (v_list YS)      
-  | i_list_e : forall XS YS,
-      List.Exists2 Inconsistent XS YS ->
-      Inconsistent (v_list XS) (v_list YS)
-  | i_map : forall X1 X2 r1 r2,
-      Forall2_any Consistent X1 X2 ->
-      Inconsistent r1 r2 ->
-      Inconsistent (X1 ↦ r1) (X2 ↦ r2).
-
-#[export] Hint Constructors Consistent Inconsistent v_head : core.
-
-
-(* Two sets are consistent if all of their elements 
-   are consistent. *)
-Definition ConsistentSets V1 V2 := 
-    forall x y, x ∈ V1 -> y ∈ V2 -> Consistent x y.
-
-Definition ConsistentSet V := ConsistentSets V V.
-
-Definition consistent_env : Rho -> Type := Env.ForallT ConsistentSet. 
-
-(* ------------------------------------------------------------------------------- *)
 

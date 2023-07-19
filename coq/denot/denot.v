@@ -1,26 +1,45 @@
+(* 
+
+This module provides rewriting rules for the denotation function, so that users need never look 
+at denot_n. These can be accessed by the "denot" Hint database.
+
+Rewriting abstractions is not automatic because the new variable name must be provided.
+  
+Lemma denot_abs : forall x t ρ,
+   x `notin` dom ρ \u fv_tm t ->
+   denot (abs t) ρ = 
+     Λ (fun D => denot (t ^ x) (x ~ D ++ ρ)).
+
+It also shows the weakening and substitution properties for denot.
+   
+Lemma weaken_denot : forall t ρ2 ρ,
+   fv_tm t [<=] dom ρ2 ->
+   uniq (ρ ++ ρ2) ->
+   denot t ρ2 = denot t (ρ ++ ρ2). 
+
+Lemma subst_denot1 :
+  forall (t : tm) (x : atom) (u : tm) (ρ : Env (P Value)),
+    scoped t (x ~ denot u ρ ++ ρ) ->
+    scoped u ρ ->
+    denot t (x ~ denot u ρ ++ ρ) = denot (t [x ~> u]) ρ.
+
+ *)
+
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Classes.RelationClasses.
 Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
 Require Export lc.tactics.
+Require Import lc.scoped.
 
-Require Import lc.List.
-Require Import lc.Env.
+Require Import structures.Structures.
+Require Import denot.definitions.
 
-Require Import lc.Sets.
 Import SetNotations.
 Local Open Scope set_scope.
-
-Require Import lc.Monad.
 Import MonadNotation.
 Open Scope monad_scope.
-
-Require Import lc.Container.
-
-Require Import lc.Scoped.
-
-Require Import lc.model_definitions.
 
 Import EnvNotations.
 Import LCNotations.
@@ -53,7 +72,7 @@ Proof.
     autorewrite with lngen. auto.
 Qed.
 
-Definition denot (a : tm) := denot_n (size_tm a) a.
+Hint Transparent denot.
 
 Lemma denot_var_b : forall x ρ, denot (var_b x) ρ = ⌈ v_wrong ⌉.
 Proof.

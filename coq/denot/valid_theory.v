@@ -4,30 +4,17 @@ Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
 Require Export lc.tactics.
-Require Import lc.List.
-Require Import lc.Env.
-Require Import lc.Sets.
+Require Import lc.scoped.
+Require Import structures.Structures.
+Require Import denot.definitions.
+
 Import SetNotations.
 Local Open Scope set_scope.
-Require Import lc.Monad.
 Import MonadNotation.
 Open Scope monad_scope.
-Require Import lc.Container.
-Require Import lc.Scoped.
-
-(* Definitions *)
-Require Import lc.model_definitions.
 
 Import EnvNotations.
 Import LCNotations.
-
-Lemma Forall_mem {A}{V : list A}{Pr} : List.Forall Pr V -> Sets.Forall Pr (mem V).
-Proof.
-  induction V; intro h; intros y yIn. 
-  inversion yIn. 
-  inversion h. subst.
-  inversion yIn. subst. auto. eapply IHV; eauto.
-Qed.
 
 (* short proof tactic for goals of the form Sets.Forall success X *)
 Ltac forall_success := 
@@ -145,7 +132,7 @@ Proof.
 Qed.
 
  
-Lemma valid_LIST : forall D, ForallT valid D -> valid (LIST D).
+Lemma valid_LIST : forall D, List.ForallT valid D -> valid (LIST D).
 induction 1. 
 split; auto.
 exists (v_list nil); done. forall_success.

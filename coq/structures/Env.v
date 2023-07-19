@@ -8,7 +8,7 @@ Require Coq.Relations.Relation_Definitions.
 
 Require Import Metalib.Metatheory.
 
-Require lc.Container.
+Require structures.Container.
 
 Open Scope list_scope.
 

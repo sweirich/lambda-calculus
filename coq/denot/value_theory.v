@@ -84,21 +84,16 @@ Fixpoint Value_rec' (P : Value -> Type)
 
 (* ----------------------------------------------- *)
 
-
 Definition ConsistentPointwiseList XS YS := 
   List.Forall2 Consistent XS YS.
 Definition InconsistentPointwiseList XS YS := 
   length XS <> length YS \/ List.Exists2 Inconsistent XS YS.
-Definition ConsistentAnyList XS YS := 
-  forall x y, List.In x XS -> List.In y YS -> Consistent x y.
-Definition InconsistentAnyList XS YS := 
-  (exists x y, List.In x XS /\ List.In y YS /\ Inconsistent x y).
 
-
+(* ----------------------------------------------- *)
 
 (* Two values cannot be both consistent and inconsistent. *)
 
-Lemma Consistent_Inconsistent_disjoint : 
+Lemma Consistent_not_Inconsistent : 
   forall x y, Consistent x y -> Inconsistent x y -> False.
 Proof.
   intros x.
@@ -125,6 +120,11 @@ Proof.
       inversion H7; subst. eauto.
 Qed.
 
+
+
+
+(* ----------------------------------------------- *)
+
 (* Determining whether two values are consistent or inconsistent 
    is decidable *)
 
@@ -133,31 +133,31 @@ Definition ConsistentDecidable := fun v1 => forall v2 : Value,
 
 
 
-Lemma dec_any : forall XS, ForallT ConsistentDecidable XS -> forall YS, { ConsistentAnyList XS YS } + {InconsistentAnyList XS YS}.
+Lemma dec_any : forall XS, ForallT ConsistentDecidable XS -> forall YS, { Forall2_any Consistent XS YS } + {Exists2_any Inconsistent XS YS}.
 induction XS.
 - intros h. intros ys. left. intros x y h1 h2. inversion h1.
 - intros h. inversion h. subst. clear h.
   intros YS. unfold ConsistentDecidable in H1.
   destruct (IHXS H2 YS).
   + induction YS. left. intros x y h1 h2. inversion h2.
-    have CE: (ConsistentAnyList XS YS).
+    have CE: (Forall2_any Consistent XS YS).
     intros x y h1 h2. 
-    eapply c; eauto. simpl. eauto.
+    eapply f; eauto. simpl. eauto.
     specialize (IHYS CE). destruct IHYS.
     ++ destruct (H1 a0).       
        left. 
        { intros x y h1 h2.
          destruct h1 as [EQ|INXS]; destruct h2 as [EQ2|INYS]; subst.
          -- auto.
-         -- apply c0; eauto. simpl; auto.
-         -- apply c; eauto. simpl; auto.
+         -- apply f0; eauto. simpl; auto.
+         -- apply f; eauto. simpl; auto.
          -- apply CE; eauto.
        } 
        right. exists a . exists a0. simpl. split; auto.
-    ++ right. destruct i as [x [y [h1 [h2 h3]]]].
+    ++ right. destruct e as [x [y [h1 [h2 h3]]]].
        exists x. exists y. simpl. eauto.
 
-  + right. destruct i as [x1 [x2 [h1 [h2]]]].
+  + right. destruct e as [x1 [x2 [h1 [h2]]]].
     exists x1. exists x2. simpl. split; eauto. 
 Qed.
 
@@ -203,8 +203,8 @@ intros XS. induction XS. econstructor; eauto.
 econstructor; eauto. unfold ConsistentDecidable. eapply dec_con; eauto.
 Qed.
 
-
-(* Consistency is also reflexive *)
+(* ------------------------------------------------- *)
+(* Consistent is a reflexive relation *)
 
 Definition ConsistentReflexive (x : Value) := Consistent x x.
 
@@ -240,8 +240,40 @@ Qed.
 (* Not transitive. The middle set may be empty! *)
 (* Instance ConsistentSets_Transitive : Transitive ConsistentSets. *)
 
+Lemma ConsistentSets_Singleton_refl {x} : ConsistentSets ⌈ x ⌉ ⌈ x ⌉.
+Proof. intros x1 x2 I1 I2. inversion I1. inversion I2. subst. reflexivity. Qed.
+
+Lemma ConsistentSets_mem : forall l1 l2, Forall2_any Consistent l1 l2 -> ConsistentSets (mem l1)(mem l2).
+Proof. intros l1 l2 h. unfold Forall2_any in h. intros x y I1 I2.
+       eapply h; eauto using mem_In.
+Qed.
 
 (* ------------------------------------------------- *)
+(* All of the Operations respect Consistency         *)
+(* ------------------------------------------------- *)
+
+Lemma Λ_ConsistentSets : forall F1 F2,
+  (forall D1 D2 : P Value,
+       valid D1 -> valid D2 -> ConsistentSets D1 D2 -> ConsistentSets (F1 D1) (F2 D2)) ->
+  ConsistentSets (Λ F1) (Λ F2).
+Proof.
+  intros F1 F2 IH x1 x2 I1 I2.
+  destruct x1; unfold In, Λ in I1; try done;
+  destruct x2; unfold In, Λ in I2; try done.
+  move: I1 => [I1 VM].
+  move: I2 => [I2 VM0].
+  destruct (dec_any l (DecSetList l) l0).
+  destruct (dec_con x1 x2). eapply c_map2; eauto.
+  ++ (* Domains are consistent, ranges are not. Should be a contradiction. *)
+    have CS: ConsistentSets (mem l) (mem l0). eauto using ConsistentSets_mem. 
+    have C : ConsistentSets (F1 (mem l)) (F2 (mem l0)). 
+    eapply IH; eauto using valid_mem_valid.
+    specialize (C _ _ I1 I2).
+    exfalso. eapply Consistent_not_Inconsistent; eauto.
+  ++ unfold Exists2_any in *. 
+     eapply c_map1; eauto.
+Qed.
+
 
 Definition APPLY_ConsistentSets : forall w1 w2 w1' w2', 
     ConsistentSets w1 w1' -> 
@@ -282,7 +314,7 @@ Proof.
   have h3 : x1 ∈ w2. eapply H0; eauto.
   have h4 : x2 ∈ w2'. eapply H6; eauto.
   move: (C2 x1 x2 h3 h4) => h5.
-  assert False. eapply Consistent_Inconsistent_disjoint; eauto. done.
+  assert False. eapply Consistent_not_Inconsistent; eauto. done.
 
   (* two successful projections *)
   move: (C2 _ _ H0 H6)=> c1. inversion c1; subst; clear c1; eauto. 
@@ -301,17 +333,7 @@ Proof.
   specialize (H2 k). done.
 Qed.
 
-Definition APPLY_ConsistentSet : forall w1 w2, 
-    ConsistentSet w1 -> 
-    ConsistentSet w2 -> 
-    ConsistentSet (APPLY w1 w2). 
-Proof.
-  intros.  unfold ConsistentSet in *.
-  eapply APPLY_ConsistentSets; eauto.
-Qed.
-
-
-Definition CONS_ConsistentSets : forall w1 w2 w1' w2', 
+Lemma CONS_ConsistentSets : forall w1 w2 w1' w2', 
     ConsistentSets w1 w1' -> 
     ConsistentSets w2 w2' -> 
     ConsistentSets (CONS w1 w2) (CONS w1' w2'). 
@@ -328,6 +350,84 @@ Proof.
   eapply Forall2_cons; eauto.
 Qed.
 
+
+Lemma NAT_ConsistentSets {i} : ConsistentSets (NAT i) (NAT i). 
+Proof.
+  unfold ConsistentSets.
+  intros x1 x2 I1 I2.
+  unfold NAT in *. 
+  destruct x1; try done.
+  destruct x2; try done.
+  inversion I1; inversion I2; subst; eauto.
+Qed.
+
+Lemma ADD_ConsistentSets : ConsistentSets ADD ADD. 
+Proof.
+  unfold ConsistentSets.
+  intros x1 x2 I1 I2.
+  destruct x1; try done.
+  destruct x2; try done.
+  destruct x1; try done.
+  destruct x2; try done. 
+  3: destruct x2; try done.
+  + (* results both nats *)
+    move: I1 => [i1 [j1 [h1 m1]]].
+    move: I2 => [i2 [j2 [h2 m2]]].
+    destruct (eq_dec n n0).
+    ++ subst. rewrite e. eauto.
+    ++ have NE: not (i1 = i2 /\ j1 = j2).
+       intros [e1 e2]. subst. done.
+       eapply c_map1. unfold Exists2_any.
+       exists (v_list (v_nat i1 :: v_nat j1 :: nil)).
+       exists (v_list (v_nat i2 :: v_nat j2 :: nil)).
+       split. eapply mem_In; auto.
+       split. eapply mem_In; auto.
+       eapply i_list_e.
+       have: i1 <> i2 \/ j1 <> j2. lia.
+       move=> [e1|e2]. 
+       eapply List.Exists2_cons1. eapply i_head. simpl. intro h. inversion h. done.
+       eapply List.Exists2_cons2.
+       eapply List.Exists2_cons1. eapply i_head. simpl. intro h. inversion h. done.
+  + (* results are nat / wrong *)
+    move: I1 => [i1 [j1 [h1 m1]]].
+    cbn in I2. 
+    move: I2 => [I2 [NE vm2]].
+    (* decide whether l0 and l are consistent. *)
+    destruct (dec_any l (DecSetList l) l0).
+    ++ (* contradiction *)
+      unfold Forall2_any in f.
+      destruct l0; try done.
+      exfalso. eapply I2. 
+      apply mem_In in h1.
+      specialize (f (v_list (v_nat i1 :: v_nat j1 :: nil)) v h1 ltac:(econstructor;eauto)).
+      inversion f. subst. inversion H0. subst. inversion H4. subst. inversion H6. subst.
+      clear H0 H4 H6.
+      inversion H2. inversion H3. clear H2 H3. subst.
+      exists i1. exists j1. cbv. left. auto.
+    ++ eapply c_map1. unfold Exists2_any in *. auto.
+  + (* results are wrong / nat *)
+    move: I2 => [i1 [j1 [h1 m1]]].
+    cbn in I1. 
+    move: I1 => [I1 [NE vm1]].
+    (* decide whether l0 and l are consistent. *)
+    destruct (dec_any l (DecSetList l) l0).
+    ++ (* contradiction *)
+      unfold Forall2_any in f.
+      destruct l; try done.
+      exfalso. eapply I1. 
+      apply mem_In in h1.
+      specialize (f v (v_list (v_nat i1 :: v_nat j1 :: nil)) ltac:(econstructor;eauto) h1).
+      inversion f. subst. inversion H1. inversion H4. inversion H8. inversion H9. inversion H3. subst.
+      clear H1 H3 H4 H8 H9.
+      exists i1. exists j1. cbv. left. auto.
+    ++ eapply c_map1. unfold Exists2_any in *. auto.
+  + (* results both wrong *) 
+    eapply c_map2. auto.
+Qed.
+
+
+
+
 Ltac gather_atoms ::=
   let A := gather_atoms_with (fun x : vars => x) in
   let B := gather_atoms_with (fun x : var => {{ x }}) in
@@ -336,138 +436,66 @@ Ltac gather_atoms ::=
   let E := gather_atoms_with (fun x : Rho => dom x) in
   constr:(A \u B \u C \u D \u E).
 
+Import LCNotations.
+Import EnvNotations.
 
-Lemma mem_In : forall A (x:A) l, x ∈ mem l -> List.In x l.
-Proof. intros. induction l. cbv in H. done.
-       destruct H. subst. econstructor. auto. 
-       simpl. right. eauto. Qed.
-
-Lemma ConsistentSets_mem : forall l1 l2, ConsistentAnyList l1 l2 -> ConsistentSets (mem l1)(mem l2).
-Proof. intros l1 l2 h. unfold ConsistentAnyList in h. intros x y I1 I2.
-       eapply h; eauto using mem_In.
+Lemma access_ConsistentSets : forall ρ1 ρ2 x,
+    Env.ForallT2 ConsistentSets ρ1 ρ2 ->
+    ConsistentSets (ρ1 ⋅ x) (ρ2 ⋅ x).
+Proof.
+  intros.
+  induction X.
+  simpl. 
+  ++ eapply ConsistentSets_Singleton_refl.
+  ++ simpl. destruct (x == x0) eqn:E; auto. 
 Qed.
 
 Lemma Consistent_denot :
-  forall t ρ1 ρ2, Env.ForallT2 ConsistentSets ρ1 ρ2 -> valid_env ρ1 -> valid_env ρ2 ->
+  forall t ρ1 ρ2, Env.ForallT2 ConsistentSets ρ1 ρ2 -> 
              ConsistentSets (denot t ρ1) (denot t ρ2).
 Proof.
   intro t.
   eapply tm_induction with (t := t);
   [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
-  all: intros ρ1 ρ2 CR VR1 VR2.
+  all: intros ρ1 ρ2 CR. (* VR1 VR2. *)
   all: autorewrite with denot.
   all: intros x1 x2 I1 I2.
   all: try solve [inversion I1; inversion I2; eauto].
 
   - (* var *) 
-    induction CR; simpl in I1, I2.
-    ++ inversion I1. inversion I2. subst. auto.
-    ++ destruct (x == x0) eqn:E; rewrite E in I1, I2. eapply f; eauto.
-       inversion VR1. inversion VR2. eauto.
+    eapply access_ConsistentSets; eauto.
 
   - (* app *)
-    move: (IH1 ρ1 ρ2 ltac:(eauto) ltac:(eauto) ltac:(eauto)) => C1.
-    move: (IH2 ρ1 ρ2 ltac:(eauto) ltac:(eauto) ltac:(eauto)) => C2.
-
-    move: (APPLY_ConsistentSets _ _ _ _ C1 C2) => CA.
-
-    eapply (CA x1 x2 I1 I2).
+    specialize (IH1 ρ1 ρ2 ltac:(eauto)). 
+    specialize (IH2 ρ1 ρ2 ltac:(eauto)). 
+    eapply (APPLY_ConsistentSets _ _ _ _ IH1 IH2); eauto.
 
   - (* abs *)
     pick fresh y.
     rewrite (denot_abs y) in I1; eauto.
     rewrite (denot_abs y) in I2; eauto.
-    destruct x1; unfold In, Λ in I1; try done;
-    destruct x2; unfold In, Λ in I2; try done.
-    move: I1 => [I1 [Vl Cl]].
-    move: I2 => [I2 [Vl0 Cl0]].
-    destruct (dec_any l (DecSetList l) l0).
-    destruct (dec_con x1 x2). eapply c_map2; eauto.
-    ++ (* Domains are consistent, ranges are not. Should be a contradiction. *)
-      have CS: ConsistentSets (mem l) (mem l0). eauto using ConsistentSets_mem. 
-      have V1:  valid_env (y ~ mem l ++ ρ1). 
-      { econstructor; eauto. destruct l; try done. split. exists v. eauto.
-        eapply Forall_mem. eauto. }
-      have V2:  valid_env (y ~ mem l0 ++ ρ2). 
-      { econstructor; eauto. destruct l0; try done. split. exists v. eauto.
-        eapply Forall_mem. eauto. }
-      move: (IH y ltac:(auto)) => h. 
-      specialize (h (y ~ mem l ++ ρ1) (y ~ mem l0 ++ ρ2)). 
-      have k9: Env.ForallT2 ConsistentSets (y ~ mem l ++ ρ1) (y ~ mem l0 ++ ρ2).
+
+    have: forall D1 D2, 
+        valid D1 ->
+        valid D2 -> 
+        ConsistentSets D1 D2 ->
+        ConsistentSets (denot (t' ^ y) (y ~ D1 ++ ρ1)) (denot (t' ^ y) (y ~ D2 ++ ρ2)).
+    { 
+      intros.
+      eapply IH; eauto.
       econstructor; eauto.
-      specialize (h ltac:(eauto) ltac:(eauto) ltac:(eauto)).
-      move: (h x1 x2 I1 I2) => C12.
-      exfalso. eapply Consistent_Inconsistent_disjoint; eauto.
-    ++ unfold InconsistentAnyList in i. 
-       eapply c_map1; eauto.
+    } clear IH. move=> IH.
+    
+    eapply Λ_ConsistentSets. apply IH. eapply I1. eapply I2. 
+
   - (* nat *)
-    unfold NAT in *. 
-    destruct x1; try done.
-    destruct x2; try done.
-    inversion I1; inversion I2; subst; eauto.
-  - (* ADD: need a lemma that ADD is consistent *) 
-    destruct x1; try done.
-    destruct x2; try done.
-    destruct x1; try done.
-    destruct x2; try done. 
-    3: destruct x2; try done.
-    + (* results both nats *)
-      move: I1 => [i1 [j1 [h1 m1]]].
-      move: I2 => [i2 [j2 [h2 m2]]].
-      destruct (eq_dec n n0).
-      ++ subst. rewrite e. eauto.
-      ++ have NE: not (i1 = i2 /\ j1 = j2).
-         intros [e1 e2]. subst. done.
-         eapply c_map1. unfold Exists2_any.
-         exists (v_list (v_nat i1 :: v_nat j1 :: nil)).
-         exists (v_list (v_nat i2 :: v_nat j2 :: nil)).
-         split. eapply mem_In; auto.
-         split. eapply mem_In; auto.
-         eapply i_list_e.
-         have: i1 <> i2 \/ j1 <> j2. lia.
-         move=> [e1|e2]. 
-         eapply List.Exists2_cons1. eapply i_head. simpl. intro h. inversion h. done.
-         eapply List.Exists2_cons2.
-         eapply List.Exists2_cons1. eapply i_head. simpl. intro h. inversion h. done.
-    + (* results are nat / wrong *)
-      move: I1 => [i1 [j1 [h1 m1]]].
-      cbn in I2. 
-      (* decide whether l0 and l are consistent. *)
-      destruct (dec_any l (DecSetList l) l0).
-      ++ (* contradiction *)
-        unfold ConsistentAnyList in c.
-        have NE: l0 <> nil. admit. (* Need to update definition. *)
-        destruct l0; try done.
-        exfalso. eapply I2. 
-        apply mem_In in h1.
-        specialize (c (v_list (v_nat i1 :: v_nat j1 :: nil)) v h1 ltac:(econstructor;eauto)).
-        inversion c. subst. inversion H0. subst. inversion H4. subst. inversion H6. subst.
-        clear H0 H4 H6.
-        inversion H2. inversion H3. clear H2 H3. subst.
-        exists i1. exists j1. cbv. left. auto.
-      ++ eapply c_map1. unfold InconsistentAnyList in i. unfold Exists2_any. auto.
-         (* InconsistentAnyList and Exists2_any are the same *)
-    + (* results are wrong / nat *)
-      move: I2 => [i1 [j1 [h1 m1]]].
-      cbn in I1. 
-      (* decide whether l0 and l are consistent. *)
-      destruct (dec_any l (DecSetList l) l0).
-      ++ (* contradiction *)
-        unfold ConsistentAnyList in c.
-        have NE: l <> nil. admit. (* Need to update definition. *)
-        destruct l; try done.
-        exfalso. eapply I1. 
-        apply mem_In in h1.
-        specialize (c v (v_list (v_nat i1 :: v_nat j1 :: nil)) ltac:(econstructor;eauto) h1).
-        inversion c. subst. inversion H1. inversion H4. inversion H8. inversion H9. inversion H3. subst.
-        clear H1 H3 H4 H8 H9.
-        exists i1. exists j1. cbv. left. auto.
-      ++ eapply c_map1. unfold InconsistentAnyList in i. unfold Exists2_any. auto.
-    + (* results both wrong *) 
-      eapply c_map2. auto.
-  - (* CONS: need a lemma about CONS *)
-    specialize (IH2 _ _ CR VR1 VR2).
-    specialize (IH1 _ _ CR VR1 VR2).
-    move: (CONS_ConsistentSets _ _ _ _ IH1 IH2) => c.
-    eapply c; eauto.
-Admitted.
+    eapply NAT_ConsistentSets; eauto.
+
+  - (* ADD *) 
+    apply ADD_ConsistentSets; eauto.
+
+  - (* CONS *)
+    specialize (IH2 _ _ CR). 
+    specialize (IH1 _ _ CR). 
+    eapply (CONS_ConsistentSets _ _ _ _ IH1 IH2); eauto.
+Qed.

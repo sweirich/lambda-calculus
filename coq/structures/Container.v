@@ -3,9 +3,7 @@ Require Import Coq.Classes.RelationClasses.
 Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
-Require Export lc.tactics.
-Require Import lc.List.
-
+Require Import structures.List.
 
 Class Container (M : Type -> Type) :=  {
   (* does the container hold the element *)

@@ -238,12 +238,13 @@ Proof. intros. unfold Exists. reflexivity. Qed.
 
 (* ----------------------------------------- *)
 
-Lemma Forall_sub : forall A (X Y : P A) Pr, 
-    X ⊆ Y -> 
-    Sets.Forall Pr X ->
-    Sets.Forall Pr Y.
+Lemma Forall_mem {A}{V : list A}{Pr} : List.Forall Pr V -> Sets.Forall Pr (mem V).
 Proof.
-Admitted.
+  induction V; intro h; intros y yIn. 
+  inversion yIn. 
+  inversion h. subst.
+  inversion yIn. subst. auto. eapply IHV; eauto.
+Qed.
 
 Lemma Forall_sub_mem : forall A (D:list A) X Pr, 
     mem D ⊆ X -> 
@@ -256,3 +257,8 @@ Proof.
   econstructor; eauto. eapply F. eapply SUB. eauto.
   eapply IHD with (X:=X); auto. intros x xIn. eapply SUB; eauto.
 Qed.
+
+Lemma mem_In : forall A (x:A) l, x ∈ mem l -> List.In x l.
+Proof. intros. induction l. cbv in H. done.
+       destruct H. subst. econstructor. auto. 
+       simpl. right. eauto. Qed.
