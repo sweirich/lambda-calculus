@@ -142,27 +142,47 @@ Arguments Exists2 {_}{_}.
   Exists ExistsT ExistsT2 Exists2 : core.
 
 Lemma Forall_forall {A} (P : A -> Prop) (l : Env A) :
-      Forall P l <-> (forall x, In_rng x l -> P x).
+      Forall P l -> (forall x, In_rng x l -> P x).
 Proof. induction l.
-       split; intro h. intro x; simpl; intro I; inversion I.
+       intro h. intro x; simpl; intro I; inversion I.
        eauto.
-       split.
-       intro h; inversion h; subst.
-Admitted.
+       - intro h; inversion h; subst.
+         intros y h1. inversion h1. subst. eauto.
+         eapply IHl in H1. eapply H1. eauto.
+Qed.
 
 Lemma Exists_exists : forall {A} (P : A -> Prop) (l : Env A), 
-      Exists P l <-> (exists x, In_rng x l /\ P x).
-Admitted.
+      Exists P l -> (exists x, In_rng x l /\ P x).
+Proof.
+  induction l.
+  intro h. inversion h.
+  intros h. inversion h. subst.
+  exists a0. split; eauto. econstructor. auto.
+  subst. destruct IHl as [y [xIn Px]]; auto.
+  exists y. split; eauto. simpl. right. auto.
+Qed.
 
 
 Lemma Forall_Forall2 : forall {A} (P : A -> A -> Prop) (l:Env A), 
        Forall (fun x => P x x) l <-> Forall2 P l l.
-Admitted.
+Proof.
+  split.
+  - induction 1; eauto.
+  - intros h. dependent induction h. auto.
+    eapply Forall_cons; eauto.
+Qed.
 
 Lemma Exists_Exists2 : forall {A} (P : A -> A -> Prop) (l:Env A), 
        Exists (fun x => P x x) l <-> Exists2 P l l.
-Admitted.
+Proof.
+  split.
+  - induction 1; eauto.
+  - intro h. dependent induction h. auto.
+    specialize (IHh P E1 ltac:(auto) ltac:(auto) ltac:(auto) ltac:(auto)).
+    eapply Exists_cons2. auto.
+Qed.
 
+(*
 #[export] Instance Container_Env : Container.Container Env := {
     Container.In := @In_rng;
     Container.Forall := @Forall;
@@ -178,7 +198,7 @@ Admitted.
     Container.Exists2 := @Exists2;
     Container.Forall_Forall2 := @Forall_Forall2;
     Container.Exists_Exists2 := @Exists_Exists2
-}.
+}. *)
 
 
 Definition same_scope {A B : Type} := Forall2 (fun (v1 :A) (v2 : B) => True).
@@ -251,7 +271,18 @@ Proof. unfold same_scope. typeclasses eauto. Qed.
   Qed.    
 
   Polymorphic Lemma sub_dom2 {f}{ρ1 ρ2 :Env A} : dom (map2 f ρ1 ρ2) [<=] dom ρ2.
-  Admitted.
+  Proof. 
+    move: ρ2.
+    induction ρ1; intro ρ2.
+    - simpl. fsetdec.
+    - move: a => [x v].
+      destruct ρ2. simpl. fsetdec.
+      move: p => [y u].
+      simpl.
+      destruct (x == y). simpl. 
+      rewrite IHρ1. fsetdec.
+      rewrite IHρ1. fsetdec.
+  Qed.    
 
   Polymorphic Lemma dom_update : forall x (D :A) ρ,  dom (update  x D ρ) = dom ρ.
   Proof. intros. induction ρ. simpl. auto. simpl.

@@ -501,7 +501,7 @@ inversion h; subst; clear h.
 + apply denot_Delta_inv in H.
   move: H => [v1 [w2 C]]. 
   inversion C; subst.
-Admitted.
+Abort.
 
 (* A term with an unbound variable has no value. *)
 Definition tm_Wrong : tm := app (var_b 1) (var_b 0).

@@ -1,6 +1,7 @@
 Require Import Coq.Lists.List.
 Require ssreflect.
 
+Require Import Coq.Program.Equality.
 Require Import Coq.Classes.RelationClasses.
 Require Import Coq.Relations.Relation_Definitions.
 
@@ -71,8 +72,11 @@ Qed.
 
 Lemma Exists_Exists2 : forall {A} (P : A -> A -> Prop) (l:list A), 
     Exists (fun x => P x x) l <-> Exists2 P l l.
-Admitted. 
-
+Proof.
+  split.
+  intro h. induction h; eauto.
+  intro h. dependent induction h; eauto.
+Qed.
 
 Definition Forall2_any {A B:Type} : 
   forall (P : A -> B -> Prop), list A -> list B -> Prop :=

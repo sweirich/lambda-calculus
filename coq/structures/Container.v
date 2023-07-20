@@ -99,11 +99,24 @@ Inductive option_ExistsT {A : Type} (P : A -> Type) : option A -> Type :=
 
 Lemma When_forall : forall {A} (P : A -> Prop) (l : option A), 
       When P l <-> (forall x, option_In x l -> P x).
-Admitted.
+Proof.
+  intros. split. 
+  intro h. inversion h. subst. intros y IN. inversion IN. subst. auto.
+  intros y IN.  inversion IN.
+  intro h. 
+  destruct l. econstructor. eapply h. econstructor. eauto.
+Qed.
 
 Lemma option_Exists_exists : forall {A} (P : A -> Prop) (l : option A), 
       option_Exists P l <-> (exists x, option_In x l /\ P x).
-Admitted.
+Proof.
+  intros. split.
+  intro h; inversion h. subst. inversion h. subst.
+  exists x. split; eauto. econstructor.
+  intro h. destruct h as [x [xIn Px]]. 
+  destruct l. inversion xIn. subst. econstructor; eauto.
+  inversion xIn.
+Qed.
 
 Definition rec_option {A} (P : A -> Prop) (rec : forall (v:A), P v) 
   (vs : option A) : When P vs :=
@@ -130,7 +143,7 @@ Definition recT_option {A} (P : A -> Type) (rec : forall (v:A), P v)
     Exists_exists := @option_Exists_exists;
   }. 
 
-#[export] Instance PointwiseContainer_option : PointwiseContainer option.
-Admitted.
+#[export] Instance PointwiseContainer_option : PointwiseContainer option. 
+Abort.
 
 
