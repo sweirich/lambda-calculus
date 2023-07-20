@@ -8,8 +8,6 @@ Require Coq.Relations.Relation_Definitions.
 
 Require Import Metalib.Metatheory.
 
-Require structures.Container.
-
 Open Scope list_scope.
 
 Section Definitions.
@@ -181,25 +179,6 @@ Proof.
     specialize (IHh P E1 ltac:(auto) ltac:(auto) ltac:(auto) ltac:(auto)).
     eapply Exists_cons2. auto.
 Qed.
-
-(*
-#[export] Instance Container_Env : Container.Container Env := {
-    Container.In := @In_rng;
-    Container.Forall := @Forall;
-    Container.Exists := @Exists;
-    Container.ForallT := @ForallT;
-    Container.ExistsT := @ExistsT;
-    Container.Forall_forall := @Forall_forall;
-    Container.Exists_exists := @Exists_exists
-}.
-    
-#[export] Instance PWC_Env: Container.PointwiseContainer Env := {
-    Container.Forall2 := @Forall2;
-    Container.Exists2 := @Exists2;
-    Container.Forall_Forall2 := @Forall_Forall2;
-    Container.Exists_Exists2 := @Exists_Exists2
-}. *)
-
 
 Definition same_scope {A B : Type} := Forall2 (fun (v1 :A) (v2 : B) => True).
 Arguments same_scope {_}{_}.
