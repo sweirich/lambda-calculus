@@ -1,8 +1,11 @@
-(* From coq-ext-lib/theories/structures/Functor / Applicative / Monad *)
+(* Derived From coq-ext-lib/theories/structures/Functor / Applicative / Monad *)
+(* Also includes Alternative *)
 
 Set Implicit Arguments.
 Set Strict Implicit.
 Set Universe Polymorphism.
+
+Require Import Coq.Lists.List.
 
 Declare Scope monad_scope.
 
@@ -151,32 +154,86 @@ Module AlternativeNotation.
 End AlternativeNotation.
 
 
-(* ---------------- Instances ---------------- *)
+
+(* ---------------- Laws ---------------------- *)
+
+(* asum in Haskell, for any foldable, not just list *)
+Definition Any {A}{F : Type -> Type}`{Alternative F} : list (F A) -> F A :=
+  fold_right choose empty.
+
+
+Import AlternativeNotation.
+
+Class AlternativeLaws {F} (Alt_F : Alternative F) := { 
+    alt_lunit : 
+       forall {A} (p : F A), (empty <|> p) = p;
+    alt_runit : 
+       forall {A} (p : F A), (p <|> empty) = p;
+    alt_assoc : 
+       forall{A} (p1 p2 p3 : F A), ((p1 <|> p2) <|> p3) = (p1 <|> (p2 <|> p3))
+}.
+
+Class MonadLaws {M : Type -> Type} (Monad_F : Monad M) := 
+  {  bind_of_return : forall {A B} (a : A) (f : A -> M B),
+      bind (ret a) f = f a;
+     return_of_bind : forall {A} (aM: M A), bind aM ret = aM;
+    bind_associativity :
+  forall {A B C} (aM:M A) (f:A -> M B) (g:B -> M C),
+        bind (bind aM f) g = bind aM (fun a => bind (f a) g)
+  }.
+
+Class FunctorLaws {F} (Functor_F : Functor F) :=
+  { fmap_id : forall {T} (x : F T), fmap id x = x
+  ; fmap_compose : forall {T U V} (f : T -> U) (g : U -> V) (x : F T),
+        fmap (fun x => g (f x)) x = fmap g (fmap f x)
+  }.
+
+
+(* ------------------------------------------- *)                             
+
+
 
 (* list monad *)
 
-Require Import Coq.Lists.List.
 
-Global Instance Functor_list : Functor list :=
+#[export] Instance Functor_list : Functor list :=
 { fmap := map }.
 
-Global Instance Monad_list : Monad list :=
+#[export] Instance Monad_list : Monad list :=
 { ret  := fun _ x => x :: nil; 
   bind := fun _ _ x f =>  flat_map f x
 }.
 
-Global Instance Alternative_list : Alternative list :=
+#[export] Instance Alternative_list : Alternative list :=
   { empty := @nil ;
     choose := @app
   }.
 
-(* Error monad *)
+(* option monad *)
 
-Global Instance Monad_error {E} : Monad (sum E) :=
-  { ret := fun _ x => inr x ;
-    bind := fun _ _ x k => match x with 
-                        | inl y => inl y
-                        | inr v => k v
-                        end }. 
+#[export] Instance Fuctor_option : Functor option :=
+  { fmap := @option_map }.
+#[export] Instance Monad_option : Monad option :=
+  { ret  := @Some ;
+    bind := fun (A B : Type) (o : option A) (f : A -> option B) => match o with
+                                                       | Some x => f x
+                                                       | None => None
+                                                       end }.
+#[export] Instance Alternative_option : Alternative option :=
+  { empty := @None ;
+    choose := fun (A : Type) (x : option A) (y : option A) => 
+                match x with 
+                | Some x => Some x
+                | None =>  y
+                end
+  }.
 
-                                       
+(* Identity monad *)
+
+Definition Id : Type -> Type := fun x => x.
+
+#[export] Instance Monad_Id : Monad Id :=
+{ 
+  ret := fun _ x => x;
+  bind := fun _ _ x f => f x
+}.

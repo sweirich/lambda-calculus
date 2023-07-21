@@ -63,20 +63,27 @@ Inductive Value : Type :=
 
   (* dynamic type error *)
   | v_wrong : Value
+
+  (* result of failing function *)
+  | v_fail : Value
+
 .
 
 #[export] Hint Constructors Value : core.
 
 Infix "↦" := v_map (at level 85, right associativity).
 
-(* A successful value is not wrong. *)
+(* A successful value is not wrong, nor a multiple value. *)
 Definition success (v : Value) : Prop :=
   match v with 
   | v_wrong => False
+  | v_fail => False
   | _ => True
   end.
 
-(* ------------ Valid or a denotation that "succeeds" ------------------ *)
+
+
+(* ------------ Valid or a denotation that represents a single value ------------------ *)
 
 Definition valid (V : P Value) : Type :=
   nonemptyT V * Sets.Forall success V.
@@ -84,7 +91,7 @@ Definition valid (V : P Value) : Type :=
 Definition valid_mem (V : list Value) : Prop :=
   V <> nil /\ List.Forall success V.
 
-(* ------------ Semantic Operators ------------------ *)
+(* ------------  Semantic Operators ------------------ *)
 
 Definition WRONG : P Value := ⌈ v_wrong ⌉.
 
@@ -110,12 +117,15 @@ Definition CONS : P Value -> P Value -> P Value :=
     | _ => False
     end.
 
+(* ------------ LAMBDA ----------------- *)
+
 Definition Λ : (P Value -> P Value) -> P Value :=
   fun f => fun v => match v with 
           | (V ↦ w) => (w ∈ f (mem V)) /\ valid_mem V  (* CBV *)
           | v_fun => True
           | _ => False
           end.
+
 
 (* ------------ APPLY ----------------- *)
 
@@ -129,7 +139,6 @@ Definition Λ : (P Value -> P Value) -> P Value :=
     - D1 is empty
     - D2 is empty
     - D1 contains a vfun or V ↦ x, but cannot be applied to D2
-           << should this be empty or wrong??? >> 
 
    When does APPLY propagate wrong?
     - wrong in D1 or D2  (FUNWRONG / ARGWRONG) 
@@ -138,6 +147,8 @@ Definition Λ : (P Value -> P Value) -> P Value :=
    When does APPLY create a new wrong? 
     - D1 contains a successful Value that is not a v_fun, v_map or v_list  (APPWRONG)
     - D1 contains a v_list and D2 contains a successful Value that is not a nat (PROJWRONG)
+
+   NOTE: projecting from a tuple with an invalid index should be fail, not go wrong.
            
 *)
 
@@ -149,26 +160,41 @@ Inductive applicable : Value -> Prop :=
 #[export] Hint Constructors applicable : core.
 
 Inductive APPLY : P Value -> P Value -> Value -> Prop :=
-  | FUNWRONG : forall D1 D2,
-     (v_wrong ∈ D1) ->
-     APPLY D1 D2 v_wrong
-  | ARGWRONG : forall D1 D2,
-     (v_wrong ∈ D2) ->
-     APPLY D1 D2 v_wrong
+
+  | FUNWRONG : forall D1 D2 x,
+     (x ∈ D1) ->
+     not (success x) ->
+     APPLY D1 D2 x
+
+  | ARGWRONG : forall D1 D2 x,
+     valid D1 ->              (* don't overlap FUNWRONG *)
+     (x ∈ D2) ->
+     APPLY D1 D2 x
+
   | BETA : forall D1 D2 w V,
      (V ↦ w ∈ D1) -> (mem V ⊆ D2) -> valid_mem V ->
      APPLY D1 D2 w
+
   | PROJ   : forall D1 D2 w VS k, 
      (v_list VS ∈ D1) -> (v_nat k ∈ D2) -> nth_error VS k = Some w ->
      APPLY D1 D2 w
+
   | APPWRONG : forall D1 D2 x, 
       x ∈ D1 -> success x -> not (applicable x) ->      
       APPLY D1 D2 v_wrong
+
   | PROJWRONG : forall D1 D2 VS x, 
      (v_list VS ∈ D1) -> 
      (x ∈ D2) -> success x ->
      (forall k, x <> (v_nat k)) ->
-     APPLY D1 D2 v_wrong. 
+     APPLY D1 D2 v_wrong
+
+  | PROJFAIL : forall D1 D2 VS k, 
+     (v_list VS ∈ D1) -> 
+     (v_nat k ∈ D2) -> 
+     nth_error VS k = None ->  (* out of bounds index is fail *)
+     APPLY D1 D2 v_fail
+. 
 
 Infix "▩" := APPLY (at level 90).
 
@@ -184,6 +210,19 @@ Definition ADD : P Value :=
         not (exists i j, v_list (v_nat i :: v_nat j :: nil) ∈ mem V) /\ valid_mem V
     | _ => False
     end.
+
+Definition GT : P Value :=
+  fun w => 
+    match w with 
+    | (V ↦ v_nat i) => 
+        exists i j, ((v_list (v_nat i :: v_nat j :: nil)) ∈ mem V) /\ i > j 
+    | (V ↦ v_fail) => 
+        exists i j, ((v_list (v_nat i :: v_nat j :: nil)) ∈ mem V) /\ not (i > j)
+    | V ↦ v_wrong => 
+        not (exists i j, v_list (v_nat i :: v_nat j :: nil) ∈ mem V) /\ valid_mem V
+    | _ => False
+    end.
+
 
 (* ------------------------------------------------------- *)
 
@@ -216,29 +255,72 @@ Definition same_env : Rho -> Rho -> Prop := Env.Forall2 Same_set.
 
 (* ------------------------------------------------------- *)
 
+Definition M := list.
+
+Definition ONE (ws : M (P Value)) : P Value :=
+  fun v => 
+    match ws with 
+    | nil => v = v_wrong  (* need to make this fail *)
+    | w :: _ => v ∈ w
+    end.
+
+Definition ALL (ws : M (P Value)) : P Value :=
+  fun v => 
+    match v with 
+    | v_list vs => List.Forall2 Sets.In vs ws
+    | _ => False
+    end.
+
+(* ------------------------------------------------------- *)
+
 Import LCNotations.
 Open Scope tm.
 
 (* Denotation function *)
 (* `n` is is a termination metric. *)
-Fixpoint denot_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
+Fixpoint denot_n (n : nat) (a : tm) (ρ : Rho) : M (P Value) :=
+  match n with
+  | O => ret (fun _ => False)
+
+  | S m => 
+     match a with 
+
+       | app t u   => 
+           v1 <- denot_n m t ρ ;;
+           v2 <- denot_n m u ρ ;;
+           ret (v1 ▩ v2)
+
+       | tcons t u => 
+           v1 <- denot_n m t ρ ;;
+           v2 <- denot_n m u ρ ;;
+           ret (CONS v1 v2)
+
+       | _ => ret (denot_v_n m a ρ)
+     end
+  end
+with denot_v_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
   match n with
   | O => fun _ => False
   | S m => 
-     match a with 
-     | var_b _ => ⌈ v_wrong ⌉
-     | var_f x => ρ ⋅ x 
-     | app t u   => 
-         denot_n m t ρ ▩ denot_n m u ρ
-     | abs t => 
-         let x := fresh_for (dom ρ \u fv_tm t) in 
-         Λ (fun D => denot_n m (t ^ x) (x ~ D ++ ρ))
-     | lit k => NAT k
-     | add => ADD
-     | tnil => NIL
-     | tcons t u => CONS (denot_n m t ρ) (denot_n m u ρ)
-     end
+    match a with 
+
+    | var_f x => ρ ⋅ x
+
+    | lit k => NAT k
+
+    | add => ADD
+
+    | tnil => NIL
+
+    | abs t => 
+        let x := fresh_for (dom ρ \u fv_tm t) in 
+        (Λ (fun D => ONE (denot_n m (t ^ x) (x ~ D ++ ρ))))
+
+    | _ => fun _ => False
+
+    end
   end.
+ 
 
 Definition denot (a : tm) := denot_n (size_tm a) a.
 
