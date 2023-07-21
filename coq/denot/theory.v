@@ -22,7 +22,7 @@ Require Import denot.denot.
 (* Operators preserve validity *)
 Require Import denot.valid_theory.
 
-(* Congruence: operators respect  *)
+(* Congruence: operators respect set equality *)
 Require Import denot.congruence_theory.
 
 (* Denotation function is continuous. *)
@@ -159,13 +159,6 @@ Lemma CONS_APPLY_SUCC1 {D1 D2 k} : (CONS D1 D2 ▩ NAT (1 + k)) ⊆ (D2 ▩ NAT 
     exfalso; eapply H2; eauto.
 Qed.
 
-Lemma CONS_APPLY_SUCC2 {D1 D2 k w} : w ∈ D1 -> valid D2 -> (D2 ▩ NAT k) ⊆  (CONS D1 D2 ▩ NAT (1 + k)).
-Proof.
-  intros wIn [h1 h2]  v vIn.
-  inversion vIn; subst; try done.
-Abort.
-
-
 (* ---------------------------------------------------- *)
 
 (* Nonempty environments *)
@@ -288,16 +281,14 @@ Lemma soundness:
 Proof.
   intros t u RED. 
   induction RED; intros ρ SCt SCu NE.
+  all: autorewrite with denot.
   - (* beta *)
     destruct SCt as [FV U lc]. inversion lc. subst.
     simpl in FV.
-    rewrite denot_app.
     pick fresh x.
     erewrite denot_abs with (x:=x).
-    rewrite Λ_denot_APPLY_id.
+    rewrite Λ_denot_APPLY_id; auto.
     eapply value_nonempty; auto.
-    fsetdec.
-    auto.
     fsetdec.
     rewrite (subst_tm_intro x t v); auto.
     replace ρ with (nil ++ ρ) at 3.
@@ -321,46 +312,40 @@ Proof.
     eapply (scoped_abs_inv _ x _ X _ F1 SCt).
     have F2 : x `notin` dom ρ \u fv_tm t'. fsetdec.
     eapply (scoped_abs_inv _ x _ X _ F2 SCu).
-    eapply extend_valid_env.
-    fsetdec.
-    eauto.
-    eauto.
-  - have SC1: scoped t ρ. eapply scoped_app_inv1; eauto.
+    eapply extend_valid_env; eauto.
+  - (* app1 *) 
+    have SC1: scoped t ρ. eapply scoped_app_inv1; eauto.
     have SC2: scoped t' ρ. eapply scoped_app_inv1; eauto.
     have SC3: scoped u ρ. eapply scoped_app_inv2; eauto.
-    repeat rewrite denot_app.
     eapply APPLY_cong; eauto.
     reflexivity.
-  - have SC1: scoped t ρ.  eapply scoped_app_inv1; eauto.
+  - (* app2 *)
+    have SC1: scoped t ρ.  eapply scoped_app_inv1; eauto.
     have SC2: scoped u ρ.  eapply scoped_app_inv2; eauto.
     have SC3: scoped u' ρ.  eapply scoped_app_inv2; eauto.
-    repeat rewrite denot_app.
     eapply APPLY_cong; eauto.
     reflexivity.
-  - repeat rewrite denot_tcons; eauto.
+  - (* cons1 *)
     eapply CONS_cong; eauto.
     have SC1: scoped t ρ.  eapply scoped_tcons_inv1; eauto.
     have SC2: scoped u ρ.  eapply scoped_tcons_inv2; eauto.
     have SC3: scoped t' ρ.  eapply scoped_tcons_inv1; eauto.
     eapply IHRED; eauto.
     reflexivity.
-  - repeat rewrite denot_tcons.
+  - (* cons2 *)
     have SC1: scoped t ρ.  eapply scoped_tcons_inv1; eauto.
     have SC2: scoped u ρ.  eapply scoped_tcons_inv2; eauto.
     have SC3: scoped u' ρ.  eapply scoped_tcons_inv2; eauto.
     rewrite IHRED; eauto.
     reflexivity.
-  - autorewrite with denot.
+  - (* prj_zero *)
     destruct SCt. simpl in s.
     move: (@denot_value_valid w ρ ltac:(fsetdec) NE) => [w1 w2].
     move: (w1 (sv_list _ H0)) => [[uu ss] NW].
     move: (w2 H0 uu ss) => [ll tt]. subst.
-    
     split. eapply CONS_APPLY_ZERO1.
     eapply CONS_APPLY_ZERO2; eauto.
-
   - (* prj_suc *)
-    autorewrite with denot.
     split.
     + eapply CONS_APPLY_SUCC1.
     + intros x In.
@@ -383,7 +368,6 @@ Proof.
       ++ move: (mm _ H1) => [o OO].  subst. simpl in H3; done.
       ++ destruct x0; try done. exfalso.  eapply H4; eauto. 
   - (* add *) 
-    autorewrite with denot.
     eapply ADD_APPLY_CONS; eauto.
 Qed.
 
@@ -392,6 +376,15 @@ Qed.
 
 (* Example semantics *)
 
+(* Prove that 3 + 4 *)
+Definition tm_Add : tm := 
+  app add (tcons (lit 3) (tcons (lit 4) tnil)).
+
+Lemma denot_tm : denot tm_Add nil ≃ NAT 7.
+Proof.
+  unfold tm_Add.
+  autorewrite with denot.
+Admitted.
 
 Definition tm_Id : tm := abs (var_b 0).
 

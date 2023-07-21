@@ -15,10 +15,15 @@ Continuity:
 
    A semantic function is continuous if its finite result can be produced
    by a finite and valid subset of its input.
+
+   Alex: this is algebraicity, equivalent to continuity for this kind of model.
+   To produce a finite output you only need a finite input.
    
    Definition continuous (F : P Value -> P Value) : Set :=
-     forall X E, mem E ⊆ F X -> valid X ->
-                 exists D, (mem D ⊆ X) /\ ((mem E) ⊆ F (mem D)) /\ valid_mem D.
+     forall (X : P Value) (E : list Value), 
+           mem E ⊆ F X -> valid X ->
+           exists (D : list Value), 
+               (mem D ⊆ X) /\ ((mem E) ⊆ F (mem D)) /\ valid_mem D.
 
    Lemma denot_continuous_one { t ρ x } :
      valid_env ρ ->
