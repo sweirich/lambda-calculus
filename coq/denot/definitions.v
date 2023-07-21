@@ -64,8 +64,8 @@ Inductive Value : Type :=
   (* dynamic type error *)
   | v_wrong : Value
 
-  (* result of failing function *)
-  | v_fail : Value
+  (* Nondeterminism *)
+  | v_choice : list Value -> Value
 
 .
 
@@ -77,11 +77,11 @@ Infix "↦" := v_map (at level 85, right associativity).
 Definition success (v : Value) : Prop :=
   match v with 
   | v_wrong => False
-  | v_fail => False
+  | v_choice _ => False
   | _ => True
   end.
 
-
+Definition v_fail := v_choice nil.
 
 (* ------------ Valid or a denotation that represents a single value ------------------ *)
 
@@ -216,7 +216,7 @@ Definition GT : P Value :=
     match w with 
     | (V ↦ v_nat i) => 
         exists i j, ((v_list (v_nat i :: v_nat j :: nil)) ∈ mem V) /\ i > j 
-    | (V ↦ v_fail) => 
+    | (V ↦ v_choice nil) => 
         exists i j, ((v_list (v_nat i :: v_nat j :: nil)) ∈ mem V) /\ not (i > j)
     | V ↦ v_wrong => 
         not (exists i j, v_list (v_nat i :: v_nat j :: nil) ∈ mem V) /\ valid_mem V
@@ -260,7 +260,7 @@ Definition M := list.
 Definition ONE (ws : M (P Value)) : P Value :=
   fun v => 
     match ws with 
-    | nil => v = v_wrong  (* need to make this fail *)
+    | nil => v = v_fail
     | w :: _ => v ∈ w
     end.
 
@@ -272,6 +272,11 @@ Definition ALL (ws : M (P Value)) : P Value :=
     end.
 
 (* ------------------------------------------------------- *)
+
+(* 
+LAMBDA : (P Value -> M (P Value)) -> P Value
+APPLY : P Value -> P Value -> M (P Value)
+*)
 
 Import LCNotations.
 Open Scope tm.
@@ -298,7 +303,7 @@ Fixpoint denot_n (n : nat) (a : tm) (ρ : Rho) : M (P Value) :=
        | _ => ret (denot_v_n m a ρ)
      end
   end
-with denot_v_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
+with denot_v_n (n : nat) (a : tm) (ρ : Rho) : (P Value) :=
   match n with
   | O => fun _ => False
   | S m => 
