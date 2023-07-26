@@ -48,7 +48,6 @@ Open Scope monad_scope.
 Import SetNotations.
 Local Open Scope set_scope.
 
-(* Sets of Values:   P Value === Value -> Prop *)
 
 Inductive Value : Type :=
   (* natural number *)
@@ -68,49 +67,142 @@ Inductive Value : Type :=
   | v_wrong : Value
 .
 
-(* 
-
-Denotation of Identity function (\x.x):
-
- {  v_map (v_nat 1 :: nil) (v_nat 1), (2 :: nil) |-> 2, 3 |-> 3 
- } 
-
- *)
 
 #[export] Hint Constructors Value : core.
 
 Infix "↦" := v_map (at level 85, right associativity).
 
 (* A successful value is not wrong. *)
-Definition success (v : Value) : Prop :=
+Definition success (v : Value) : bool :=
   match v with 
-  | v_wrong => False
-  | _ => True
+  | v_wrong => false
+  | _ => true
   end.
+
+(* ------------------------------------------------------------ *)
+
+Require Import BoolSet.
+Require Import Coq.Classes.EquivDec.
+
+
+Fixpoint Value_rec' (P : Value -> Type)
+       (n : forall n : nat, P (v_nat n)) 
+       (m : forall (l : list Value) (v : Value),
+           List.ForallT P l -> P v -> P (v_map l v)) 
+       (f : P v_fun)
+       (l : (forall l : list Value, List.ForallT P l -> P (v_list l)))
+       (w : P v_wrong) (v : Value) : P v := 
+  let rec := Value_rec' P n m f l w 
+  in
+  let fix rec_list (vs : list Value) : List.ForallT P vs :=
+    match vs with 
+    | nil => List.ForallT_nil _
+    | cons w ws => @List.ForallT_cons Value P w ws (rec w) (rec_list ws)
+    end
+  in 
+  match v with 
+  | v_nat k => n k
+  | v_map X v => 
+      m X v (rec_list X) (rec v)
+  | v_fun => f
+  | v_list X => l X (rec_list X)
+  | v_wrong => w 
+  end.
+
+
+
+Lemma Value_eq_dec' : forall (x y: Value), {x = y} + {x<>y}.
+intro x. eapply Value_rec' with (v := x).
+all: intros; try destruct y.
+all: try destruct (Nat.eq_dec n n0); subst.
+all: try solve [left; reflexivity].
+all: try solve [right; intro h; inversion h; subst;  done].
+all: try (destruct (H0 y); subst).
+all: try solve [right; intro h; inversion h; subst;  done].
+all: move: l0.
+all: try (induction H; try destruct l0).
+(* nil cases *)
+all: try solve [left; reflexivity].
+all: try solve [right; intro h; inversion h; subst;  done].
+(* cons cases *)
+all: try destruct (p v); subst.
+all: try destruct (IHForallT l0). 
+all: try (inversion e; subst).
+all: try solve [left; reflexivity].
+all: try solve [right; intro h; inversion h; subst;  done].
+Defined.
+
+
+#[export] Instance Value_eq_dec : EqDec Value eq.
+intros x y. unfold "===". unfold complement. 
+eapply Value_eq_dec'. Defined.
+
 
 (* ------------ Valid or a denotation that "succeeds" ------------------ *)
 
-Definition valid (V : P Value) : Type :=
-  nonemptyT V * Sets.Forall success V.
+Definition inb {A} (x : A) (Y : P A) : bool  := Y x.
+Infix "∈b"  := inb (at level 90) : set_scope.
 
-Definition valid_mem (V : list Value) : Prop :=
-  V <> nil /\ List.Forall success V.
+
+(* This part is ***really*** classical  *)
+Require Import Coq.Logic.ClassicalEpsilon.
+
+Definition nonempty (V : P Value) : { x : Value & x ∈ V } + ({ x : Value & x ∈ V } -> False).
+move: (@classical_indefinite_description Value (fun x => x ∈ V) (inhabits v_fun)) => [w P].
+destruct  (excluded_middle_informative (exists x, x ∈ V)).
+specialize (P e).
+left.  exists w. exact P.
+right. intros [v Q]. apply n. exists v. auto.
+Qed.
+
+Definition nonemptyb (V : P Value) : bool:= 
+  ssrbool.is_inl (nonempty V). 
+
+
+Definition forallb (f : Value -> bool)(X: P Value) : bool.
+move: (excluded_middle_informative (forall x, x ∈ X -> f x = true)) => h.
+eapply (ssrbool.is_left h).
+Defined.
+
+Definition valid (V : P Value) : bool :=
+  nonemptyb V && forallb success V.
+
+Definition is_nil (V : list Value) : bool :=
+  match V with | _ :: _ => false | nil => true end.
+
+Definition valid_mem (V : list Value) : bool :=
+  negb (is_nil V) && List.forallb success V.
+
 
 (* ------------ Semantic Operators ------------------ *)
 
-Definition WRONG : P Value := ⌈ v_wrong ⌉.
+Definition WRONG : P Value := 
+  fun x => match x with v_wrong => true | _ => false end.
 
 Definition NAT : nat -> P Value :=
   fun j v => match v with 
-          | v_nat k => j = k
-          | _ => False
+          | v_nat k => Nat.eqb j k
+          | _ => false
           end.
+
+Definition forallb2 := 
+fun (A B : Type) (f : A -> B -> bool) => 
+  fix forallb2 (l : list A) (u : list B) : bool :=
+  match l , u with
+  | nil , nil => true
+  | a :: l0, b :: u0 => f a b && forallb2 l0 u0
+  | _ , _ => false
+  end.
+
+Arguments forallb2 {_}{_}.
+Arguments mem {_}{_}{_}.
+
 
 Definition LIST : list (P Value) -> P Value  :=
   fun DS w => 
     match w with 
-    | v_list WS => List.Forall2 Ensembles.In DS WS
-    | _ => False
+    | v_list WS => forallb2 inb WS DS
+    | _ => false
     end.
 
 Definition NIL : P Value := ⌈ v_list nil ⌉.
@@ -118,16 +210,16 @@ Definition NIL : P Value := ⌈ v_list nil ⌉.
 Definition CONS : P Value -> P Value -> P Value := 
   fun V W x => 
     match x with 
-    | v_list (v :: w) => (v ∈ V) /\ (v_list w ∈ W)  (* v should not be wrong *)
-(*     | v_wrong => v_wrong ∈ V *)
-    | _ => False
+    | v_list (v :: w) => (v ∈b V) && (v_list w ∈b W)  
+    | v_wrong => (v_wrong ∈b V) && (v_wrong ∈b W)
+    | _ => false
     end.
 
-Definition Λ : (P Value -> P Value) -> P Value :=
+Definition LAMBDA : (P Value -> P Value) -> P Value :=
   fun f => fun v => match v with 
-          | (V ↦ w) => (w ∈ f (mem V)) /\ valid_mem V  (* CBV *)
-          | v_fun => True
-          | _ => False
+          | (V ↦ w) => (w ∈b (mem V)) && valid_mem V  (* CBV *)
+          | v_fun => true
+          | _ => false
           end.
 
 (* ------------ APPLY ----------------- *)
@@ -154,12 +246,43 @@ Definition Λ : (P Value -> P Value) -> P Value :=
            
 *)
 
+Definition applicable (v : Value) : bool :=
+  match v with 
+  | v_fun => true
+  | v_list _ => true
+  | v_map _ _ => true 
+  | _ => false
+  end.
+
+(*
 Inductive applicable : Value -> Prop :=
   | a_fun  : applicable v_fun
   | a_list : forall VS, applicable (v_list VS)
   | a_map  : forall V w, applicable (v_map V w).
 
 #[export] Hint Constructors applicable : core.
+*)
+
+
+Definition APPLY (D1 : P Value) (D2 : P Value) : P Value :=
+    match nonempty D1 with 
+    | inl (existT _ v1 _) => match v1 with 
+                        | v_wrong => WRONG
+                        | v_list VS => match nonempty D2 with
+                                      | inl (existT _ v_wrong _) => WRONG
+                                      | inl (existT _ (v_nat k) _) => 
+                                               match nth_error VS k with 
+                                               | Some v => ⌈ v ⌉
+                                               | None => WRONG
+                                               end
+                                      | inl _ => WRONG
+                                      | inr _ => Empty_set
+                                      end
+                        | v_map _ _ => WRONG
+                        | _ => WRONG
+                        end
+   | inr _ => Empty_set
+   end.
 
 Inductive APPLY : P Value -> P Value -> (Value -> Prop) :=
   | FUNWRONG : forall D1 D2,

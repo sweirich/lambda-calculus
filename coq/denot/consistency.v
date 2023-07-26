@@ -79,7 +79,8 @@ Definition head (v : Value) : v_head :=
 
 Inductive Consistent : Value -> Value -> Prop :=
   | c_nat : forall i, Consistent (v_nat i) (v_nat i)
-  | c_list : forall XS YS, List.Forall2 Consistent XS YS ->  Consistent (v_list XS) (v_list YS)
+  | c_list : forall XS YS, List.Forall2 Consistent XS YS -> 
+              Consistent (v_list XS) (v_list YS)
   | c_wrong : Consistent v_wrong v_wrong
 
   | c_fun : Consistent v_fun v_fun
