@@ -12,7 +12,7 @@ Require Import lc.scoped.
 (* Definitions *)
 Require Import denot.definitions.
 Require Import denot.denot.
-Require Import denot.valid_theory.
+Require Import denot.valid_theory.  
 
 Import SetNotations.
 Local Open Scope set_scope.
@@ -48,6 +48,7 @@ unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply CONS_mono_sub; eauto. Qed.
 #[export] Instance Proper_Same_CONS : Proper (Same_set ==> Same_set ==> Same_set) CONS. 
 unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply CONS_cong; eauto. Qed.
 
+
 (*  Application is a Congruence ------------------------------------------------ *)
                           
 
@@ -56,8 +57,6 @@ Lemma APPLY_mono_sub { D1 D2 D3 D4 } :
 Proof.  
   intros D13 D24 w APP. 
   inversion APP; subst; unfold Included in *.
-  + apply FUNWRONG. eauto.
-  + apply ARGWRONG. eauto.
   + apply BETA with (V:=V); eauto.
     intros d z. eauto.
   + apply PROJ with (VS := VS) (k := k); eauto.
@@ -92,6 +91,8 @@ Proof.
   intros F1F2 v Iv. destruct v eqn:E; inversion Iv; auto.
   - split; auto. 
     eapply F1F2; eauto. 
+
+
 Qed.
 
 Lemma Λ_ext {F1 F2} :
@@ -136,29 +137,16 @@ Ltac gather_atoms ::=
   constr:(A \u B \u C \u D \u E).
 
 
-(* The denotation respects ≃ *)
-#[export] Instance Proper_denot : Proper (eq ==> same_env ==> Same_set) denot.
-Proof.
-  intros t1 t ->.
-  eapply tm_induction with (t := t);
-  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
-  all: move => ρ1 ρ2 EQ.
-  all: autorewrite with denot.
-  all: try solve [reflexivity].
-  all: eauto using APPLY_cong, CONS_cong.
-  - destruct (FSetDecideAuxiliary.dec_In  x (dom ρ1)).
-    + apply Forall2_access with (f := Same_set); auto.
+Lemma access_mono_sub : forall (ρ1 ρ2 : Env (P Value)) (x : atom),
+   ρ1 ⊆e ρ2 ->
+   ρ1 ⋅ x ⊆ ρ2 ⋅ x.
+intros. 
+destruct (FSetDecideAuxiliary.dec_In  x (dom ρ1)).
+    + apply Forall2_access with (f := Included); auto.
     + rewrite access_fresh. auto.
-      rewrite access_fresh. erewrite Forall2_dom in H; eauto.
+      rewrite access_fresh. erewrite Forall2_dom in H0; eauto.
       reflexivity.
-  - pick fresh x. 
-    repeat rewrite (denot_abs x). fsetdec. fsetdec.
-    eapply Λ_ext.
-    intros X neX.
-    eapply IH; eauto.
-    econstructor; eauto. 
-    reflexivity. 
-Qed.
+Qed. 
 
 (* The denotation respects ⊆ *)
 #[export] Instance Proper_sub_denot : Proper (eq ==> Env.Forall2 Included ==> Included) denot.
@@ -169,17 +157,56 @@ Proof.
   all: move => ρ1 ρ2 SUB.
   all: autorewrite with denot.
   all: try solve [reflexivity].
-  all: eauto using APPLY_mono_sub, CONS_mono_sub.
-  - destruct (FSetDecideAuxiliary.dec_In  x (dom ρ1)).
-    + apply Forall2_access with (f := Included); auto.
-    + rewrite access_fresh. auto.
-      rewrite access_fresh. erewrite Forall2_dom in H; eauto.
-      reflexivity.
+  - eapply RET2_monotone. eapply access_mono_sub; eauto.
+  - eapply BIND2_mono.
+    eapply IH1. auto.
+    intros x.
+    eapply BIND2_mono.
+    eapply IH2. auto.
+    intros y.
+    eapply APPLY_mono_sub. reflexivity. reflexivity.
   - pick fresh x. 
     repeat rewrite(denot_abs x). fsetdec. fsetdec.
+    eapply RET2_monotone.
     eapply Λ_ext_sub.
     intros X neX.
     eapply IH. fsetdec.
     econstructor; eauto.
     reflexivity.
+  - eapply BIND2_mono.
+    eapply IH1. auto.
+    intros x.
+    eapply BIND2_mono.
+    eapply IH2. auto.
+    intros y.
+    eapply RET2_monotone.
+    eapply CONS_mono_sub. reflexivity. reflexivity.
 Qed.
+
+(* TODO: move???*)
+Lemma same_env_sub_env : forall x y, same_env x y <-> (x ⊆e y) /\ (y ⊆e x).
+Proof. 
+intros x y. split.
+induction 1. split; eauto. 
+move: H1 => [s1 s2].
+move: IHForall2 => [h1 h2]. 
+split; econstructor; eauto.
+erewrite Forall2_dom; eauto.
+unfold same_env.
+intros [h1 h2]. 
+induction h1. eauto.
+inversion h2. subst.
+econstructor; eauto.
+split; auto.
+Qed. 
+
+(* The denotation respects ≃ *)
+#[export] Instance Proper_denot : Proper (eq ==> same_env ==> Same_set) denot.
+Proof.
+  intros t1 t ->.
+  intros x y E.
+  rewrite same_env_sub_env in E. destruct E. 
+  split. eapply Proper_sub_denot; auto. 
+  eapply Proper_sub_denot; auto.
+Qed. 
+

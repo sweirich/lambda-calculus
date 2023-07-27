@@ -20,7 +20,7 @@ Require Import denot.definitions.
 Require Import denot.denot.
 
 (* Operators preserve validity *)
-Require Import denot.valid_theory.
+(* Require Import denot.valid_theory. *)
 
 (* Congruence: operators respect set equality *)
 Require Import denot.congruence_theory.
