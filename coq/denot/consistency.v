@@ -64,7 +64,6 @@ Inductive v_head :=
    h_nat  : nat -> v_head 
   | h_fun  : v_head
   | h_list : v_head
-  | h_wrong : v_head 
 .
 
 Definition head (v : Value) : v_head := 
@@ -73,14 +72,12 @@ Definition head (v : Value) : v_head :=
   | v_map _ _ => h_fun
   | v_fun => h_fun
   | v_list _ => h_list
-  | v_wrong => h_wrong
   end.
 
 
 Inductive Consistent : Value -> Value -> Prop :=
   | c_nat : forall i, Consistent (v_nat i) (v_nat i)
   | c_list : forall XS YS, List.Forall2 Consistent XS YS ->  Consistent (v_list XS) (v_list YS)
-  | c_wrong : Consistent v_wrong v_wrong
 
   | c_fun : Consistent v_fun v_fun
   | c_fun1 : forall X r, Consistent v_fun (X ↦ r)

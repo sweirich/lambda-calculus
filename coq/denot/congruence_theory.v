@@ -86,17 +86,15 @@ unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply APPLY_cong; eauto. Qed.
    the result. But this depends on the definition of Λ which quantifies
    over valid sets (i.e. CBV) *)
 Lemma Λ_ext_sub {F1 F2} :
-  (forall {X : P Value}, valid X -> F1 X ⊆ F2 X) -> Λ F1 ⊆ Λ F2.
+  (forall {X : P Value}, valid X -> F1 X ⊆ F2 X) -> Λ2 F1 ⊆ Λ2 F2.
 Proof.
   intros F1F2 v Iv. destruct v eqn:E; inversion Iv; auto.
   - split; auto. 
     eapply F1F2; eauto. 
-
-
 Qed.
 
 Lemma Λ_ext {F1 F2} :
-  (forall {X}, valid X -> F1 X ≃ F2 X) -> Λ F1 ≃ Λ F2.
+  (forall {X}, valid X -> F1 X ≃ F2 X) -> Λ2 F1 ≃ Λ2 F2.
 Proof. 
   intros g. split;
   eapply Λ_ext_sub; intros X NEX; destruct (g X); eauto.
@@ -148,6 +146,17 @@ destruct (FSetDecideAuxiliary.dec_In  x (dom ρ1)).
       reflexivity.
 Qed. 
 
+(*
+#[export] Hint Resolve DeepIn_In : core.
+
+#[export] Instance Reflexive_DeepIncluded {A} : Reflexive (@DeepIncluded A).
+intro. unfold DeepIncluded. intros d dIn.
+destruct d; simpl; auto.
+exists l. split; eauto. reflexivity.
+left; auto.
+Qed.
+*)
+
 (* The denotation respects ⊆ *)
 #[export] Instance Proper_sub_denot : Proper (eq ==> Env.Forall2 Included ==> Included) denot.
 Proof.
@@ -157,29 +166,29 @@ Proof.
   all: move => ρ1 ρ2 SUB.
   all: autorewrite with denot.
   all: try solve [reflexivity].
-  - eapply RET2_monotone. eapply access_mono_sub; eauto.
-  - eapply BIND2_mono.
+  - eapply RET_monotone. eapply access_mono_sub; eauto.
+  - eapply BIND_mono.
     eapply IH1. auto.
     intros x.
-    eapply BIND2_mono.
+    eapply BIND_mono.
     eapply IH2. auto.
     intros y.
     eapply APPLY_mono_sub. reflexivity. reflexivity.
   - pick fresh x. 
     repeat rewrite(denot_abs x). fsetdec. fsetdec.
-    eapply RET2_monotone.
+    eapply RET_monotone.
     eapply Λ_ext_sub.
     intros X neX.
     eapply IH. fsetdec.
     econstructor; eauto.
     reflexivity.
-  - eapply BIND2_mono.
+  - eapply BIND_mono.
     eapply IH1. auto.
     intros x.
-    eapply BIND2_mono.
+    eapply BIND_mono.
     eapply IH2. auto.
     intros y.
-    eapply RET2_monotone.
+    eapply RET_monotone.
     eapply CONS_mono_sub. reflexivity. reflexivity.
 Qed.
 

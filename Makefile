@@ -1,7 +1,7 @@
 OTT_NAME   = lc
 SPEC_LOC   = spec
 OTT_LOC    = .
-COQ_LOC    = coq
+COQ_LOC    = coq/lc
 AUX_OTT    = 
 
 OTT_SOURCE = $(OTT_NAME)

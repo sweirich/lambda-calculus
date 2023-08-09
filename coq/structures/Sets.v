@@ -6,6 +6,9 @@ Require Export Coq.Program.Equality.  (* for dependent induction *)
 Require Import Coq.Classes.Morphisms.
 Require Import Coq.Setoids.Setoid.
 
+
+Require Import Monad.
+
 (* Representing sets by their characteristic functions. 
 
    This is a wrapper for `Ensembles` from the Coq standard library.
@@ -262,3 +265,33 @@ Lemma mem_In : forall A (x:A) l, x ∈ mem l -> List.In x l.
 Proof. intros. induction l. cbv in H. done.
        destruct H. subst. econstructor. auto. 
        simpl. right. eauto. Qed.
+
+(* ------------------------------------------------------- *)
+
+(* P is a monad *)
+
+#[export] Instance Monad_P : Monad P :=
+  { ret  := (fun A (x : A) => ⌈ x ⌉);
+     bind := fun A B (ca : P A) (k : A -> P B) =>
+             fun b => exists a, (a ∈ ca) /\ (b ∈ k a)
+   }.
+
+#[export] Instance Functor_P : Functor P :=
+  { fmap := fun A B (f : A -> B) (x : A -> Prop) => 
+               bind x (fun y => ret (f y)) 
+  }.
+
+#[export] Instance Applicative_P : Applicative P :=
+  { pure := @ret P _;
+     ap   := fun A B (m1 :  P (A -> B)) (m2 : P A) => 
+               bind m1 (fun x1 => 
+                            bind m2 (fun x2 => 
+                                         ret (x1 x2))) 
+  }.
+
+#[export] Instance Alternative_P : Alternative P :=
+  { empty := fun A (x:A) => False ;
+    choose := fun A (p1 p2 : P A) (y : A) => 
+                 p1 y \/ p2 y
+   }.
+

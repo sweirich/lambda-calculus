@@ -91,11 +91,11 @@ Qed.
 Lemma valid_ADD : valid ADD.
 Proof. 
   unfold ADD, valid.
-  exists ( (v_list (v_nat 0 :: v_nat 0 :: nil) :: nil) ↦ pure_Comp (v_nat 0)). 
+  exists ( (v_list (v_nat 0 :: v_nat 0 :: nil) :: nil) ↦ pure_Comp ((v_nat 0) :: nil)). 
   exists 0. exists 0. split.  auto. auto.
 Qed.
 
-Lemma valid_Λ : forall F, valid (Λ F).
+Lemma valid_Λ : forall F, valid (Λ2 F).
 Proof. 
   intros F. 
   cbv.

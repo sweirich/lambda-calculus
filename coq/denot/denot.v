@@ -124,7 +124,7 @@ Proof.
   intros. reflexivity.
 Qed.
 
-Lemma denot_var : forall x ρ, denot (var_f x) ρ = RET2 (ρ ⋅ x).
+Lemma denot_var : forall x ρ, denot (var_f x) ρ = RET (ρ ⋅ x).
 Proof.
   intros. reflexivity.
 Qed.
@@ -134,9 +134,9 @@ Qed.
 
 Lemma denot_app : forall t u ρ, 
     denot (app t u) ρ = 
-      BIND2 (denot t ρ) (fun v1 =>
-      BIND2 (denot u ρ) (fun v2 => 
-      v1 ▩ v2)).
+      BIND (denot t ρ) (fun v1 =>
+      BIND (denot u ρ) (fun v2 => 
+      (v1 ▩ v2))).
 Proof. 
   intros.
   unfold denot. simpl.
@@ -147,20 +147,20 @@ Proof.
   rewrite size_is_enough. lia. auto.
 Qed.
 
-Lemma denot_lit : forall k ρ,  denot (lit k) ρ = RET2 (NAT k).
+Lemma denot_lit : forall k ρ,  denot (lit k) ρ = RET (NAT k).
 Proof. intros. reflexivity. Qed. 
 
-Lemma denot_add : forall ρ,  denot add ρ = RET2 ADD.
+Lemma denot_add : forall ρ,  denot add ρ = RET ADD.
 Proof. intros. reflexivity. Qed. 
 
-Lemma denot_tnil : forall ρ,  denot tnil ρ = RET2 NIL.
+Lemma denot_tnil : forall ρ,  denot tnil ρ = RET NIL.
 Proof.  intros. reflexivity. Qed. 
 
 Lemma denot_tcons : forall t u ρ, 
     denot (tcons t u) ρ =
-      BIND2 (denot t ρ) (fun v1 =>
-      BIND2 (denot u ρ) (fun v2 =>
-      RET2 (CONS v1 v2))).
+      BIND (denot t ρ) (fun v1 =>
+      BIND (denot u ρ) (fun v2 =>
+      RET (CONS v1 v2))).
 Proof. 
   intros.
   unfold denot. simpl.
@@ -301,7 +301,7 @@ Qed.
 Lemma denot_abs : forall x t ρ,
     x `notin` dom ρ \u fv_tm t ->
     denot (abs t) ρ = 
-      RET2 (Λ (fun D => denot (t ^ x) (x ~ D ++ ρ))).
+      RET (Λ2 (fun D => denot (t ^ x) (x ~ D ++ ρ))).
 Proof.
   intros.
   unfold denot. simpl.
