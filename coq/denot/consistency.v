@@ -84,7 +84,7 @@ Inductive Consistent : Value -> Value -> Prop :=
   | c_fun2 : forall X r, Consistent (X ↦ r) v_fun
 
   | c_map2 : forall X1 X2 r1 r2, 
-      Consistent r1 r2 -> 
+      Forall2_any Consistent r1 r2 -> 
       Consistent (X1 ↦ r1) (X2 ↦ r2)
   | c_map1 : forall X1 X2 r1 r2, 
       Exists2_any Inconsistent X1 X2 ->

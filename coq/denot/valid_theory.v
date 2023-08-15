@@ -95,7 +95,7 @@ Proof.
   exists 0. exists 0. split.  auto. auto.
 Qed.
 
-Lemma valid_Λ : forall F, valid (Λ2 F).
+Lemma valid_Λ : forall F, valid (Λ F).
 Proof. 
   intros F. 
   cbv.

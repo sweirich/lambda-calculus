@@ -157,12 +157,25 @@ End AlternativeNotation.
 
 Require Import Coq.Lists.List.
 
+
+Definition ap_List {A B} (fs : list (A -> B)) (xs : list A) : list B :=
+  (* [f x | f <- fs, x <- xs] *)
+  flat_map (fun f => 
+              flat_map (fun x => 
+                          (f x :: nil)) xs) fs.
+  
+
 Global Instance Functor_list : Functor list :=
 { fmap := map }.
 
 Global Instance Monad_list : Monad list :=
 { ret  := fun _ x => x :: nil; 
   bind := fun _ _ x f =>  flat_map f x
+}.
+
+Global Instance Applicative_list : Applicative list :=
+{ pure := fun _ x => x :: nil;
+  ap   := @ap_List
 }.
 
 Global Instance Alternative_list : Alternative list :=

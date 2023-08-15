@@ -20,7 +20,7 @@ Require Import denot.definitions.
 Require Import denot.denot.
 
 (* Operators preserve validity *)
-(* Require Import denot.valid_theory. *)
+Require Import denot.valid_theory. 
 
 (* Congruence: operators respect set equality *)
 Require Import denot.congruence_theory.
@@ -29,7 +29,7 @@ Require Import denot.congruence_theory.
 Require Import denot.continuity.
 
 (* Denotation produces a consistent set *)
-Require Import denot.consistency.
+(* Require Import denot.consistency. *)
 
 Import EnvNotations.
 Import LCNotations.
@@ -90,24 +90,38 @@ Qed.
 
 
 Lemma ADD_APPLY_LIST {i j} : 
-  ADD ▩ (LIST (NAT i :: NAT j :: nil)) ≃ NAT (i + j).
+  ADD ▩ (LIST (NAT i :: NAT j :: nil)) ≃ RET (NAT (i + j)).
 Proof.
   split.
   + intros w APP. inversion APP; subst; clear APP.
     all: cbn in H.
     all: try done.
     destruct w; try done.
-    - destruct H as [i0 [j0 [h0 h1]]]. subst.
+    - destruct H as [NI VM].
+      assert False. eapply NI. 
+      unfold valid_mem in VM. destruct V; try done.
+      move: (den_list _ _ _ H0 v ltac:(econstructor; eauto)) => h1. 
+      subst.
+      exists i. exists j. eauto. done.
+    - destruct l; try done.
+      destruct l; try done.
+      destruct v; try done.
+      destruct l; try done.
+      destruct l0; try done.
+      destruct H as [i0 [j0 [h0 h1]]]. subst.
       move: (den_list _ _ _ H0 _ h0) => h1. inversion h1. subst. clear h1.
+      cbn.
+      rewrite <- In_Sub.
       eapply k_in_den_k.
-    - destruct H as [H VV]. 
-      assert False. eapply H.
-      destruct V; try done. destruct H1. done.
-      move: (den_list _ _ _ H0 v ltac:(auto)) => h1. subst. 
-      eauto.
-      done.
     - destruct x; try done.
    + intros w wIn.
+     unfold RET in wIn.
+     destruct w; try done.
+     destruct l; try done.
+     destruct l0; try done.
+     cbn in wIn.
+Admitted. 
+(*
      apply v_in_den_k_inv in wIn. subst.
      eapply BETA with (V := v_list (v_nat i :: v_nat j :: nil) :: nil).
      - cbn. eauto.
@@ -116,28 +130,33 @@ Proof.
        inversion H.
      - cbn. split. eauto. unfold In, mem. intro h. inversion h. 
        econstructor; eauto. done.
-Qed.
+Qed. *)
 
 Lemma ADD_APPLY_CONS {k1 k2} : 
-  (ADD ▩ CONS (NAT k1) (CONS (NAT k2) NIL)) ≃ NAT (k1 + k2).
+  (ADD ▩ CONS (NAT k1) (CONS (NAT k2) NIL)) ≃ RET (NAT (k1 + k2)).
 Proof.
   rewrite CONS_LIST.
   eapply ADD_APPLY_LIST.
 Qed. 
 
-Lemma CONS_APPLY_ZERO1 {D1 D2} : (CONS D1 D2 ▩ NAT 0) ⊆ D1.
+Lemma CONS_APPLY_ZERO1 {D1 D2} : (CONS D1 D2 ▩ NAT 0) ⊆ RET D1.
   intros w APP. inversion APP; try inversion H.
   + subst.
     apply v_in_den_k_inv in H0. inversion H0. subst.
     destruct VS; simpl in H1. done. inversion H1. subst.
     inversion H.
-    auto.
+    cbn.
+    rewrite mem_singleton_eq.
+    eauto.
   + destruct x; try done.
   + destruct x; try done. 
-    apply v_in_den_k_inv in H0.  
-    exfalso; eapply H2; eauto.
+    apply v_in_den_k_inv in H0.
+    subst.
+    exfalso. 
+    eapply H1; eauto.
 Qed.
 
+(*
 Lemma CONS_APPLY_ZERO2 {D1 D2 VS} : 
   v_list VS ∈ D2 ->
   D1 ⊆ (CONS D1 D2 ▩ NAT 0).
@@ -158,6 +177,7 @@ Lemma CONS_APPLY_SUCC1 {D1 D2 k} : (CONS D1 D2 ▩ NAT (1 + k)) ⊆ (D2 ▩ NAT 
   + destruct x; try done.
     exfalso; eapply H2; eauto.
 Qed.
+*)
 
 (* ---------------------------------------------------- *)
 
@@ -175,6 +195,7 @@ Proof. intros Fr NEP NEX. eapply ForallT_cons; eauto. Qed.
 
 (* https://github.com/jsiek/denotational_semantics/blob/master/agda/ISWIMPValue.agda *)
 
+(*
 Definition denot1 (t : tm) (ρ : Rho) : P Value.
   remember (size_tm t) as n.
   have GE: n >= size_tm t. subst. auto. clear Heqn.
@@ -202,7 +223,7 @@ Definition denot1 (t : tm) (ρ : Rho) : P Value.
     move: (denot (size_tm u) ltac:(lia) u ltac:(lia) ρ) => u'.
     exact (CONS t' u').
 Defined. 
-
+*)
 (* ------------------------------------------------------- *)
 
 (* Soundness of reduction with respect to denotation *)
@@ -215,11 +236,16 @@ Ltac invert_value :=
   end.
 
 
+Definition valid_Comp (C : P (Comp (list Value))) : Type :=
+  (nonemptyT C * not (c_wrong ∈ C) * not (c_multi nil ∈ C))%type.
+
+
 (* The denotation of syntactic values is valid. *)
+(*
 Lemma denot_value_valid {t}{ρ} : 
   fv_tm t [<=] dom ρ -> valid_env ρ 
-  -> (value t -> valid (denot t ρ)) * 
-      (listvalue t -> forall x, x ∈ (denot t ρ) -> { l & v_list l = x}).
+  -> (value t -> valid_Comp (denot t ρ)) * 
+      (listvalue t -> forall (x : Comp (list Value)), x ∈ (denot t ρ) -> { l & (c_multi (v_list l :: nil)) = x }) .
 Proof. 
   intros FV NEρ.
   induction t.
@@ -262,13 +288,14 @@ Proof.
     destruct x; try done.
     exists l. reflexivity.
 Qed.     
-
+*)
 Lemma value_nonempty {t}{ρ} : 
-  fv_tm t [<=] dom ρ -> valid_env ρ -> value t -> valid (denot t ρ).
+  fv_tm t [<=] dom ρ -> valid_env ρ -> value t -> valid_Comp (denot t ρ).
 Proof. 
   intros.
-  eapply denot_value_valid; eauto.
-Qed. 
+Admitted.
+(*   eapply denot_value_valid; eauto.
+Qed.  *)
 
 Lemma soundness: 
   forall t u, 
@@ -287,6 +314,8 @@ Proof.
     simpl in FV.
     pick fresh x.
     erewrite denot_abs with (x:=x).
+    rewrite BIND_RET; auto.  admit. admit. eapply valid_Λ; auto.
+    
     rewrite Λ_denot_APPLY_id; auto.
     eapply value_nonempty; auto.
     fsetdec.

@@ -86,7 +86,7 @@ unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply APPLY_cong; eauto. Qed.
    the result. But this depends on the definition of Λ which quantifies
    over valid sets (i.e. CBV) *)
 Lemma Λ_ext_sub {F1 F2} :
-  (forall {X : P Value}, valid X -> F1 X ⊆ F2 X) -> Λ2 F1 ⊆ Λ2 F2.
+  (forall {X : P Value}, valid X -> F1 X ⊆ F2 X) -> Λ F1 ⊆ Λ F2.
 Proof.
   intros F1F2 v Iv. destruct v eqn:E; inversion Iv; auto.
   - split; auto. 
@@ -94,10 +94,86 @@ Proof.
 Qed.
 
 Lemma Λ_ext {F1 F2} :
-  (forall {X}, valid X -> F1 X ≃ F2 X) -> Λ2 F1 ≃ Λ2 F2.
+  (forall {X}, valid X -> F1 X ≃ F2 X) -> Λ F1 ≃ Λ F2.
 Proof. 
   intros g. split;
   eapply Λ_ext_sub; intros X NEX; destruct (g X); eauto.
+Qed.
+
+
+(* ---------------------------------------------------------------- *)
+
+Lemma RET_mono {A} : forall (U V : P A), 
+ U ⊆ V -> RET U ⊆ RET V. 
+Proof. 
+    intros U V h x xIn.
+    unfold Included in h.
+    destruct x; simpl in *; eauto.
+    destruct l as [| y t]; try done.
+    destruct t; try done.
+    unfold RET in *. cbn in *.
+    unfold Included in xIn.
+    intros x. 
+    eauto.
+Qed.
+
+(*
+Lemma RET_sub_reflecting {A} : forall (U V : P A), 
+  RET U ⊆ RET V -> U ⊆ V.
+Proof. 
+  intros U V h x xIn.
+  unfold RET in h.
+  specialize (h (c_multi ((x :: nil) :: nil))). cbn in h.
+  rewrite mem_singleton_eq in h.
+Abort. 
+*)
+
+#[export] Instance Proper_Included_RET {A} : Proper (Included ==> Included) 
+                                               (@RET (P A)).
+unfold Proper. intros x1 y1 E1. eapply RET_mono. auto. Qed.
+
+#[export] Instance Proper_Same_RET {A} : Proper (Same_set ==> Same_set) (@RET (P A)).
+unfold Proper. intros x1 y1 E1. split. eapply RET_mono. rewrite E1. reflexivity.
+eapply  RET_mono. rewrite E1. reflexivity.
+Qed.
+
+Lemma BIND_mono {A B} : forall (D1 D2 : P (Comp (list A))) (K1 K2 : P A -> P (Comp B)),
+  D1 ⊆ D2 -> (forall x, K1 x ⊆ K2 x) ->
+  BIND D1 K1 ⊆ BIND D2 K2.
+Proof. 
+  intros.
+  unfold BIND.
+  move=> x [U [h1 [h2 [-> h4]]]].
+  destruct U; simpl.
+  -  exists c_wrong.
+     exists h1.
+     split.
+     specialize (H _ h2).
+     simpl in H. done.
+     split.
+     cbv.
+     done.
+     intros a aIn.
+     specialize (h4 _ aIn).
+     specialize (H0 (mem a)). 
+     specialize (H0 (h1 a) h4).
+     eauto.
+  - exists (c_multi l).
+    exists h1. 
+    repeat split; eauto.
+    eapply H; auto.
+    intros a aIn. eapply H0. eapply h4. auto.
+Qed.
+
+#[export] Instance Proper_Included_BIND {A B} : 
+  Proper (Included ==> Logic.eq ==> Included) (@BIND A B).
+intros x1 y1 E1 x2 y2 ->. 
+eapply BIND_mono; eauto. reflexivity.
+Qed. 
+
+#[export] Instance Proper_Same_BIND {A B} : Proper (Same_set ==> Logic.eq ==> Same_set) (@BIND A B).
+unfold Proper. intros x1 y1 E1 x2 y2 ->. split. eapply BIND_mono. rewrite E1. reflexivity. reflexivity.
+eapply  BIND_mono. rewrite E1. reflexivity. reflexivity.
 Qed.
 
 (* ---------------------------------------------------- *)
@@ -146,17 +222,6 @@ destruct (FSetDecideAuxiliary.dec_In  x (dom ρ1)).
       reflexivity.
 Qed. 
 
-(*
-#[export] Hint Resolve DeepIn_In : core.
-
-#[export] Instance Reflexive_DeepIncluded {A} : Reflexive (@DeepIncluded A).
-intro. unfold DeepIncluded. intros d dIn.
-destruct d; simpl; auto.
-exists l. split; eauto. reflexivity.
-left; auto.
-Qed.
-*)
-
 (* The denotation respects ⊆ *)
 #[export] Instance Proper_sub_denot : Proper (eq ==> Env.Forall2 Included ==> Included) denot.
 Proof.
@@ -166,7 +231,7 @@ Proof.
   all: move => ρ1 ρ2 SUB.
   all: autorewrite with denot.
   all: try solve [reflexivity].
-  - eapply RET_monotone. eapply access_mono_sub; eauto.
+  - eapply RET_mono. eapply access_mono_sub; eauto.
   - eapply BIND_mono.
     eapply IH1. auto.
     intros x.
@@ -176,7 +241,7 @@ Proof.
     eapply APPLY_mono_sub. reflexivity. reflexivity.
   - pick fresh x. 
     repeat rewrite(denot_abs x). fsetdec. fsetdec.
-    eapply RET_monotone.
+    eapply RET_mono.
     eapply Λ_ext_sub.
     intros X neX.
     eapply IH. fsetdec.
@@ -188,7 +253,7 @@ Proof.
     eapply BIND_mono.
     eapply IH2. auto.
     intros y.
-    eapply RET_monotone.
+    eapply RET_mono.
     eapply CONS_mono_sub. reflexivity. reflexivity.
 Qed.
 
@@ -218,4 +283,29 @@ Proof.
   split. eapply Proper_sub_denot; auto. 
   eapply Proper_sub_denot; auto.
 Qed. 
+
+
+
+Lemma monotone_env_denot_val {t} : monotone_env (denot_val t).
+  eapply tm_induction with (t := t);
+  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
+  all: move => ρ1 ρ2 SUB.
+  all: autorewrite with denot.
+  all: try solve  [ simpl; reflexivity].
+  + eapply access_mono_sub; eauto.
+  + pick fresh x. 
+    repeat rewrite(denot_val_abs x). fsetdec. fsetdec.
+    eapply Λ_ext_sub.
+    intros X neX.
+    have SUBe: (x ~ X ++ ρ1) ⊆e (x ~ X ++ ρ2).
+    econstructor; eauto. reflexivity.
+    eapply Proper_sub_denot; eauto. 
+  + eapply CONS_mono_sub; eauto.
+Qed. 
+
+#[export] Instance Proper_sub_denot_val : Proper (eq ==> Env.Forall2 Included ==> Included) denot_val.
+Proof.
+  intros t1 t ->.
+  eapply monotone_env_denot_val.
+Qed.
 

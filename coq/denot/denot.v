@@ -106,18 +106,19 @@ Proof.
 Qed.         
 
 
-Local Hint Transparent denot.
-Local Hint Transparent denot_val.
+Local Hint Transparent denot : core.
+Local Hint Transparent denot_val : core.
 
 
-Lemma denot_var_b : forall x ρ, denot (var_b x) ρ = fun x => False.
+Lemma denot_var_b : forall x ρ, denot (var_b x) ρ = RET (fun x => False).
 Proof.
   intros x ρ.
   cbv. 
   extensionality b.
-  f_equal.
-Admitted.
-
+  destruct b. done.
+  destruct l. done.
+  destruct l0; try done.   
+Qed.
 
 Lemma denot_val_var : forall x ρ, denot_val (var_f x) ρ = ρ ⋅ x.
 Proof.
@@ -128,9 +129,6 @@ Lemma denot_var : forall x ρ, denot (var_f x) ρ = RET (ρ ⋅ x).
 Proof.
   intros. reflexivity.
 Qed.
-
-
-
 
 Lemma denot_app : forall t u ρ, 
     denot (app t u) ρ = 
@@ -301,7 +299,7 @@ Qed.
 Lemma denot_abs : forall x t ρ,
     x `notin` dom ρ \u fv_tm t ->
     denot (abs t) ρ = 
-      RET (Λ2 (fun D => denot (t ^ x) (x ~ D ++ ρ))).
+      RET (Λ (fun D => denot (t ^ x) (x ~ D ++ ρ))).
 Proof.
   intros.
   unfold denot. simpl.
@@ -322,3 +320,42 @@ Create HintDb denot.
 
 
 
+
+Lemma denot_val_lit : forall k ρ,  denot_val (lit k) ρ = (NAT k).
+Proof. intros. reflexivity. Qed. 
+
+Lemma denot_val_add : forall ρ,  denot_val add ρ = ADD.
+Proof. intros. reflexivity. Qed. 
+
+Lemma denot_val_tnil : forall ρ,  denot_val tnil ρ = NIL.
+Proof.  intros. reflexivity. Qed. 
+
+
+Lemma denot_val_abs : forall x t ρ,
+    x `notin` dom ρ \u fv_tm t ->
+    denot_val (abs t) ρ = 
+      (Λ (fun D => denot (t ^ x) (x ~ D ++ ρ))).
+Proof.
+  intros.
+  unfold denot_val,denot. simpl.
+  rewrite size_tm_open_tm_wrt_tm_var.
+  f_equal. f_equal.
+  extensionality D.
+  name_binder x0 Frx0.
+  simpl_env. 
+  rewrite -> (rename_open_denot x0 x); eauto.
+Qed.
+
+Lemma denot_val_tcons : forall t u ρ, 
+    denot_val (tcons t u) ρ = CONS (denot_val t ρ) (denot_val u ρ).
+Proof. 
+  intros.
+  unfold denot_val. simpl.
+  f_equal.
+  rewrite size_is_enough_val. lia. auto.
+  rewrite size_is_enough_val. lia. auto.
+Qed.
+
+
+#[export] Hint Rewrite denot_val_var denot_val_lit 
+  denot_val_add denot_val_tnil denot_val_tcons : denot.

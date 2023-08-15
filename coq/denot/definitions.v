@@ -50,7 +50,7 @@ Local Open Scope set_scope.
 (* Sets of Values:   P Value === Value -> Prop *)
 
 (* ----------------------------------------------------------- *)
-
+(*
 (* Computations that can fail, produce multiple results, or diverge. *)
 
 Inductive Comp (v : Type) : Type := 
@@ -125,6 +125,7 @@ Definition Comp_In {A} (x : A) (u : Comp A) :=
   | c_multi vs => List.In x vs
   end.
 
+(*
 Definition Comp_inj {A} (C : list (Comp (list A))) : P (Comp (P A)) :=
   mem (List.map (fmap mem) C).
 
@@ -161,27 +162,22 @@ Definition In2 {A} (d : Comp A) (D : P (Comp (P A))) : Prop :=
          exists WS, (c_multi WS ∈ D) /\
             List.Forall2 Sets.In VS WS
     end.
+*)
+*)
 
 (* ------------------------------------------------------- *)
 
-(* M is *almost* a Monad *)
+(* `P (Comp (P A))` is *almost* a Monad *)
 
-Definition M := fun x => P (Comp x).
-
-Definition RET {A} (x : P A) : P (Comp (P A)) :=
+Definition RET {A} (x : P A) : P (Comp (list A)) :=
   fun z => match z with 
-          | c_multi (y :: nil) => y ⊆ x
+          | c_multi (y :: nil) => mem y ⊆ x
           |  _ => False
         end.
 
-Definition BIND {A B} (S : M A) (K : A -> M B) (t : Comp B) : Prop :=
-  exists (u : Comp A), exists (k : A -> Comp B), 
-    S u /\ t = bind u k /\ forall a, Comp_In a u -> K a (k a).
-
-(*
-#[export] Instance Monad_M : Monad M.
-split. exact @RET. exact @BIND. Defined.
-*)
+Definition BIND {A B} (S : P (Comp (list A))) (K : P A -> P (Comp B)) (t : Comp B) : Prop :=
+  exists (u : Comp (list A)), exists (k : list A -> Comp B), 
+    S u /\ t = bind u k /\ forall a, Comp_In a u -> K (mem a) (k a).
 
 (* ----------------------------------------------------------- *)
 
@@ -225,9 +221,10 @@ Definition valid_mem (V : list Value) : Prop :=
 
 (* Produces at least one result *)
 
+(*
 Definition valid_Comp (C : P (Comp Value)) : Type :=
   (nonemptyT C * not (c_wrong ∈ C) * not (c_multi nil ∈ C))%type.
-
+*)
 
 (* ------------ Semantic Operators ------------------ *)
 
@@ -253,33 +250,9 @@ Definition CONS : P Value -> P Value -> P Value :=
     | _ => False
     end.
 
-
-(*
-Definition CONS2 : Value -> Value -> P (Comp Value) := 
-  fun v w => match w with 
-            | v_list u => ⌈ ret (v_list (v :: u)) ⌉
-            |  _ => ⌈ c_wrong ⌉
-          end.
-*)
-
-
-(* This is the key definition: what if the result of the computation 
-   diverges??? *)
-
-(*
-Definition Λ : (P Value -> P (Comp Value)) -> P Value :=
+Definition Λ : (P Value -> P (Comp (list Value))) -> P Value :=
   fun f => fun v => match v with 
-          | (V ↦ w) => (w ∈ f (mem V)) /\ valid_mem V  (* CBV *)
-          | v_fun => True
-          | _ => False
-          end.
-*)
-
-
-
-Definition Λ2 : (P Value -> P (Comp (P Value))) -> P Value :=
-  fun f => fun v => match v with 
-          | (V ↦ w) => (fmap mem w ∈ (f (mem V))) /\ valid_mem V  (* CBV *)
+          | (V ↦ w) => (w ∈ (f (mem V))) /\ valid_mem V  (* CBV *)
           | v_fun => True
           | _ => False
           end.
@@ -316,11 +289,11 @@ Inductive applicable : Value -> Prop :=
 
 #[export] Hint Constructors applicable : core.
 
-Inductive APPLY : P Value -> P Value -> (Comp (P Value) -> Prop) :=
+Inductive APPLY : P Value -> P Value -> (Comp (list Value) -> Prop) :=
   | BETA : forall D1 D2 w V,
       (V ↦ w) ∈ D1 ->
      (mem V ⊆ D2) -> valid_mem V ->
-     APPLY D1 D2 (fmap mem w)
+     APPLY D1 D2 w
 
 (* NOTE: need to incorporate eta-expansion here to order for exists
 
@@ -331,7 +304,7 @@ Inductive APPLY : P Value -> P Value -> (Comp (P Value) -> Prop) :=
   | PROJ   : forall D1 D2 w VS k, 
      (v_list VS) ∈ D1 ->
      (v_nat k ∈ D2) -> nth_error VS k = Some w ->
-     APPLY D1 D2 (ret ⌈ w ⌉)
+     APPLY D1 D2 (ret ( w  :: nil) )
   | APPWRONG : forall D1 D2 x, 
       x ∈ D1 ->
       not (applicable x) ->      
@@ -343,7 +316,6 @@ Inductive APPLY : P Value -> P Value -> (Comp (P Value) -> Prop) :=
      APPLY D1 D2 c_wrong. 
 
 Infix "▩" := APPLY (at level 90).
-
 
 #[export] Hint Constructors APPLY : core.
 
@@ -406,149 +378,6 @@ Definition sub_env : Rho -> Rho -> Prop := Env.Forall2 Included.
 
 Definition same_env : Rho -> Rho -> Prop := Env.Forall2 Same_set.
 
-
-(* ---------------------------------------------------- *)
-
-(* 
-
- Comparison between
-
-    C : P (Comp Value)  
-
- and
-
-    D : P (Comp (P Value))
-
-*)
-
-(* This function is lossy. Produces an empty set if 
-   *any* of the mult values are empty. 
-   We probably don't want to use it.
-*)
-Definition merge {A} (D : P (Comp (P A))) : P (Comp A) :=
-  fun C => (match C with 
-    | c_wrong => c_wrong
-    | c_multi vs => c_multi (fmap ret vs)
-    end) ∈ D.
-
-
-(* Generalizes In through multi values *)
-Definition DeepIn {A} (d : Comp (P A)) (D :  P (Comp (P A))) : Prop :=
-    match d with 
-     | c_wrong => c_wrong ∈ D
-     | c_multi VS => 
-            exists WS, (c_multi WS ∈ D) /\ List.Forall2 Ensembles.Included VS WS
-        end.
-
-(* Generalizes Included through multi values *)
-Definition DeepIncluded {A} (D1 D2 :  P (Comp (P A))) : Prop :=
-  forall (d : Comp (P A)), d ∈ D1 -> DeepIn d D2.
-
-Definition DeepSame_set {A} (D1 D2 :  P (Comp (P A))) : Prop :=
-  DeepIncluded D1 D2 /\ DeepIncluded D2 D1.
-
-Infix "∈M" := DeepIn       (at level 65).
-Infix "⊆M" := DeepIncluded (at level 65).
-Infix "≃M" := DeepSame_set (at level 65).
-
-
-
-Example DeepIn_Example : 
-  (c_multi (Bottom :: nil) ∈M  ⌈ c_multi (⌈ v_nat 0 ⌉ :: nil)⌉).
-cbv.
- exists (⌈ v_nat 0 ⌉ :: nil).
- split. econstructor; eauto.
- econstructor; eauto. intros x h. inversion h.
-Qed.
-
-
-Lemma not_Bottom_Singleton :  forall v, not (Bottom ≃ ⌈ v ⌉).
-Proof.
-  intros v [h1 h2].
-  specialize (h2 v ltac:(auto)).
-  done.
-Qed.
-
-Example merge_multi : merge ⌈ c_multi (Bottom :: nil) ⌉ ≃ fun x => False.
-Proof.
-  split.
-  intros x h.
-  destruct x.
-  - inversion h.
-  - inversion h.
-    destruct l. done. simpl in H0. inversion H0. 
-    destruct l; try done. clear H2. clear H0.
-    move: (not_Bottom_Singleton v) => h1.
-    assert False. apply h1. rewrite H1. reflexivity. done.
-  - intros x h. inversion h.
-Qed.
-
-Lemma In_Singleton_Included {A} : forall (x:A) a, In x a ->  ⌈ x ⌉ ⊆ a.
-Proof.
-  intros.
-  intros y yIn. inversion yIn. subst. auto.
-Qed.
-
-#[export] Hint Resolve In_Singleton_Included : core.
-
-Example split_merge_inv_counterexample : 
-  not (c_multi (Bottom :: nil) ∈ split( merge ⌈ c_multi (Bottom :: nil) ⌉ )).
-Proof.
-  intro h.
-  move: h => [vs [h1 h2]].
-  inversion h2. done.
-Qed.
-
-Lemma merge_split : forall A (C : P (Comp A)), merge (split C) ≃ C.
-Proof.
-  intro C. split.
-  - intros c cIn.
-    destruct c; cbn in cIn; auto.
-    move: cIn => [vs [h1 h2]].
-    have EQ: (vs = l).
-    { clear C0 h1. move:vs h2. induction l; intros vs h2; inversion h2.
-      done.
-      subst. inversion H2. subst. f_equal. apply IHl. auto.
-    } 
-    subst. done.
-  - intros c cIn.
-    destruct c; cbn. auto.
-    exists l. split; auto. clear cIn. induction l. simpl. eauto.
-    econstructor; eauto. eapply in_singleton.
-Qed.
-
-(* ------------------------------------------------------------------------------- *)
-
-Definition RET2 {A} : P A -> P (Comp A) := fmap ret.
-
-(* This K wants a finite set of values from S at once 
-   so that the APPLY function can check that the domain is 
-   included in the argument. *)
-
-(* The nonempty requirement means that BIND2 is strict *)
-
-(* But this definition of bind doesn't do the cross product for the lists. *)
-Definition BIND2 {A B} (S : P (Comp A)) (K : P A -> P (Comp B)) (t : Comp B) : Prop :=
-  exists (V : P A), nonempty V /\ (RET2 V ⊆ S) /\ K V t.
-
-Definition AP {A B} (f : A -> B) ( X : P A ) : P B := 
-  fun y => exists x, (f x = y) /\ (x ∈ X).
-
-(*
-Definition BIND3 {A B} (S : P (Comp A)) (K : P A -> P (Comp B)) (t : Comp B) : Prop :=
-  
-
-
-  exists (V : P A), nonempty V /\
-     exists (k : A -> Comp B), t = bind 
-                   AP k = K
-                        AP k 
-      (* All values in V are found in S *)
-                 (forall v, v ∈ V -> Comp_In 
-
-(RET2 V ⊆ S) /\ K V t.
-*)
-
 (* ------------------------------------------------------- *)
 
 Import LCNotations.
@@ -556,7 +385,7 @@ Open Scope tm.
 
 (* Denotation function *)
 (* `n` is is a termination metric. *)
-Fixpoint denot_comp_n (n : nat) (a : tm) (ρ : Rho) : M (P Value) :=
+Fixpoint denot_comp_n (n : nat) (a : tm) (ρ : Rho) : P (Comp (list Value)) :=
   let fix denot_val_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
   match n with
   | O => fun x => False
@@ -568,7 +397,7 @@ Fixpoint denot_comp_n (n : nat) (a : tm) (ρ : Rho) : M (P Value) :=
 
      | abs t => 
         let x := fresh_for (dom ρ \u fv_tm t) in 
-        (Λ2 (fun D => (denot_comp_n m (t ^ x) (x ~ D ++ ρ))))
+        (Λ (fun D => (denot_comp_n m (t ^ x) (x ~ D ++ ρ))))
 
      | tcons t u => CONS (denot_val_n m t ρ) (denot_val_n m u ρ)
 
@@ -611,7 +440,7 @@ Fixpoint denot_val_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
 
      | abs t => 
         let x := fresh_for (dom ρ \u fv_tm t) in 
-        (Λ2 (fun D => (denot_comp_n m (t ^ x) (x ~ D ++ ρ))))
+        (Λ (fun D => (denot_comp_n m (t ^ x) (x ~ D ++ ρ))))
 
      | tcons t u => CONS (denot_val_n m t ρ) (denot_val_n m u ρ)
 
@@ -631,224 +460,3 @@ Definition denot_val (a : tm) := denot_val_n (size_tm a) a.
 #[export] Hint Opaque denot : core.
 #[export] Hint Opaque denot_val : core.
 
-
-(*
-Lemma ret_In_RET {A} : forall (U V : P A),
-  U ⊆ V <-> (ret U) ∈ (RET V).
-Proof.
-  intros. 
-  unfold  RET, ret, Monad_Comp, pure_Comp.
-  cbv.
-  split.
-  + intros Ux. auto.
-  + auto.
-Qed. *)
-
-Lemma RET_monotone {A} : forall (U V : P A), 
- U ⊆ V -> RET U ⊆ RET V. 
-Proof. 
-    intros U V h x xIn.
-    unfold Included in h.
-    destruct x; simpl in *; eauto.
-    destruct l; try done.
-    destruct l; try done.
-    unfold RET in *. cbn in *.
-    unfold Included in xIn.
-    intros x. 
-    eauto.
-Qed.
-
-Lemma RET_sub_reflecting {A} : forall (U V : P A), 
-  RET U ⊆ RET V -> U ⊆ V.
-Proof. 
-  intros U V h x xIn.
-  unfold RET in h.
-  specialize (h (c_multi (U :: nil))). cbn in h.
-  unfold Included in h.
-  eauto.
-Qed.
-
-#[export] Instance Proper_Included_RET {A} : Proper (Included ==> Included) 
-                                               (@RET (P A)).
-unfold Proper. intros x1 y1 E1. eapply RET_monotone. auto. Qed.
-
-#[export] Instance Proper_Same_RET {A} : Proper (Same_set ==> Same_set) (@RET (P A)).
-unfold Proper. intros x1 y1 E1. split. eapply RET_monotone. rewrite E1. reflexivity.
-eapply  RET_monotone. rewrite E1. reflexivity.
-Qed.
-
-Lemma bind_ret_Comp : forall {A B} (x : A) (k : A -> Comp B), 
-    bind (ret x) k = k x.
-Proof.
-  intros.
-  cbv.
-  destruct (k x); auto.
-  f_equal.
-  eapply app_nil_r.
-Qed. 
-
-Lemma BIND_RET : forall {A B} (x : P A) (k : P A -> M B), 
-    monotone k -> 
-    BIND (RET x) k ≃ k x.
-Proof. intros. unfold BIND, RET.
-repeat split.
-+ intros y.
-  move =>[U [h1 [h2 [h3 h4]]]]. unfold M in k.
-  subst.
-  destruct U; try done.
-  destruct l; try done.
-  destruct l; try done.
-  cbn.
-  specialize (h4 p ltac:(cbv;eauto)).
-  rewrite append_Comp_nil.
-  eapply H; eauto.
-+ intros y yIn.
-  exists (c_multi (x :: nil)).
-  exists (fun _ => y).
-  repeat split.
-  reflexivity.
-  rewrite bind_ret_Comp.
-  reflexivity.
-  intros a aIn.
-  inversion aIn. subst. auto. inversion H0.
-Qed.
-
-(*
-Lemma DeepIn_In {A} : forall (x : Comp (P A)) D, x ∈ D -> x ∈M D.
-Proof. 
-  intros.
-  destruct x; simpl.
-  done.
-  exists l. split; auto. reflexivity.
-  left. auto.
-Qed.
-*)
-Lemma BIND_mono {A B} : forall (D1 D2 : P (Comp A)) (K1 K2 : A -> P (Comp B)),
-  D1 ⊆ D2 -> (forall x, K1 x ⊆ K2 x) ->
-  BIND D1 K1 ⊆ BIND D2 K2.
-Proof. 
-  intros.
-  unfold BIND.
-  move=> x [U [h1 [h2 [-> h4]]]].
-  destruct U; simpl.
-  -  exists c_wrong.
-     exists h1.
-     split.
-     specialize (H _ h2).
-     simpl in H. done.
-     split.
-     cbv.
-     done.
-     intros a aIn.
-     specialize (h4 _ aIn).
-     specialize (H0 a). unfold DeepIncluded in H0.
-     specialize (H0 (h1 a) h4).
-     eauto.
-  - exists (c_multi l).
-    exists h1. 
-    repeat split; eauto.
-    eapply H; auto.
-    intros a aIn. eapply H0. eapply h4. auto.
-Qed.
-
-#[export] Instance Proper_Included_BIND {A B} : Proper (Included ==> Logic.eq ==> Included) (@BIND A B).
-intros x1 y1 E1 x2 y2 ->. 
-eapply BIND_mono; eauto. reflexivity.
-Qed. 
-
-#[export] Instance Proper_Same_BIND {A B} : Proper (Same_set ==> Logic.eq ==> Same_set) (@BIND A B).
-unfold Proper. intros x1 y1 E1 x2 y2 ->. split. eapply BIND_mono. rewrite E1. reflexivity. reflexivity.
-eapply  BIND_mono. rewrite E1. reflexivity. reflexivity.
-Qed.
-  
-
-
-(*
-
-
-Require Import Coq.Logic.PropExtensionality.
-
-Lemma ret_In_RET2 : forall {A} (U : P A) x,
-  x ∈ U <-> ret x ε RET2 U.
-Proof.
-  intros. 
-  unfold ret, RET2, fmap, Monad_Comp, Functor_P, bind, Monad_P, Ensembles.In.
-  split.
-  + intros Ux. exists x. split; auto.
-    cbv. econstructor.
-  + move => [a [Pa r]].
-    cbv in r. inversion r. subst. auto.
-Qed.
-
-Lemma RET2_monotone : forall {A} (U V : P A), 
- U ⊆ V -> RET2 U ⊆ RET2 V. 
-Proof. 
-    intros A U V h x xIn.
-    destruct xIn as [ a [Ua r]].
-    inversion r. subst.
-    rewrite <- ret_In_RET2.
-    eauto.
-Qed.
-
-Lemma RET2_sub_reflecting :  forall {A} (U V : P A), 
-  RET2 U ⊆ RET2 V -> U ⊆ V.
-Proof. 
-  intros A U V h x xIn.
-  rewrite -> ret_In_RET2 in xIn.
-  specialize (h _ xIn).
-  rewrite -> ret_In_RET2.
-  auto.
-Qed.
-
-#[export] Instance Proper_Included_RET2 {A} : Proper (Included ==> Included) (@RET2 A).
-unfold Proper. intros x1 y1 E1. eapply RET2_monotone. auto. Qed.
-
-#[export] Instance Proper_Same_RET2 {A} : Proper (Same_set ==> Same_set) (@RET2 A).
-unfold Proper. intros x1 y1 E1. split. eapply RET2_monotone. rewrite E1. reflexivity.
-eapply  RET2_monotone. rewrite E1. reflexivity.
-Qed.
-
-
-
-Lemma BIND2_RET2 : forall {A B} (x : P A) (k : P A -> M B), 
-    monotone k 
-    -> nonempty x
-    -> BIND2 (RET2 x) k ≃ k x.
-Proof. intros. unfold BIND2, RET2.
-repeat split.
-+ intros y.
-  move =>[U [h1 [h2 h3]]]. unfold M in k.
-  fold (@RET2 A) in h2.
-  eapply RET2_sub_reflecting in h2.
-  eapply (H _ _ h2). auto.
-+ exists x. repeat split. eauto. reflexivity. auto.
-Qed. 
-
-
-Lemma BIND2_mono {A B} : forall (D1 D2 : M A) (K1 K2 : P A -> M B),
-  D1 ⊆ D2 -> (forall x, K1 x ⊆ K2 x) ->
-  BIND2 D1 K1 ⊆ BIND2 D2 K2.
-Proof. 
-  intros.
-  unfold BIND2.
-  move=> x [U [h1 [h2 h3]]].
-  exists U.
-  repeat split.
-  auto.
-  transitivity D1; auto.
-  specialize (H0 U x).
-  eapply H0. auto.
-Qed.
-
-#[export] Instance Proper_Included_BIND2 {A B} : Proper (Included ==> Logic.eq ==> Included) (@BIND2 A B).
-intros x1 y1 E1 x2 y2 ->. 
-eapply BIND2_mono; eauto. reflexivity.
-Qed. 
-
-#[export] Instance Proper_Same_BIND2 {A B} : Proper (Same_set ==> Logic.eq ==> Same_set) (@BIND2 A B).
-unfold Proper. intros x1 y1 E1 x2 y2 ->. split. eapply BIND2_mono. rewrite E1. reflexivity. reflexivity.
-eapply  BIND2_mono. rewrite E1. reflexivity. reflexivity.
-Qed.
-  
-
-*)

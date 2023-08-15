@@ -3,7 +3,7 @@ Require Export structures.Sets.
 Require Export structures.List.
 Require Export structures.Env.
 Require Export structures.Monad.
-
+Require Export structures.Comp.
 
 (*
   In : forall {A}, A -> M A -> Prop;

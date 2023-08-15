@@ -181,6 +181,13 @@ Qed.
 #[export] Hint Resolve mem_head mem_cons mem_one_inv : core.
 
 
+Lemma In_Sub {A}{x:A}{D}: x ∈ D <-> mem (x :: nil) ⊆ D.
+Proof. split. intros h y yIn. inversion yIn. subst; auto. inversion H. 
+       intros h. cbv in h. specialize (h x). tauto.
+Qed.
+
+#[export] Hint Resolve In_Sub : core.
+
 Lemma union_mem {A:Type}{E1 E2 : list A} : mem (E1 ++ E2) = (mem E1 ∪ mem E2).
 Proof. unfold mem. 
        eapply Extensionality_Ensembles.
@@ -208,6 +215,9 @@ Proof. intro v. econstructor. inversion H. done. Qed.
 
 Lemma mem_singleton {A} : forall v : A, mem (v :: nil) ⊆ ⌈ v ⌉.
 Proof. intro v. cbv. intros. inversion H. subst. econstructor; eauto. done. Qed.
+
+Lemma mem_singleton_eq {A} {x:A} : mem (x :: nil) ≃ ⌈ x ⌉.
+Proof. split; eauto using mem_singleton, singleton_mem. Qed.
 
 #[export] Hint Resolve singleton_mem mem_singleton : core. 
 

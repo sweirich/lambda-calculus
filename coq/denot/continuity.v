@@ -4,8 +4,8 @@ This section proves that the denotation function is monotonic and continuous.
 
 Monotonicity
 
-   Definition monotone (F : P Value -> P Value) : Set := forall D1 D2, (D1 ⊆
-         D2) -> F D1 ⊆ F D2.
+   Definition monotone (F : P Value -> P Value) : Set := 
+      forall D1 D2, (D1 ⊆ D2) -> F D1 ⊆ F D2.
 
    Lemma denot_monotone_one : forall ρ t x, uniq ρ -> x `notin` dom ρ ->
     monotone (fun D => denot (t ^ x) (x ~ D ++ ρ)).
@@ -79,13 +79,15 @@ Open Scope tm.
 
 Import EnvNotations.
 
-Lemma In_Sub {A}{x:A}{D}: x ∈ D <-> mem (x :: nil) ⊆ D.
-Proof. split. intros h y yIn. inversion yIn. subst; auto. inversion H. 
-       intros h. cbv in h. specialize (h x). tauto.
+Lemma in_singleton_sub {A}{v:A}{X} : v ∈ X -> ⌈ v ⌉ ⊆ X.
+Proof.
+  intros. 
+  rewrite In_Sub in H.
+  rewrite <- mem_singleton_eq.
+  auto.
 Qed.
 
-#[export] Hint Resolve In_Sub:core.
-
+#[export] Hint Resolve in_singleton_sub : core.
 
 Ltac gather_atoms ::=
   let A := gather_atoms_with (fun x : vars => x) in
@@ -96,63 +98,6 @@ Ltac gather_atoms ::=
   constr:(A \u B \u C \u D \u E).
 
 
-Lemma denot_val_lit : forall k ρ,  denot_val (lit k) ρ = (NAT k).
-Proof. intros. reflexivity. Qed. 
-
-Lemma denot_val_add : forall ρ,  denot_val add ρ = ADD.
-Proof. intros. reflexivity. Qed. 
-
-Lemma denot_val_tnil : forall ρ,  denot_val tnil ρ = NIL.
-Proof.  intros. reflexivity. Qed. 
-
-
-Lemma denot_val_abs : forall x t ρ,
-    x `notin` dom ρ \u fv_tm t ->
-    denot_val (abs t) ρ = 
-      (Λ2 (fun D => denot (t ^ x) (x ~ D ++ ρ))).
-Proof.
-  intros.
-  unfold denot_val,denot. simpl.
-  rewrite size_tm_open_tm_wrt_tm_var.
-  f_equal. f_equal.
-  extensionality D.
-  name_binder x0 Frx0.
-  simpl_env. 
-  rewrite -> (rename_open_denot x0 x); eauto.
-Qed.
-
-Lemma denot_val_tcons : forall t u ρ, 
-    denot_val (tcons t u) ρ = CONS (denot_val t ρ) (denot_val u ρ).
-Proof. 
-  intros.
-  unfold denot_val. simpl.
-  f_equal.
-  rewrite size_is_enough_val. lia. auto.
-  rewrite size_is_enough_val. lia. auto.
-Qed.
-
-
-#[export] Hint Rewrite denot_val_var denot_val_lit 
-  denot_val_add denot_val_tnil denot_val_tcons : denot.
-
-#[export] Instance Proper_sub_denot_val : Proper (eq ==> Env.Forall2 Included ==> Included) denot_val.
-Proof.
-  intros t1 t ->.
-  eapply tm_induction with (t := t);
-  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
-  all: move => ρ1 ρ2 SUB.
-  all: autorewrite with denot.
-  all: try solve  [ simpl; reflexivity].
-  + eapply access_mono_sub; eauto.
-  + pick fresh x. 
-    repeat rewrite(denot_val_abs x). fsetdec. fsetdec.
-    eapply Λ_ext_sub.
-    intros X neX.
-    have SUBe: (x ~ X ++ ρ1) ⊆e (x ~ X ++ ρ2).
-    econstructor; eauto. reflexivity.
-    eapply Proper_sub_denot; eauto. 
-  + eapply CONS_mono_sub; eauto.
-Qed. 
 
 (* Definitions related to continuity 
 
@@ -176,100 +121,8 @@ Definition continuous_In {A} (D:Rho -> P A) (ρ:Rho) (v:A) : Prop :=
 Definition continuous_env {A} (D:Rho -> P A) (ρ:Rho) : Prop :=
   forall (v : A), continuous_In D ρ v.
 
-(* ----- Definitions for continuity --- functions that return computations *)
 
-(* Note: this is not the same as `inj C ⊆ D`, the sets in c_multi may 
-   be subsets of the sets in D. *)
-Definition Approx (C : list (Comp (list Value))) (D: P (Comp (P Value))) : Prop :=
-  forall c, List.In c C -> Comp_Approx_in c D.
-
-Lemma Comp_Approx_mem {A} : forall (c : Comp (list A)),  Comp_Approx c (fmap mem c).
-intros. destruct c. 
-all: econstructor; eauto.
-induction l.
-- simpl; auto.
-- simpl. econstructor. reflexivity. auto.
-Qed. 
-
-Lemma Comp_inj_Approx : forall C, Approx C (Comp_inj C).
-Proof.
-  intros. destruct C. cbv. intros. done.
-  unfold Approx. intros. destruct H. subst.
-  exists (fmap mem c0). split; eauto. unfold Comp_inj. cbn. left.  auto.
-  destruct c0. simpl. econstructor; eauto. 
-  econstructor; eauto.
-  induction l. simpl. auto.
-  econstructor; eauto. reflexivity.
-  exists (fmap mem c0).
-  split.
-  cbn. right.
-  eapply in_map. auto.
-  eapply Comp_Approx_mem; eauto.
-Qed.
- 
-Definition continuous_M (F : P Value -> M (P Value)) : Set :=
-  forall X E, Approx E (F X) -> valid X 
-         -> exists D, (mem D ⊆ X) /\ (Approx E (F (mem D))) /\ valid_mem D.
-
-(* ----- Definitions for generalized continuty --- any input, any output *)
-
-(* A type can be finitely approximated by another type if there is 
-   an injection and a relation. 
-   There are probably some properties we need from these definitions,
-   but I'm note sure what they are yet.
-*)
-Class FinApprox (A : Type) := 
-  { Finite : Type; 
-    inj    : Finite -> A; 
-    approx : Finite -> A -> Prop 
-  }.
-
-Infix "⊑" := approx (at level 65).
-
-(* Approximate sets of values by lists of values *)
-#[global] Instance FAV : FinApprox (P Value) := 
-  { Finite := list Value; 
-    inj    := mem; 
-    approx := fun l X => mem l ⊆ X }.
-
-(* Approximate valid sets of values by valid lists of values *)
-#[global] Instance FAVNE : FinApprox { x : P Value & valid x } := 
-  { Finite := { x : list Value & valid_mem x }; 
-    inj := fun x => match x with
-                   | existT _ y z => existT _ (mem y) (valid_mem_valid z)
-                 end;
-    approx := fun l X => mem (projT1 l) ⊆ (projT1 X) }.
-
-(* Approximate computations *)
-#[global] Instance FAC : FinApprox (P (Comp (P Value))) := 
-  { Finite := list (Comp (list Value));
-    inj    := Comp_inj;
-    approx := Approx
-  }.
-
-(* Approximate environments by finite environments *)
-#[global] Instance FAR : FinApprox Rho := 
-  { Finite    := { ρ & finite_env ρ };
-    inj       := @projT1 Rho finite_env;
-    approx    := fun x y => Env.Forall2 Included (projT1 x) y
-  }.
-
-(* A function F is continuous for an argument X, if for all finite approximations 
-   of the result, there is a finite approximation of X that returns the same
-   result. *)
-Definition continuous_For {A B :Type}`{FinApprox A}`{FinApprox B} (F : A -> B)
-  (X : A) : Prop :=
-  forall (E : Finite), E ⊑ F X -> exists (D : Finite), (D ⊑ X) /\ (E ⊑ F (inj D)).
-
-(* A function F is continuous if it is continuous for every argument. *)
-Definition continuous' {A B :Type}`{FinApprox A}`{FinApprox B} (F : A -> B) : Prop :=
-  forall X, continuous_For F X.
-
-(* Functions that are continuous for a specific environment. *)
-Definition continuous_env' {A}`{FinApprox A}(F : Rho -> A) : Rho -> Prop :=
-  continuous_For F.
-
-
+(* ----------------------------------------------------- *)
 
 (* -- monotonicity WRT environments -- *)
 
@@ -282,15 +135,8 @@ Proof.
   eapply Proper_sub_denot; auto.
 Qed.
 
-Lemma denot_val_monotone {t}: 
-  monotone_env (denot_val t).
-Proof.
-  unfold monotone_env.
-  intros. 
-  eapply Proper_sub_denot_val; auto.
-Qed.
-
 (* -- monotonicity WRT argument -- *)
+
 (* denot-monotone-one *)
 Lemma denot_monotone_one : forall ρ t x, 
     uniq ρ -> x `notin` dom ρ ->
@@ -303,6 +149,39 @@ Proof.
   econstructor; eauto.
 Qed.
   
+
+Lemma RET_monotone {D: Rho -> (P Value)} : 
+  monotone_env D -> 
+  monotone_env (fun ρ => RET (D ρ)).
+Proof.
+  intros.
+  intros ρ1 ρ2 S.
+  specialize (H ρ1 ρ2 S).
+  eapply RET_mono; auto.
+Qed.
+
+Lemma BIND_monotone {A B} 
+  {D : Rho -> P (Comp (list A))} 
+  {K : Rho -> P A -> P (Comp B)} : 
+  monotone_env D ->
+  (forall v, monotone_env (fun ρ => K ρ v)) ->
+  monotone_env (fun ρ => (BIND (D ρ) (K ρ))). 
+Proof.
+  intros mE mK. 
+  intros ρ1 ρ2 S1.
+  eapply BIND_mono. eapply mE; eauto.
+  intros x. eapply mK. auto.
+Qed.
+
+Lemma CONS_monotone {D E} :
+    monotone_env D 
+  -> monotone_env E
+  -> monotone_env (fun ρ => (CONS (D ρ) (E ρ))).
+Proof. intros. intros ρ1 ρ2 S. eapply CONS_mono_sub; eauto. Qed.
+
+Lemma const_monotone {A}{v : P A}: monotone_env (fun _ : Rho => v).
+Proof. intros ρ1 ρ2 SUB. reflexivity. Qed.
+
 
 (* ----------------------------------------------------- *)
 
@@ -514,23 +393,23 @@ Qed.
 #[export] Hint Resolve v_single_xvx : core. 
 
 
-
+(* --------------------------------------- *)
 (* continuous-∈⇒⊆ *)
 
-Lemma continuous_In_sub (E : Rho -> (P Value)) ρ (NE : valid_env ρ) :
+Lemma continuous_In_sub {A} (E : Rho -> (P A)) ρ (NE : valid_env ρ) :
    monotone_env E
    -> forall V, mem V ⊆ E ρ
    -> (forall v, v ∈ mem V -> continuous_In E ρ v)
    -> exists ρ', exists (pf : finite_env ρ') ,  ρ' ⊆e ρ /\ (mem V ⊆ E ρ').
 Proof.
-  intros me V VE vcont.
-  induction V.
+  intros me VS VE vcont.
+  induction VS.
   - exists (initial_finite_env ρ NE).
     repeat split.
     eapply (initial_fin ρ NE).
     eapply initial_fin_sub; eauto. 
     done.
-  - destruct IHV as [ ρ1 [ fρ1 [ ρ1ρ VEρ1 ]]].
+  - destruct IHVS as [ ρ1 [ fρ1 [ ρ1ρ VEρ1 ]]].
     intros d z. eapply VE; eauto.
     intros v VM. eapply vcont; eauto.
     destruct (vcont a) as [ρ2 [fρ2 [ρ2ρ VEρ2]]].
@@ -552,115 +431,46 @@ Qed.
 
 
 
-Lemma continuous_In_sub' (E : Rho -> M (P Value)) ρ (NE : valid_env ρ) :
-   monotone_env E
-   -> continuous_For E ρ
-   -> forall V, V ⊑ E ρ
-   -> exists ρ', exists (pf : finite_env ρ') ,  ρ' ⊆e ρ /\ (V ⊑ E ρ').
-Proof.
-  intros me vcont V VE.
-  unfold continuous_For in vcont.
-  specialize (vcont V VE).
-  move: vcont => [ [ρ' fρ'] [h1 h2]].
-  cbn in h1.
-  cbn in h2.
-  eexists ρ'. eexists. auto.
-  split; eauto.
-Qed.
-
-(*  induction V.
-  - exists (initial_finite_env ρ NE).
-    repeat split.
-    eapply (initial_fin ρ NE).
-    eapply initial_fin_sub; eauto. 
-    done.
-  - 
-    
-    destruct IHV as [ ρ1 [ fρ1 [ ρ1ρ VEρ1 ]]].
-    intros d D inV inE.
-    eapply VE; eauto. simpl. right; auto.
-
-   
-    destruct (vcont a) as [ρ2 [fρ2 [ρ2ρ VEρ2]]].
-    econstructor; eauto.
-    eapply VE. econstructor; eauto.
-    exists (ρ1 ⊔e ρ2).
-    have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
-    have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto. 
-    have SS: same_scope ρ1 ρ2. 
-    { transitivity ρ; auto. symmetry; auto. }
-    eexists. eapply join_finite_env; eauto.
-    repeat split.
-    + eapply join_lub; eauto.
-    + intros d dm.
-    inversion dm; subst.
-    eapply me. eapply join_sub_right; eauto. auto. 
-    eapply me. eapply join_sub_left; eauto. auto.
-Qed. *)
-
-
-
 (* --------------------------------------- *)
 
 (* Operations are continuous *)
 
-Lemma mem_injective {A} {l1 l2 : list A} : mem l1 = mem l2 -> l1 = l2.
+Lemma const_continuous {A} {v:P A}{ρ} : valid_env ρ -> continuous_env (fun _ : Rho => v) ρ.
+Proof.
+   intros NE.  unfold continuous_env, continuous_In.
+   intros v1 vIn. 
+   exists (initial_finite_env ρ NE); eexists; eauto.
+Qed.
+
+Lemma access_continuous { ρ x } : 
+  valid_env ρ -> continuous_env (fun ρ0 : Rho => ρ0 ⋅ x) ρ.
 Proof. 
-  move: l2. induction l1; intros l2 h; destruct l2; try done.
-  unfold mem in h.
-Admitted.
-
-Lemma map_mem_injective {A}{l l0 : list (list A)} :
-  List.map mem l = List.map mem l0 -> l = l0.
-Proof.
-  move: l0.
-  induction l; intro l0; destruct l0; intro h; try done.
-  simpl in h. inversion h.  
-  eapply mem_injective in H0.
-  eapply IHl in H1; eauto.
-  f_equal; auto.
+  move=> NE v vIn.
+  cbn in vIn.
+  destruct (FSetDecideAuxiliary.dec_In x (dom ρ)).
+  exists (single_env x ⌈ v ⌉ ρ NE).
+  repeat split.
+  eapply single_fin; eauto.
+  eapply single_sub; auto.
+  eapply v_single_xvx; eauto.
+  exists (initial_finite_env ρ NE).
+  rewrite access_fresh in vIn. auto. done.
 Qed.
 
-Lemma fmap_Comp_mem_injective {w0 w : Comp (list Value)} 
-  : fmap_Comp mem w0 = fmap_Comp mem w -> w0 = w.
-Proof.
-  intro h.
-  destruct w0; destruct w; try done.
-  inversion h.
-  apply map_mem_injective in H0.
-  f_equal; auto.
-Qed.
 
-Lemma singleton_mem_singleton {A}{w:A}{l} :
- ⌈ w ⌉ = mem l -> l = (w :: nil).
-Proof.
-  destruct l; unfold mem.
-  intro h.
-  have h1: ⌈ w ⌉ w = (fun x : A => In x nil) w.
-  rewrite h. auto.
-  simpl in h1. 
-  have h2:  ⌈ w ⌉ w. eapply in_singleton. rewrite h1 in h2. done.
-  intro h.
-  have h1: ⌈ w ⌉ w = (fun x : A => In x (a :: l)) w.
-  rewrite h. done.
-  have h2:  ⌈ w ⌉ w. eapply in_singleton. rewrite h1 in h2.
-  inversion h2. subst. 
-Admitted.
 
-Lemma APPLY_continuous {D E ρ}{w : Comp (list Value)} :
+Lemma APPLY_continuous {D E ρ} :
   (valid_env ρ)
-  -> fmap mem w ∈ (D ρ ▩ E ρ)
   -> continuous_env D ρ 
   -> continuous_env E ρ
   -> monotone_env D 
   -> monotone_env E
-  -> exists ρ' , 
-    exists (pf : finite_env ρ') , ρ' ⊆e ρ /\ (fmap mem w ∈ (D ρ' ▩ E ρ')).
+  -> continuous_env (fun ρ => (D ρ ▩ E ρ)) ρ.
 Proof.  
-  intros NE APP. inversion APP; subst. 
-  all: intros IHD IHE mD mE.
-  + apply fmap_Comp_mem_injective in H; subst.
-    destruct (IHD ( V ↦ w ) ltac:(auto)) (* finite_Singleton (In_Included H)) *) as 
+  intros NE IHD IHE mD mE.
+  intros w APP.
+  inversion APP; subst.
+  - destruct (IHD ( V ↦ w ) ltac:(auto)) as 
       [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
     destruct 
       (continuous_In_sub E ρ NE mE V)
@@ -670,204 +480,94 @@ Proof.
     have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
     exists (ρ1 ⊔e ρ2).
     repeat split.
-  - eapply join_finite_env; eauto.
-  - eapply join_lub; eauto.
-  - have VwDp3 : ⌈ V ↦ w ⌉ ⊆ D (ρ1 ⊔e ρ2).
+    -- eapply join_finite_env; eauto.
+    -- eapply join_lub; eauto.
+    -- have VwDp3 : ⌈ V ↦ w ⌉ ⊆ D (ρ1 ⊔e ρ2).
     { transitivity (D ρ1); auto. eapply mD. 
       eapply join_sub_left. auto. }
     have VEρ3 : mem V ⊆ E (ρ1 ⊔e ρ2).
     { transitivity (E ρ2); auto. eapply mE.
       eapply join_sub_right.  auto. }
     eapply BETA with (V:=V); auto.
- + unfold pure_Comp in H; destruct w; try done.
-   destruct l; try destruct l0; try done. 
-   simpl in H. inversion H. apply singleton_mem_singleton in H3.
-   subst. clear H.
-   destruct (IHD (v_list VS) ) as [ρ1 [F1 [h1 h2]]]; auto.
-   destruct (IHE (v_nat k) ) as [ρ2 [F2 [h3 h4]]]; auto.
+  - destruct (IHD (v_list VS) ) as [ρ1 [F1 [h1 h2]]]; auto.
+    destruct (IHE (v_nat k) ) as [ρ2 [F2 [h3 h4]]]; auto.
     have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
     have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
     have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
-   exists (ρ1 ⊔e ρ2).
+    exists (ρ1 ⊔e ρ2).
     repeat split.
-  - eapply join_finite_env; eauto.    
-  - eapply join_lub; eauto.
-  - cbn. 
-    replace (mem (w0 :: nil)) with ⌈ w0 ⌉. 
-    eapply PROJ with (VS := VS) (k:=k); eauto.
-    eapply mD. eapply join_sub_left; auto. auto.
-    eapply mE. eapply join_sub_right; auto. auto.
-    eapply Extensionality_Ensembles.
-    split; eauto. 
- + destruct w; try done. 
-   destruct (IHD x) as [ρ1 [F1 [h1 h2]]]; auto.
+    -- eapply join_finite_env; eauto.    
+    -- eapply join_lub; eauto.
+    -- eapply PROJ with (VS := VS) (k:=k); eauto.
+       eapply mD. eapply join_sub_left; auto. auto.
+       eapply mE. eapply join_sub_right; auto. auto.
+  - destruct (IHD x) as [ρ1 [F1 [h1 h2]]]; auto.
     eexists.
     eexists.
     eauto.
     split; eauto.
     eapply APPWRONG with (x:=x); auto.
- + destruct w; try done. 
-   destruct (IHE x) as [ρ2 [F1 [h1 h2]]]; auto.
+  - destruct (IHE x) as [ρ2 [F1 [h1 h2]]]; auto.
     destruct (IHD (v_list VS)) as [ρ1 [F2 [h01 h02]]]; auto.
     have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
     have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
     have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
     exists (ρ1 ⊔e ρ2).
     repeat split.
-    - eapply join_finite_env; eauto.    
-    - eapply join_lub; eauto.
-    - eapply PROJWRONG with (VS := VS); eauto.
+    -- eapply join_finite_env; eauto.    
+    -- eapply join_lub; eauto.
+    -- eapply PROJWRONG with (VS := VS); eauto.
     eapply mD. eapply join_sub_left; auto. auto.
     eapply mE. eapply join_sub_right; auto. auto.
-Qed.
-
-
-
-Lemma env_tail {ρ' x v ρ} :  
-  ρ' ⊆e (x ~ v ++ ρ) -> finite_env ρ' -> 
-  nonempty_env ρ ->
-  exists w, exists ρ'', ρ' = (x ~ w ++ ρ'') /\
-                (w ⊆ v) /\
-                exists (pf : finite_env ρ''), 
-                ρ'' ⊆e ρ.                
-Proof.
-  intros h k ne.
-  inversion h. subst.
-  exists a1.  exists E1.
-  repeat split; auto. inversion k.  auto.
 Qed.
 
 (* Algebraicity.  
    Only need finite information from the environment.
 *)
 
-Lemma In_Approx {c : Comp (list Value)}{E : M (P Value)} :
- fmap mem c ∈ E -> Approx (c :: nil) E.
-Proof.
-  unfold Approx.
-  intros. simpl in H0. destruct H0; try done; subst.
-  exists (fmap mem c0). 
-  split; eauto.
-  eapply Comp_Approx_mem.
-Qed.
-
-Lemma Lambda_continuous {E ρ x} {NE : valid_env ρ}{v} :
-  v ∈ Λ2 (fun D => E (x ~ D ++ ρ)) 
-  -> x `notin` dom ρ
-  -> (forall V, valid_mem V -> continuous_env' E (x ~ mem V ++ ρ))
+Lemma LAMBDA_continuous {E ρ x} {NE : valid_env ρ} :
+    x `notin` dom ρ
+  -> (forall V, valid_mem V -> continuous_env E (x ~ mem V ++ ρ))
   -> monotone_env E
-  -> exists ρ', exists (pf:finite_env ρ'),
-            ρ' ⊆e ρ /\ (v ∈ (Λ2 (fun D => E (x ~ D ++ ρ')))).
+  -> continuous_env (fun ρ => Λ (fun D => E (x ~ D ++ ρ))) ρ.
 Proof.
-Admitted.
-(*
-  induction v.
-  all: try solve [intros; cbv in H; done].
+  intros Fr IH mE.
+  intros v vIn.
+  destruct v; try done.
   - (* v is l ↦ c *)
-    intros [ wEVρ NW ] Fr IH mE.
+    move: vIn => [ wEVρ NW ]. 
 
     have VV: valid_mem l. unfold valid_mem. eauto.
     have NEx: valid_env (x ~ mem l ++ ρ). econstructor; eauto.
 
-    specialize (IH l ltac:(eauto)).
-
-    unfold continuous_env', continuous_For, Finite, FAC, FAR in IH.
-
-    move: (IH (c :: nil)) => h.
-    destruct h as [ [ρ' fρ'] [ ρ'Vρ wEρ' ]]. 
-    { eapply In_Approx. auto. }
-
-    simpl in wEρ'. unfold Approx in wEρ'.
-    specialize (wEρ' c). 
-    destruct wEρ' as [d [dIn apx]]. simpl; left; auto.
-
-    inversion ρ'Vρ. simpl in H2. subst. clear ρ'Vρ. 
-    inversion fρ'. subst.  clear fρ'.
-
-    exists E1. exists X.
-    split. eauto.
-    cbn. split; auto.
-
-    have SE: (x ~ a1 ++ E1) ⊆e (x ~ mem l ++ E1).
+    specialize (IH l ltac:(eauto) c wEVρ).
+    destruct IH as [ρ' [F' [S' h']]].
+    inversion S'. subst. inversion F'. subst.
+    exists E1. eexists. eauto.
+    repeat split; auto.
+    eapply mE. 2 : eapply h'.
     econstructor; eauto. eapply Reflexive_sub_env. eapply Forall2_uniq1; eauto.
-    eapply mE. eapply SE. clear SE.
-
-    inversion apx; subst. simpl; eauto.
-    
-    
-
-    unfold continuous_env', continuous_For in IH.
-    unfold Finite, FAC, FAR in IH.
-
-    have KK: mem (fmap_Comp mem c :: nil) ⊑ E (x ~ mem l ++ ρ).
-    { intros xx xxIn. cbn in xxIn. destruct xxIn; try done. subst. auto. }
-
-    move: (continuous_In_sub E (x ~ mem l ++ ρ) NEx mE (fmap_Comp mem c :: nil) KK) => h.
-
-    move: (IH l ltac:(eauto)) => IH'. 
-    
-
-    edestruct IH' as [ρ' fp'].
-[ ρ' [ fρ' [ ρ'Vρ wEρ' ]]]. 
-hh.
-    destruct hh as [ ρ' [ fρ' [ ρ'Vρ wEρ' ]]].
-    intros v vIn. eapply IH. auto.
-(*    destruct (IH l ltac:(eauto) ⌈ c ⌉ finite_Singleton (In_Included wEVρ)) as
-      [ ρ' [ fρ' [ ρ'Vρ wEρ' ]]].  *)
-    inversion ρ'Vρ. subst. clear ρ'Vρ.
-    inversion fρ'. subst. clear fρ'.
-    exists E1. exists X.
-    repeat split; eauto.
-    specialize (wEρ' (fmap mem c)). 
-    eapply mE. 2: eapply wEρ'.
-    have SS: E1 ⊆e E1. eapply Reflexive_sub_env.  eapply Forall2_uniq1; eauto. 
-    auto.
-    eauto.
   - exists (initial_finite_env ρ NE).
     repeat split; eauto.
 Qed.
 
-*)
 
-Lemma In_Included : forall {A}{x:A}{D},  x ∈ D -> ⌈ x ⌉ ⊆ D.
-Proof. 
-  intros.
-  intros y h.
-  inversion h. subst. auto.
-Qed.
 
-Lemma Included_In : forall {A}{x:A} {D},   ⌈ x ⌉ ⊆ D -> x ∈ D.
-Proof. 
-  intros.
-  apply H. eauto.
-Qed.
-
-Lemma finite_Singleton : forall {A}{x:A}, finite ⌈ x ⌉.
-Proof.
-  econstructor; eauto.
-  instantiate (1 := (x :: nil)). split; auto.
-  split; eauto using mem_singleton, singleton_mem.
-  done.
-Qed. 
-
-Lemma CONS_continuous {D E ρ}{w} :
-    w ∈ (CONS (D ρ) (E ρ))
-  -> continuous_env D ρ 
+Lemma CONS_continuous {D E ρ} :
+    continuous_env D ρ 
   -> continuous_env E ρ
   -> monotone_env D 
   -> monotone_env E
-  -> exists ρ3 , exists (pf : finite_env ρ3) , ρ3 ⊆e  ρ /\ (w ∈ (CONS (D ρ3) (E ρ3))).
+  -> continuous_env (fun ρ => (CONS (D ρ) (E ρ))) ρ.
 Proof.  
-  intros C. unfold CONS, In in C. destruct w.
-  all: try done.
-  destruct l. try done.
-  move: C => [Dv El].
   intros IHD IHE mD mE.
-Admitted.
-(*
-  destruct (IHD ⌈ v ⌉ finite_Singleton (In_Included Dv)) as 
+  intros v vIn.
+  destruct v; cbn in vIn; try done.
+  destruct l; cbn in vIn; try done. 
+  move: vIn => [vIn lIn].
+  destruct (IHD v vIn) as 
       [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
-  destruct (IHE ⌈ v_list l ⌉ finite_Singleton (In_Included El)) as 
+  destruct (IHE (v_list l) lIn) as
       [ ρ2 [ fρ2 [ ρ2ρ VwDp2 ]]].
   have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
   have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
@@ -880,195 +580,252 @@ Admitted.
     eapply join_sub_left; eauto. auto.
   - eapply mE. instantiate (1:= ρ2).
     eapply join_sub_right; eauto. auto.
-Qed. *)
+Qed. 
 
 
-(* ---- RET : P Value -> M (P Value) ----- *)
 
-Lemma RET_continuous {D: Rho -> (P Value)}{ρ}{c} : 
+Lemma RET_continuous {D: Rho -> (P Value)}{ρ} : 
   valid_env ρ ->
-  continuous_env' D ρ ->
+  continuous_env D ρ ->
   monotone_env D ->
-  c ∈ RET (D ρ) ->
-  forall (x : Comp (list Value)), Comp_Approx x c ->
-    exists (ρ' : Rho), 
-    exists _ :(finite_env ρ'), (ρ' ⊆e ρ) /\ (fmap mem x ∈ RET (D ρ')).
+  continuous_env (fun ρ => RET (D ρ)) ρ.
 Proof.
-  intros VE CE ME cIn x SU.
-  destruct c; try destruct l as [|V l] ; try destruct l; cbn in cIn; try done.
-  inversion SU. subst. inversion H1. subst. inversion H4. subst.
-  clear H1 H4 SU.
-  unfold continuous_env', continuous_For in *.
-Admitted.
+  intros VE IHD mD.
+  intros c cIn.
+  destruct c; try done.
+  destruct l; try done.
+  destruct l0; try done.
+  cbn in cIn.
+  have lemma: (exists ρ', exists _ : finite_env ρ', ρ' ⊆e ρ /\ ((mem l) ⊆ D ρ')).
+  { 
+    eapply continuous_In_sub; eauto.
+  }
+  destruct lemma as [ρ' [F' [S' h]]]. 
+  exists ρ'. exists F'.
+  split; auto.
+Qed.  
 
-
-(*
-Lemma BIND_continuous {A B}{D : Rho -> P (Comp (P A))}{K : Rho -> P A -> P (Comp (P B))}{ρ}{v} :
-  valid_env ρ ->
-  v ∈ BIND (D ρ) (K ρ) -> 
-  continuous_env' D ρ ->
-  monotone_env D  ->
-  (forall v, continuous_env (fun r => K r v) ρ) ->
-  (forall v, monotone_env (fun r => K r v)) ->
-  exists ρ', exists (pf:finite_env ρ'),
-            ρ' ⊆e ρ /\ (v ∈ BIND (D ρ') (K ρ')). 
+Lemma BIND_continuous {A B} 
+  {D : Rho -> P (Comp (list A))} 
+  {K : Rho -> P A -> P (Comp B)} {ρ}: 
+  valid_env ρ -> 
+  continuous_env D ρ ->
+  monotone_env D ->
+  (forall v, continuous_env (fun ρ => K ρ v) ρ) ->
+  (forall v, monotone_env (fun ρ => K ρ v)) ->
+  continuous_env (fun ρ => (BIND (D ρ) (K ρ))) ρ. 
 Proof.
-  intros VE H IHD mD IHE mE. 
-  move: H => [U [h1 [h2 [-> h3]]]].
-  unfold continuous_env, continuous_In in IHD.
-  edestruct (IHD U ltac:(eauto)) as 
-      [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
-  destruct U.
-  + exists ρ1. repeat split; eauto.
-    cbn.
-    unfold BIND. 
-    exists c_wrong. exists (fun x => c_wrong).
+  intros NE IHD mD IHK mK.
+  intros c cIn.
+  destruct cIn as [u [k [uIn [h1 h2]]]].
+  destruct (IHD u uIn) as [ ρ1 [F1 [S1 uIn1]]].
+  destruct u.
+  + simpl in h1.
+    subst.
+    exists ρ1. exists F1. split; auto.
+    cbn. unfold BIND.
+    exists c_wrong. exists k.
+    repeat split. eapply uIn1.
+    intros a aIn. inversion aIn.
+  + have lemma :
+      forall l, 
+         (forall a : list A, Comp_In a (c_multi l) -> K ρ (mem a) (k a)) -> 
+         exists ρ', exists (_ : finite_env ρ'), 
+           ρ' ⊆e ρ /\
+           (forall a : list A, Comp_In a (c_multi l) -> K ρ' (mem a) (k a)).
+    { clear uIn ρ1 F1 S1 uIn1 l h1 h2.
+      induction l; intros h2.
+      ++ exists (initial_finite_env ρ NE). eexists; repeat split; eauto.
+         intros a inA. simpl in inA. done.
+      ++ destruct IHl 
+          as [ρ2 [F2 [S2 uIn2]]].
+          { intros x xIn. apply h2. simpl. simpl in xIn. right.  auto. }
+          move: (h2 a ltac:(econstructor; eauto)) => Ka.
+          destruct (IHK (mem a) _ Ka) as
+            [ρ1 [F1 [S1 uIn1]]].
+          have SS1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+          have SS2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
+          have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+          exists (ρ1 ⊔e ρ2).
+          repeat split.
+          - eapply join_finite_env; eauto.    
+          - eapply join_lub; eauto.
+          - intros x xIn. simpl in xIn. destruct xIn. 
+            subst. eapply (mK (mem x)); try eassumption. eapply join_sub_left; auto.
+            eapply (mK (mem x)). 2: { eapply uIn2; eauto. }
+            eapply join_sub_right; eauto.
+    }
+    destruct (lemma l h2) as 
+      [ρ2 [F2 [S2 In2]]]. clear lemma.
+    have SS1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+    have SS2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
+    have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+    exists (ρ1 ⊔e ρ2).
+    repeat split.
+    - eapply join_finite_env; eauto.    
+    - eapply join_lub; eauto.
+    - exists (c_multi l). exists k.
     repeat split; eauto.
-    intros x h. inversion h.
-  + (* need a lemma about all of the VS in the list l. *)
-     admit.    
-  + exists ρ1. repeat split; eauto.
-    cbn.
-    unfold BIND. 
-    exists c_bottom. exists (fun x => c_bottom).
-    repeat split; eauto.
-    intros x h. inversion h.
-Admitted. 
+    eapply mD; try eassumption. eapply join_sub_left; auto.
+    intros a aIn.
+    eapply (mK (mem a)). 2: { eapply In2; eauto. }
+    eapply join_sub_right; eauto.
+Qed.                 
 
-*)
+
 
 (* ---------------- Denotation is continuous ----------------- *)
-
-(*
-Lemma Included_RET2 {A}{v:M A}{Y}: (v ⊆ RET2 Y) ->  exists X, (v ≃ RET2 X) /\ (X ⊆ Y).
-Proof.
-  intros.
-  cbv in H.
-  exists (fun x => Y x /\ v (ret x)).
-  repeat split.
-  - cbv. intros x vx.
-    move: (H x vx) => [b [Yb mm]].
-    exists b. repeat split; auto. inversion mm. subst. auto.
-  - cbv. intros x [b [[Yb vb] xb]]. 
-    inversion xb. subst. auto.
-  - intros y Iny.
-    destruct Iny. auto.
-Qed.
-  *)
-
-
-(*
-Lemma denot_val_continuous {t} : forall ρ,
-    valid_env ρ
-  -> continuous_env (denot_val t) ρ.
-Proof.
-  eapply tm_induction with (t := t);
-  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
-  all: intros ρ NE.
-  all: intros v vIn.
-  all: autorewrite with denot in vIn.
-  all: try solve [ exists (initial_finite_env ρ NE); eexists; eauto] .
-  - destruct (FSetDecideAuxiliary.dec_In x (dom ρ)).
-    + exists (single_env x ⌈ v ⌉ ρ NE).
-      repeat split.
-      eapply single_fin; eauto.
-      eapply single_sub; eauto.
-      rewrite denot_val_var.
-      eapply v_single_xvx; eauto.
-    + rewrite access_fresh in vIn; auto.
-      inversion vIn.
-  - pick fresh x.
-    rewrite (denot_val_abs x) in vIn. fsetdec.
-    admit. (* Wrong IH. *)
-  - rewrite denot_val_tcons in vIn. 
-    eapply CONS_continuous in vIn; eauto.
-    move: vIn => [ρ' [F' [S' vIn']]].
-    exists ρ'. repeat split; auto.
-    rewrite denot_val_tcons. auto.
-*)
 
 (* ⟦⟧-continuous *)
 Lemma denot_continuous {t} : forall ρ,
     valid_env ρ
-  -> continuous_env' (denot t) ρ.
+  -> continuous_env (denot t) ρ.
 Proof.
   eapply tm_induction with (t := t);
   [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
   all: intros ρ NE.
   all: intros c cIn.
   all: autorewrite with denot in cIn.
-  destruct c; cbn in cIn; unfold Approx in cIn.
-Admitted.
-(*
-   specialize (cIn c ltac:(econstructor; eauto)).
-   destruct cIn as [x [h0 h1]]; done.
 
-c(*   all: try solve [ exists (initial_finite_env ρ NE);
-    eexists; eauto] . *)
-  + cbn. exfalso. edestruct cIn.
-  + destruct c; try done.  destruct l as [|V l]; try done. destruct l; try done. 
-    cbn in cIn.
-    destruct (FSetDecideAuxiliary.dec_In x (dom ρ)).
-    - 
-      exists (single_env x v ρ NE).
-      split.
-      eapply single_fin; eauto.
-      Search finite valid_env.
-      split.
-      ++ eapply single_sub; auto.
-      ++ rewrite denot_var. 
-         rewrite E.
-         eapply RET2_monotone.
+  all: try solve [destruct c; try done].  
 
-         move: (@v_single_xvx a x ρ NE ltac:(auto)) => h.
-         
-         transitivity (RET2 (ρ ⋅ x)); auto.
-         eapply RET2_monotone.
-         intros w wIn.
-         eapply v_single_xvx. auto. 
-    - exists (initial_finite_env ρ NE).
-      eexists; eauto. split. eauto.
-      rewrite denot_var.
-      rewrite <- ret_In_RET2.
-      rewrite access_fresh. simpl_env. auto.
-      rewrite access_fresh in h1. auto. done.
-  + edestruct (BIND2_continuous NE vIn) as [ρ' [F [SS BB]]]; eauto.
-    instantiate (1 :=  (fun ρ v1 => BIND2 (denot t2 ρ) (fun v2 : P Value => v1 ▩ v2))). reflexivity.
-    eapply denot_monotone.
-    (* edestruct (APPLY_continuous NE vIn) as [ρ' [F SS]]; eauto. *)
-    simpl in BB.
-    exists ρ'. exists F.
-    rewrite denot_app. auto.
+  all: try solve [ exists (initial_finite_env ρ NE); eexists; eauto].
+
+  + destruct c; try done.  
+    destruct l as [|V l]; try done. 
+    destruct l; try done.
+    eapply RET_continuous; eauto.
+    ++ eapply access_continuous; eauto.
+    ++ eapply (@monotone_env_denot_val (var_f x)). 
+
+  + (* application case *)
+    specialize (IH1 _ NE).
+    specialize (IH2 _ NE).
+    have C1: forall v1 v2, continuous_env (fun ρ => v1 ▩ v2) ρ.
+    { 
+      intros. unfold continuous_env, continuous_In.
+      intros c1 c1In.
+      eapply (@APPLY_continuous (fun ρ => v1) (fun ρ => v2)); 
+        eauto using const_continuous, const_monotone.
+    } 
+    have C2: forall v1,
+        continuous_env (fun ρ => BIND (denot t2 ρ) (fun v2 : P Value => v1 ▩ v2)) ρ.
+    { 
+      intros v1.
+      eapply (BIND_continuous NE IH2 ltac:
+                (eapply denot_monotone; eauto) (C1 v1));
+        eauto using const_monotone.
+    } 
+   edestruct (BIND_continuous NE IH1 ltac:(eapply denot_monotone; eauto) C2) as 
+     [ ρ' [F' [S' In']]].
+   2: eapply cIn.
+   intros v.  
+   eapply BIND_monotone.
+   eapply denot_monotone. 
+   intros x. eauto using const_monotone.
+   exists ρ'. exists F'. repeat split. auto.
+   autorewrite with denot.
+   auto.
   + pick fresh x.
-    rewrite (denot_abs x) in vIn. fsetdec.
-    move: vIn => [v1 [h1 h2]].
-    inversion h2; subst; clear h2.
-    move: (@Lambda_continuous _ _ NE v1 x h1) => h.    
-    destruct h as [ρ' [Fρ' [S vvIn]]].
-    ++ intros V NEV NW.
-       move: (valid_nonempty_mem _ NEV) => [w h0]. 
-       eapply IH; eauto.
-    ++ eapply denot_monotone.
-    ++ exists ρ'. exists Fρ'. 
-       erewrite <- Forall2_dom in Fr. 2: eapply S.
-       rewrite (denot_abs x). fsetdec.
-       repeat split; auto.
-       erewrite <- ret_In_RET2.
-       auto.
-  + edestruct (BIND2_continuous NE vIn) as [ρ' [F [SS BB]]]; eauto.
-    instantiate (1 :=  (fun ρ v1 => BIND2 (denot t2 ρ) (fun v2 : P Value => RET2 (CONS v1 v2)))). reflexivity.
-    eapply denot_monotone.
+    rewrite (denot_abs x) in cIn. fsetdec.
 
-    edestruct (CONS_continuous vIn) as [ρ' [F SS]]; eauto.
-
-    eapply denot_monotone.
-    exists ρ'. exists F.
-    rewrite denot_tcons. auto.
+    remember (fun ρ => 
+                Λ (fun D : P Value => denot (t' ^ x) (x ~ D ++ ρ))) 
+              as D.
+    have CE: (continuous_env D ρ). 
+    {
+      subst D. eapply LAMBDA_continuous; eauto.
+      eapply denot_monotone.
+    }
+    destruct c; try done.
+    destruct l; try done.
+    destruct l0; try done.
+    cbn in cIn.
+    (* This replicates part of continuous-∈-sub, but is necessary
+       because we cannot show that D is monotonic in the environment.
+       It is only monotonic in environments that don't mention x.
+     *)
+    have lemma: (exists ρ', exists _ : finite_env ρ', ρ' ⊆e ρ /\ ((mem l) ⊆ D ρ')).
+    { 
+      move: l cIn.
+      induction l; intros cIn.
+      - exists (initial_finite_env ρ NE).
+        repeat split.
+        eapply (initial_fin ρ NE).
+        eapply initial_fin_sub; eauto. 
+        done.
+      - destruct (CE a) as [ρ1 [F1 [S1 h1]]].
+        specialize (cIn a  ltac:(econstructor; eauto)).  subst D. auto.
+        destruct IHl as [ρ2 [F2 [S2 h2]]].
+        intros y yIn. eapply cIn; eauto.
+        have SS1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+        have SS2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
+        have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+        exists (ρ1 ⊔e ρ2).
+        repeat split.
+        eapply join_finite_env; eauto.    
+        eapply join_lub; eauto.
+        subst D.
+        intros y yIn.
+        destruct yIn. subst.
+        eapply Λ_ext_sub. 2: eapply h1.
+        intros X VX. simpl.
+        eapply denot_monotone.
+        constructor; eauto.
+        eapply join_sub_left; eauto.
+        erewrite -> Forall2_dom. 2: eapply SS1. fsetdec.
+        reflexivity.
+        specialize (h2 y H).
+        eapply Λ_ext_sub. 2: eapply h2.
+        intros X VX. simpl.
+        eapply denot_monotone.
+        constructor; eauto.
+        eapply join_sub_right; eauto.
+        erewrite -> Forall2_dom. 2: eapply SS2. fsetdec.
+        reflexivity.
+    }
+    destruct lemma as [ρ' [F' [S' h']]].
+    exists ρ'. exists F'. split; auto.
+    rewrite (denot_abs x); auto. 
+    rewrite (@Forall2_dom _ Included ρ' ρ); auto.
+    cbn. subst D. 
+    eapply h'.
+  + (* CONS *)
+    specialize (IH1 _ NE).
+    specialize (IH2 _ NE).
+    have C1: forall v1 v2, continuous_env (fun ρ => RET (CONS v1 v2)) ρ.
+    { 
+      intros. unfold continuous_env, continuous_In.
+      intros c1 c1In.
+      eapply RET_continuous; eauto.
+      intros u uIn.
+      eapply CONS_continuous; eauto
+        using const_continuous, const_monotone.
+      eapply CONS_monotone; eauto using const_monotone.
+    } 
+    have C2: forall v1,
+        continuous_env (fun ρ => BIND (denot t2 ρ) (fun v2 : P Value => RET (CONS v1 v2))) ρ.
+    { 
+      intros v1.
+      eapply (BIND_continuous NE IH2 ltac:
+                (eapply denot_monotone; eauto) (C1 v1)); eauto using const_monotone.
+    } 
+   edestruct (BIND_continuous NE IH1 ltac:(eapply denot_monotone; eauto) C2) as 
+     [ ρ' [F' [S' In']]].
+   2: eapply cIn.
+   intros v ρ1 ρ2 S.    
+   eapply BIND_mono. 
+   eapply denot_monotone; auto.
+   intros x. reflexivity.
+   exists ρ'. exists F'. repeat split. auto.
+   autorewrite with denot.
+   auto.
+Unshelve.
+eapply NE.
 Qed.
-*)
+
 
 (* ⟦⟧-continuous-⊆ *) 
-(*
 Lemma denot_continuous_sub {ρ t} : 
   valid_env ρ
   -> forall V, mem V ⊆ denot t ρ
@@ -1081,49 +838,14 @@ Proof.
   intros v InV.
   eapply denot_continuous; auto.
 Qed.
-*)
-
-Lemma denot_continuous_sub {ρ t} : 
-  valid_env ρ
-  -> forall E, Approx E (denot t ρ)
-  -> exists ρ', exists (pf : finite_env ρ'),
-        ρ' ⊆e ρ  /\  (Approx E (denot t ρ')).
-Admitted.
-
-Definition implies (A B : Prop) : Prop := A -> B.
-
-#[global] Instance Proper_Approx : Proper (Logic.eq ==> Ensembles.Included ==> implies) Approx.
-intros x1 y1 -> x2 y2 S. 
-unfold Approx, implies in *.
-- intros h c cIn. specialize (h c cIn). 
-unfold Comp_Approx_in in *.
-move: h => [d [dIn s]].
-exists d. split. eauto. auto.
-Qed.
-
-Lemma Approx_sub : forall c X1 X2, X1 ⊆ X2 -> Approx c X1 -> Approx c X2.
-intros c X1 X2 S. 
-unfold Approx. 
-intros h d dIn. specialize (h d dIn). 
-unfold Comp_Approx_in in *.
-move: h => [e [eIn s]].
-exists e. split. eauto. auto.
-Qed.
-
-(* This doesn't work, because we need a finite description of the result *)
-Definition continuous_M' (F : P Value -> M (P Value)) : Set :=
-  forall X E, mem E ⊆ (F X) -> valid X 
-         -> exists D, (mem D ⊆ X) /\ (mem E ⊆ (F (mem D))) /\ valid_mem D.
-
 
 (* ⟦⟧-continuous-one *)
 Lemma denot_continuous_one { t ρ x } :
   valid_env ρ 
   -> x `notin` dom ρ 
-  -> continuous_M (fun D => denot (t ^ x) (x ~ D ++ ρ)).
+  -> continuous (fun D => denot (t ^ x) (x ~ D ++ ρ)).
 Proof.
   intros NE_ρ Fr.
-  unfold continuous_M.
   intros X E E_sub_denot NE_X.
   edestruct (@denot_continuous_sub (x ~ X ++ ρ)) as 
     [ρ' [pf [h1 h2]]]. 3: eauto.
@@ -1137,9 +859,7 @@ Proof.
     have SUB: Env.Forall2 Included (x ~ a1 ++ E1) (x ~ mem D ++ ρ).
     econstructor; eauto. 
     rewrite <- S. reflexivity.
-    eapply Approx_sub. 2: eapply h2.
-    eapply denot_monotone.
-    auto.
+    rewrite <- SUB. eapply h2. 
     eapply valid_sub_valid_mem; eauto. rewrite <- S. auto.
 Qed.
 
@@ -1147,8 +867,8 @@ Qed.
 
 (* Λ-▪-id *)
 Lemma Λ_APPLY_id { F X } :
-  continuous_M F -> monotone F -> valid X
-  -> (Λ2 F) ▩ X ≃ F X.
+  continuous F -> monotone F -> valid X
+  -> (Λ F) ▩ X ≃ F X.
 Proof. 
   intros Fcont Fmono NEX.
   split.
@@ -1161,22 +881,14 @@ Proof.
     - destruct x; try done.
   + intros w wInFX.
 
-    unfold continuous_M in Fcont.
-
-    destruct w. 
-    - admit.
-    - 
-
     have M: mem (cons w nil) ⊆ F X. 
     { intros d y. inversion y; subst. auto. done. }
 
     move: (Fcont X (cons w nil) M NEX) => 
     [ D [ DltX [ wInFD NED ]]].
 
-
     eapply BETA with (V:=D); eauto.
     repeat split; eauto.
-    eapply Forall_sub_mem; eauto.
 Qed.
 
 
@@ -1197,3 +909,74 @@ Proof.
   + eapply denot_monotone_one; auto.
     eapply ForallT_uniq; eauto.
 Qed.
+
+
+(*  RETURN followed by BIND applies ------------------- *)
+
+Lemma bind_ret_Comp : forall {A B} (x : A) (k : A -> Comp B), 
+    bind (ret x) k = k x.
+Proof.
+  intros.
+  cbv.
+  destruct (k x); auto.
+  f_equal.
+  eapply app_nil_r.
+Qed. 
+
+Lemma BIND_RET1 : forall {A B} (x : P A) (k : P A -> P (Comp (list B))), 
+    monotone k -> 
+    BIND (RET x) k ⊆ k x.
+Proof.
+  intros. unfold BIND, RET.
+  repeat split.
+  intros y.
+  move =>[U [k0 [h2 [h3 h4]]]]. 
+  subst.
+  destruct U; try done.
+  destruct l; try done.
+  destruct l0; try done.
+  cbn.
+  specialize (h4 l ltac:(cbv;eauto)).
+  rewrite append_Comp_nil.
+  eapply H; eauto.
+Qed.
+
+Lemma BIND_RET2 : forall {B} (x : P Value) (k : P Value -> P (Comp (list B))), 
+    monotone k -> 
+    continuous k ->
+    valid x ->
+    k x ⊆ BIND (RET x) k.
+Proof. 
+  intros B x k km kc vx.
+  unfold continuous in kc. 
+  unfold BIND, RET.
+  intros y yIn.
+  unfold Ensembles.In.
+  have M: mem (y :: nil) ⊆ k x. intros z zIn.
+  { destruct zIn; try done. subst. auto. }
+  move: (kc x (y :: nil) M vx) => [D [S1 [S2 VD]]].
+  exists (c_multi (D :: nil)).
+  exists (fun _ => y).
+  repeat split. 
+  - eapply S1.
+  - cbn.
+    destruct y; auto. cbn. rewrite app_nil_r. auto.
+  - intros v vIn.
+    simpl in vIn. destruct vIn; try done.
+    subst.
+    eapply S2.
+    eauto.
+Qed.
+  
+Lemma BIND_RET : forall {B} (x : P Value) (k : P Value -> P (Comp (list B))), 
+    monotone k -> 
+    continuous k ->
+    valid x ->
+    BIND (RET x) k ≃ k x.
+Proof.
+  intros.
+  split.
+  eapply BIND_RET1; eauto.
+  eapply BIND_RET2; eauto.
+Qed.
+
