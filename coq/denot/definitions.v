@@ -1,35 +1,83 @@
 (* Definitions related to the denotational semantics.
+
+   This version separates the denotation of computations from that of values.
    
-   The semantic domain: `P Value` 
+   The semantic domain for values: `P Value` and for computations: `P (Comp
+   (list Value))`
 
-   Predicates:
+   The `Comp A` type is defined in `structures.Comp`. It is isomorphic to
+   `maybe (list A)`, where none is a runtime type error and the list includes
+   multiple results.  Fail is the empty list.
 
-      success : Value -> Prop     (Does this result approximate a lambda-calculus value?)
+   The type `P A` is a (potentially) infinite set, represented by its
+   characteristic function `(A -> Prop)`. The union of all of the elements of
+   the set is the complete denotation of the value/computation. (These
+   elements should be consistent with eachother.)
 
-      valid : P Value -> Prop     (is the set nonempty & only contain successful values?)
+   The denotation of both values and computations includes bottom: the
+   denotation of an infinite loop. Therefore, some definitions include
+   the predicate
 
-   Semantic operators:
-    WRONG : P Value   
+      valid : P Value -> Prop
 
-    NAT   : nat -> P Value
-    NIL   : P Value
-    CONS  : P Value -> P Value -> P Value
-    Λ     : (P Value -> P Value) -> P Value :=
-    APPLY : P Value -> P Value -> P Value
+   which characterizes Values that are nonempty. i.e. do not denote bottom.
 
-   Environments:    
+   We would have liked the denotation of computations to be `P (Comp (P Value))`,
+   i.e. the type `P (Comp A)` instantiated with `P Value`. This former type is
+   *almost* a monad: there are reasonable definitions of return and bind, but
+   one of the associativity laws for bind fails. This isn't necessarily fatal:
+   it just means that we have to be careful about how we represent certain
+   computations.
+
+   However, I was unable to prove continuity for the semantic operators using
+   this definition. So I have used the types above, and have defined the
+   Monad-like operations:
+
+      RET : P A -> P (Comp (list A))
+
+      BIND : (P (Comp (list A))) -> (P A -> P (Comp B)) -> P (Comp B)
+
+   I don't know which of the analogous monad laws these operators satisfy.
+
+   Other semantic operators:
+
+      NAT : nat -> P Value 
+
+      ADD : P Value 
+
+      NIL : P Value 
+
+      CONS : P Value -> P Value -> P Value 
+
+      LIST : list (P Value) -> P Value
+
+      Λ : (P Value -> P (Comp (list Value))) -> P Value     -- note function bodies are computations
+
+      APPLY : P Value -> P Value -> P (Comp (list Value))
+
+   Environments. An `Env A` is an association list, associating each variable with an `A`. 
+
+      This is a call-by-value language, so the environment contains the denotation of values.
    
        Rho := Env (P Value)
 
    Environment Notations:
 
+       `ρ ⋅ x` -- lookup variable x in the environment, return bottom if not in domain
+
+        x ~ a ++ ρ -- extend an environment with an association.
+
    Environment predicates:
 
-       valid_env : Rho -> Prop
+       valid_env : Rho -> Prop    
 
-   Denotation function:
+       finite_env : Rho -> Prop   -- implies valid
 
-       denot : tm -> Rho -> P Value
+   Denotation functions (mutually defined):
+
+       denot     : tm -> Rho -> P (Comp (list Value))
+
+       denot_val : tm -> Rho -> P Value
 
  *)
 
@@ -49,131 +97,18 @@ Local Open Scope set_scope.
 
 (* Sets of Values:   P Value === Value -> Prop *)
 
-(* ----------------------------------------------------------- *)
-(*
-(* Computations that can fail, produce multiple results, or diverge. *)
-
-Inductive Comp (v : Type) : Type := 
-  (* dynamic type error *)
-  | c_wrong : Comp v
-
-  (* multiple results *)
-  | c_multi : list v -> Comp v
-
-.
-
-#[export] Hint Constructors Comp : core.
-
-Arguments c_wrong {_}.
-Arguments c_multi {_}.
-
-(* ----------------------------------------------------------- *)
-
-(* Comp is a monad *)
-
-Definition pure_Comp {A} (x : A) : Comp A := c_multi (x :: nil).
-
-Definition fmap_Comp {A B} (f : A -> B) (m : Comp A) : Comp B :=
-  match m with 
-  | c_wrong => c_wrong
-  | c_multi xs => c_multi (List.map f xs)
-  end.
-
-Definition append_Comp {A} (m : Comp A) (n : Comp A) : Comp A :=
-  match m with 
-  | c_wrong => c_wrong
-  | c_multi xs => match n with 
-                 | c_wrong => c_wrong
-                 | c_multi ys => c_multi (xs ++ ys)
-                 end
-  end.
-      
-Definition concat_Comp {A} (l : list (Comp A)) : Comp A :=
-  fold_right append_Comp (c_multi nil) l.
-
-Definition join_Comp {A} (m : Comp (Comp A)) : Comp A :=
-  match m with 
-  | c_wrong => c_wrong
-  | c_multi xs => concat_Comp xs
-  end.
-      
-Definition bind_Comp {A B} (m : Comp A) (k : A -> Comp B) : Comp B :=
-  join_Comp (fmap_Comp k m).
-
-#[export] Instance Functor_Comp : Functor Comp.
-split. exact @fmap_Comp. Defined.
-
-
-#[export] Instance Monad_Comp : Monad Comp.
-split. exact @pure_Comp. exact @bind_Comp. Defined.
-
-Lemma append_Comp_nil {A} : forall (x : Comp A), append_Comp x (c_multi nil) = x.
-Proof.
-  intros.
-  destruct x; simpl; auto.
-  rewrite app_nil_r.
-  auto.
-Qed.
-
-
-
-(* ------------------------------------------------------- *)
-
-Definition Comp_In {A} (x : A) (u : Comp A) := 
-  match u with 
-  | c_wrong => False
-  | c_multi vs => List.In x vs
-  end.
-
-(*
-Definition Comp_inj {A} (C : list (Comp (list A))) : P (Comp (P A)) :=
-  mem (List.map (fmap mem) C).
-
-Inductive Comp_Approx {A}: Comp (list A) -> Comp (P A) -> Prop :=
-  | CA_wrong : Comp_Approx c_wrong c_wrong
-  | CA_multi : forall ll lX,
-              List.Forall2 (fun l X => mem l ⊆ X) ll lX ->
-              Comp_Approx (c_multi ll) (c_multi lX).
-
-
-Definition Comp_Approx_in {A} (C : Comp (list A)) (D : P (Comp (P A))) : Prop :=
-  exists d, (d ∈ D) /\ (Comp_Approx C d).
-
-Infix "⊑c" := Comp_Approx    (at level 65).
-Infix "∈c" := Comp_Approx_in (at level 65).
-
-(* This function is ok. *)
-
-Definition split {A} (C : P (Comp A)) : P (Comp (P A)) :=
-  fun D => 
-    match D with 
-    | c_wrong => c_wrong ∈ C
-    | c_multi WS => 
-        exists (vs : list A), (c_multi vs ∈ C) /\ List.Forall2 Sets.In vs WS
-    end.
-
-
-(* Generalizes In through multi values *)
-
-Definition In2 {A} (d : Comp A) (D : P (Comp (P A))) : Prop :=
-    match d with 
-     | c_wrong => c_wrong ∈ D
-     | c_multi VS =>
-         exists WS, (c_multi WS ∈ D) /\
-            List.Forall2 Sets.In VS WS
-    end.
-*)
-*)
-
 (* ------------------------------------------------------- *)
 
 (* `P (Comp (P A))` is *almost* a Monad *)
 
 Definition RET {A} (x : P A) : P (Comp (list A)) :=
   fun z => match z with 
-          | c_multi (y :: nil) => mem y ⊆ x
+          | c_multi (V :: nil) => (mem V ⊆ x) /\ V <> nil
           |  _ => False
         end.
+
+(* V must be nonempty because RET is strict. If V is empty then the 
+   set should be empty. *)
 
 Definition BIND {A B} (S : P (Comp (list A))) (K : P A -> P (Comp B)) (t : Comp B) : Prop :=
   exists (u : Comp (list A)), exists (k : list A -> Comp B), 
@@ -208,7 +143,6 @@ Denotation of Identity function (\x.x):
 #[export] Hint Constructors Value : core.
 
 Infix "↦" := v_map (at level 85, right associativity).
-
 
 (* ------------ Valid values and computations ------------------ *)
 
@@ -295,7 +229,7 @@ Inductive APPLY : P Value -> P Value -> (Comp (list Value) -> Prop) :=
      (mem V ⊆ D2) -> valid_mem V ->
      APPLY D1 D2 w
 
-(* NOTE: need to incorporate eta-expansion here to order for exists
+(* NOTE: this definition is wrong! need to incorporate eta-expansion here to order for exists
 
   <v1 ... vn > i == (i=0;v1) | .. | (i=n;vn)
 
@@ -304,7 +238,7 @@ Inductive APPLY : P Value -> P Value -> (Comp (list Value) -> Prop) :=
   | PROJ   : forall D1 D2 w VS k, 
      (v_list VS) ∈ D1 ->
      (v_nat k ∈ D2) -> nth_error VS k = Some w ->
-     APPLY D1 D2 (ret ( w  :: nil) )
+     APPLY D1 D2 (ret (w  :: nil))
   | APPWRONG : forall D1 D2 x, 
       x ∈ D1 ->
       not (applicable x) ->      
@@ -322,8 +256,8 @@ Infix "▩" := APPLY (at level 90).
 Definition ADD : P Value :=
   fun w => 
     match w with 
-    | (V ↦ c_multi ((v_nat k :: nil) :: nil)) => 
-        exists i j, ((v_list (v_nat i :: v_nat j :: nil)) ∈ mem V) /\ k = i + j
+    | (V ↦ c_multi (K :: nil)) => 
+        exists i j k, (mem V ≃ ⌈ v_list (v_nat i :: v_nat j :: nil) ⌉) /\ (mem K ≃ ⌈ v_nat k ⌉) /\ (k = i + j)
     | V ↦ c_wrong => 
         not (exists i j, v_list (v_nat i :: v_nat j :: nil) ∈ mem V) /\ valid_mem V
     | _ => False
@@ -407,7 +341,7 @@ Fixpoint denot_comp_n (n : nat) (a : tm) (ρ : Rho) : P (Comp (list Value)) :=
 
      | tnil => NIL
 
-     | _ => ∅
+     | _ => fun x => False
      end
   end in
   match n with
@@ -450,7 +384,7 @@ Fixpoint denot_val_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
 
      | tnil => NIL
 
-     | _ => ∅
+     | _ => fun x => False
      end
   end.
 

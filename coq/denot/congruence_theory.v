@@ -59,7 +59,7 @@ Proof.
   inversion APP; subst; unfold Included in *.
   + apply BETA with (V:=V); eauto.
     intros d z. eauto.
-  + apply PROJ with (VS := VS) (k := k); eauto.
+  + eapply PROJ with (VS := VS) (k := k); eauto.
   + eapply APPWRONG; eauto.
   + eapply PROJWRONG; eauto.
 Qed.
@@ -112,9 +112,12 @@ Proof.
     destruct l as [| y t]; try done.
     destruct t; try done.
     unfold RET in *. cbn in *.
+    destruct xIn as [xIn NE].
+    split.
     unfold Included in xIn.
     intros x. 
     eauto.
+    auto.
 Qed.
 
 (*
@@ -128,14 +131,19 @@ Proof.
 Abort. 
 *)
 
-#[export] Instance Proper_Included_RET {A} : Proper (Included ==> Included) 
-                                               (@RET (P A)).
-unfold Proper. intros x1 y1 E1. eapply RET_mono. auto. Qed.
-
-#[export] Instance Proper_Same_RET {A} : Proper (Same_set ==> Same_set) (@RET (P A)).
-unfold Proper. intros x1 y1 E1. split. eapply RET_mono. rewrite E1. reflexivity.
+Lemma RET_cong {A} : forall (U V : P A), 
+ U ≃ V -> RET U ≃ RET V. 
+Proof. 
+intros x1 y1 E1. split. eapply RET_mono. rewrite E1. reflexivity.
 eapply  RET_mono. rewrite E1. reflexivity.
 Qed.
+
+#[export] Instance Proper_Included_RET {A} : Proper (Included ==> Included) 
+                                               (@RET A).
+unfold Proper. intros x1 y1 E1. eapply RET_mono; auto. Qed.
+
+#[export] Instance Proper_Same_RET {A} : Proper (Same_set ==> Same_set) (@RET A).
+unfold Proper. intros x1 y1 E1. eapply RET_cong; auto. Qed.
 
 Lemma BIND_mono {A B} : forall (D1 D2 : P (Comp (list A))) (K1 K2 : P A -> P (Comp B)),
   D1 ⊆ D2 -> (forall x, K1 x ⊆ K2 x) ->
@@ -165,15 +173,24 @@ Proof.
     intros a aIn. eapply H0. eapply h4. auto.
 Qed.
 
+Lemma BIND_cong {A B} : forall (D1 D2 : P (Comp (list A))) (K1 K2 : P A -> P (Comp B)),
+  D1 ≃ D2 -> (forall x, K1 x ≃ K2 x) ->
+  BIND D1 K1 ≃ BIND D2 K2.
+Proof.
+intros D1 D2 K1 K2 [h1 h2] E2.
+split; eapply BIND_mono; eauto; intro x; destruct (E2 x); eauto.
+Qed.
+
 #[export] Instance Proper_Included_BIND {A B} : 
-  Proper (Included ==> Logic.eq ==> Included) (@BIND A B).
-intros x1 y1 E1 x2 y2 ->. 
-eapply BIND_mono; eauto. reflexivity.
+  Proper (Included ==> (Logic.eq ==> Included) ==> Included) (@BIND A B).
+intros x1 y1 E1 x2 y2 E2. 
+eapply BIND_mono; eauto. 
 Qed. 
 
-#[export] Instance Proper_Same_BIND {A B} : Proper (Same_set ==> Logic.eq ==> Same_set) (@BIND A B).
-unfold Proper. intros x1 y1 E1 x2 y2 ->. split. eapply BIND_mono. rewrite E1. reflexivity. reflexivity.
-eapply  BIND_mono. rewrite E1. reflexivity. reflexivity.
+#[export] Instance Proper_Same_BIND {A B} : Proper (Same_set ==> (Logic.eq ==> Same_set) ==> Same_set) (@BIND A B).
+unfold Proper. intros x1 y1 E1 x2 y2 E2.
+unfold respectful in E2.
+eapply BIND_cong; eauto.
 Qed.
 
 (* ---------------------------------------------------- *)

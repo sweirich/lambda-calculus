@@ -16,8 +16,11 @@ Open Scope monad_scope.
 (* Definitions *)
 Require Import denot.definitions.
 
-(* Weakening & substitution for the definition of the denotation *)
+(* Rewrite rules for the definition of the denotation *)
 Require Import denot.denot.
+
+(* Weakening *)
+Require Import denot.subst.
 
 (* Operators preserve validity *)
 Require Import denot.valid_theory. 
@@ -88,6 +91,29 @@ Proof.
     econstructor.
 Qed.
 
+Lemma l_equiv_den_k1 {l k} : mem l ≃ ⌈ v_nat k ⌉ -> (mem l ⊆ NAT k) /\ l <> nil.
+Proof.
+  intros.
+  rewrite H.
+  split. rewrite NAT_den. reflexivity.
+  destruct l. cbv in H. destruct H. intro h. eapply (H0 (v_nat k)). eapply in_singleton.
+  done.
+Qed.
+
+Lemma l_equiv_den_k2 {l k} : (mem l ⊆ NAT k) /\ l <> nil -> mem l ≃ ⌈ v_nat k ⌉.
+Proof.
+  move=> [h1 h2].
+  split.
+  rewrite <- NAT_den. done.
+  destruct l. done.
+  have vIn: v ∈ NAT k. eauto.
+  apply v_in_den_k_inv in vIn. subst.
+  eauto.
+Qed.
+
+Lemma l_equiv_den_k {l k} : (mem l ⊆ NAT k) /\ l <> nil <-> mem l ≃ ⌈ v_nat k ⌉.
+Proof. split. eapply l_equiv_den_k2; eauto. eapply l_equiv_den_k1; eauto. Qed.
+
 
 Lemma ADD_APPLY_LIST {i j} : 
   ADD ▩ (LIST (NAT i :: NAT j :: nil)) ≃ RET (NAT (i + j)).
@@ -104,33 +130,32 @@ Proof.
       subst.
       exists i. exists j. eauto. done.
     - destruct l; try done.
-      destruct l; try done.
-      destruct v; try done.
-      destruct l; try done.
       destruct l0; try done.
-      destruct H as [i0 [j0 [h0 h1]]]. subst.
-      move: (den_list _ _ _ H0 _ h0) => h1. inversion h1. subst. clear h1.
+      destruct H as [i0 [j0 [k0 [h0 [h1 h2]]]]]. subst.
       cbn.
-      rewrite <- In_Sub.
-      eapply k_in_den_k.
+      apply l_equiv_den_k1 in h1. destruct h1. 
+      split; eauto.
+      rewrite h0 in H0.
+      move: (den_list _ _ _ H0 (v_list (v_nat i0 :: v_nat j0 :: nil)) ltac:(auto)) => h3. inversion h3. subst. clear h3.
+      auto.
     - destruct x; try done.
    + intros w wIn.
-     unfold RET in wIn.
      destruct w; try done.
      destruct l; try done.
      destruct l0; try done.
      cbn in wIn.
-Admitted. 
-(*
-     apply v_in_den_k_inv in wIn. subst.
+     move: wIn => [wIn VL].
+     have EQ: mem l ≃ ⌈ v_nat (i + j) ⌉. eapply l_equiv_den_k2; eauto.
      eapply BETA with (V := v_list (v_nat i :: v_nat j :: nil) :: nil).
-     - cbn. eauto.
+     - cbn. exists i. exists j. exists (i+j).
+       repeat split. eauto. eauto.
+       rewrite EQ. eauto.
+       rewrite EQ. eauto.
      - intros x xIn. inversion xIn. subst.
        cbn. eauto using k_in_den_k.
        inversion H.
-     - cbn. split. eauto. unfold In, mem. intro h. inversion h. 
-       econstructor; eauto. done.
-Qed. *)
+     - unfold valid_mem. done. 
+Qed.
 
 Lemma ADD_APPLY_CONS {k1 k2} : 
   (ADD ▩ CONS (NAT k1) (CONS (NAT k2) NIL)) ≃ RET (NAT (k1 + k2)).
@@ -145,27 +170,58 @@ Lemma CONS_APPLY_ZERO1 {D1 D2} : (CONS D1 D2 ▩ NAT 0) ⊆ RET D1.
     apply v_in_den_k_inv in H0. inversion H0. subst.
     destruct VS; simpl in H1. done. inversion H1. subst.
     inversion H.
-    cbn.
-    rewrite mem_singleton_eq.
-    eauto.
+    cbn. split.
+Abort.
+(*
+    rewrite <- H2. eauto. 
+    destruct W.  destruct H2 as [h1 h2]. specialize (h1 w0 ltac:(auto)). done.
+    done.
   + destruct x; try done.
   + destruct x; try done. 
     apply v_in_den_k_inv in H0.
     subst.
     exfalso. 
     eapply H1; eauto.
-Qed.
+Qed. *)
 
-(*
 Lemma CONS_APPLY_ZERO2 {D1 D2 VS} : 
   v_list VS ∈ D2 ->
-  D1 ⊆ (CONS D1 D2 ▩ NAT 0).
+  RET D1 ⊆ (CONS D1 D2 ▩ NAT 0).
 Proof.
-  intros VV w In.
-  eapply PROJ with (k := 0)(VS := w :: VS); eauto using k_in_den_k.
-  econstructor; eauto.
-Qed. 
+  intros VV.
+  intros c cIn.
+  destruct c; try done.
+  destruct l; try done.
+  destruct l0; try done.
+  cbn in cIn. move: cIn => [cIn VL].
+  destruct l; try done.
+  have APPW : (forall w, In w l -> v_list (w :: VS) ∈ (CONS D1 D2)).
+Abort.
+(*
+  admit.
+  eapply PROJ with (k := 0)(VS := v :: VS)(w:= a); eauto using k_in_den_k.
+  
+  destruct l.
+  + done.
+  + clear VL.
+    have LH: (v_list (v :: VS) ∈ CONS D1 D2). unfold CONS. cbn; eauto.
+    have EQ: (mem (v :: l) ≃ ⌈ v ⌉). 
+    induction l.  admit.
+    simpl_env. repeat rewrite union_mem.
+    unfold CONS in LH.
 
+    unfold mem.
+    eapply PROJ with (k := 0)(VS := v :: VS)(w:= a); eauto using k_in_den_k.
+  econstructor; eauto.
+Admitted. *)
+
+Lemma CONS_APPLY_ZERO {D1 D2 VS} : v_list VS ∈ D2 -> (CONS D1 D2 ▩ NAT 0) ≃ RET D1.
+Admitted.
+
+Lemma CONS_APPLY_SUCC {D1 D2 VS k} : v_list VS ∈ D2 -> (CONS D1 D2 ▩ NAT (1 + k)) ≃ (D2 ▩ NAT k).
+Admitted.
+
+(*
 Lemma CONS_APPLY_SUCC1 {D1 D2 k} : (CONS D1 D2 ▩ NAT (1 + k)) ⊆ (D2 ▩ NAT k).
   intros w APP. inversion APP; try inversion H.
   + subst.
@@ -195,35 +251,6 @@ Proof. intros Fr NEP NEX. eapply ForallT_cons; eauto. Qed.
 
 (* https://github.com/jsiek/denotational_semantics/blob/master/agda/ISWIMPValue.agda *)
 
-(*
-Definition denot1 (t : tm) (ρ : Rho) : P Value.
-  remember (size_tm t) as n.
-  have GE: n >= size_tm t. subst. auto. clear Heqn.
-  move: t GE ρ.
-  induction (lt_wf n) as [n _ denot].
-  Print tm.
-  intros [ i | x | u | t | k | (* add *) | (* nil *) | t ] SZ; simpl in SZ.
-  all: intros ρ.
-  - exact ⌈ v_wrong ⌉.
-  - exact (ρ ⋅ x).
-  - move: (fresh_for (dom ρ \u fv_tm u)) => x.
-    have F : P Value -> P Value.
-    intro D.
-    have LT: size_tm (u ^ x) < n. {  autorewrite with lngen; lia. }
-    specialize (denot (size_tm (u ^ x)) LT (u ^ x) ltac:(auto) (x ~ D ++ ρ)).
-    exact denot.
-    exact (Λ F).
-  - move: (denot (size_tm t) ltac:(lia) t ltac:(lia) ρ) => t'.
-    move: (denot (size_tm u) ltac:(lia) u ltac:(lia) ρ) => u'.
-    exact (t' ▩ u').
-  - exact (NAT k). 
-  - exact ADD.
-  - exact NIL.    
-  - move: (denot (size_tm t) ltac:(lia) t ltac:(lia) ρ) => t'.
-    move: (denot (size_tm u) ltac:(lia) u ltac:(lia) ρ) => u'.
-    exact (CONS t' u').
-Defined. 
-*)
 (* ------------------------------------------------------- *)
 
 (* Soundness of reduction with respect to denotation *)
@@ -238,64 +265,185 @@ Ltac invert_value :=
 
 Definition valid_Comp (C : P (Comp (list Value))) : Type :=
   (nonemptyT C * not (c_wrong ∈ C) * not (c_multi nil ∈ C))%type.
+       
 
-
-(* The denotation of syntactic values is valid. *)
-(*
 Lemma denot_value_valid {t}{ρ} : 
   fv_tm t [<=] dom ρ -> valid_env ρ 
-  -> (value t -> valid_Comp (denot t ρ)) * 
-      (listvalue t -> forall (x : Comp (list Value)), x ∈ (denot t ρ) -> { l & (c_multi (v_list l :: nil)) = x }) .
-Proof. 
-  intros FV NEρ.
+  -> (value t -> valid (denot_val t ρ)) * 
+      (listvalue t -> forall (x : Value), x ∈ (denot_val t ρ) -> { l & v_list l = x }).
+Proof.
   induction t.
+  all: intros FV; simpl in FV.
+  all: intros NEρ.
   all: split.
-  all: intros vv.
+  all: intros h.
   all: autorewrite with denot.
-  all: try solve [ assert False; invert_value; done].
-  + unfold nonempty_env in NEρ.
-    eapply (@ForallT_access _ ⌈ v_wrong ⌉ _ _) in NEρ.
+  all: try solve [ assert False; invert_value; done].  
+  + unfold valid_env in NEρ.
+    eapply (@ForallT_access _ Bottom _ _) in NEρ.
     2: instantiate (1:= x); auto.
-    destruct NEρ. split; auto.
-    simpl in FV. fsetdec.
+    destruct NEρ.
+    exists x0. auto.
   + pick fresh x.
-    erewrite denot_abs with (x:=x); eauto.
+    erewrite denot_val_abs with (x:=x); eauto.
     eapply valid_Λ.
   + eapply valid_NAT; eauto. 
   + eapply valid_ADD; eauto.
-  + assert False. inversion vv. done.
+  + assert False. inversion h. done.
   + eapply valid_NIL; eauto.
   + (* exists nil. cbv. econstructor. *)
     intros x In. inversion In. exists nil. reflexivity.
   + simpl in FV. 
-    move: (IHt1 ltac:(fsetdec)) => [ih11 _].
-    move: (IHt2 ltac:(fsetdec)) => [ih21 ih22].
+    move: (IHt1 ltac:(fsetdec) NEρ) => [ih11 _].
+    move: (IHt2 ltac:(fsetdec) NEρ) => [ih21 ih22].
     have V2: value t2. invert_value. auto.
     have LV: listvalue t2. invert_value. auto.
-    move: (ih21 V2) => [[v u] NW].
-    move: (ih22 LV v u) => [ll ii].
+    move: (ih21 V2) => [v NW].
+    move: (ih22 LV v NW) => [l le].
     eapply valid_CONS; eauto. eapply ih11. invert_value. auto.
     subst. eauto.
-  + simpl in FV. 
-    move: (IHt1 ltac:(fsetdec)) => [ih11 _].
-    move: (IHt2 ltac:(fsetdec)) => [ih21 ih22].
+  + move: (IHt1 ltac:(fsetdec) NEρ) => [ih11 _].
+    move: (IHt2 ltac:(fsetdec) NEρ) => [ih21 ih22].
     have V2: value t2. invert_value. auto.
     have LV: listvalue t2. invert_value. auto.
-    move: (ih21 V2) => [[v u] NW].
-    move: (ih22 LV v u) => [ll ii].
+    move: (ih21 V2) => [v  NW].
+    move: (ih22 LV v NW) => [ll ii].
     subst.
     intros x CC. 
     destruct x; try done.
     exists l. reflexivity.
-Qed.     
-*)
+Qed.
+
+Lemma denot_val_RET {ρ}{NE: valid_env ρ} {v} : 
+  fv_tm v [<=] dom ρ -> value v -> denot v ρ ≃ RET (denot_val v ρ).
+Proof.
+  induction v.
+  all: intros FV H0.
+  all: inversion H0; try inversion H.
+  all: autorewrite with denot.
+  all: simpl in FV.
+  all: try reflexivity. 
+  rewrite IHv1; eauto.  fsetdec.
+  rewrite BIND_RET.
+  solve_continuous.
+  eapply BIND_CONS_continuous.
+  eapply denot_value_valid; eauto. fsetdec. 
+  rewrite IHv2; eauto. fsetdec.
+  rewrite BIND_RET.
+  solve_continuous.
+  eapply RET_CONS_continuous2.
+  eapply denot_value_valid; eauto. fsetdec. 
+  reflexivity.
+Qed.
+
 Lemma value_nonempty {t}{ρ} : 
   fv_tm t [<=] dom ρ -> valid_env ρ -> value t -> valid_Comp (denot t ρ).
 Proof. 
-  intros.
-Admitted.
-(*   eapply denot_value_valid; eauto.
-Qed.  *)
+  intros SC VE VT.
+  move: (@denot_val_RET ρ VE t SC VT) => EQ.
+  move: (denot_value_valid SC VE) => [h1 h2].
+  specialize (h1 VT).
+  destruct h1.
+  repeat split.
+  + unfold nonemptyT.
+    exists (c_multi (ret x :: nil)).
+    rewrite EQ.
+    cbn. repeat split; auto. done.
+  + rewrite EQ.
+    cbn. done.
+  + rewrite EQ.
+    cbn. done.
+Qed.
+
+(* Scoping predicates *)
+
+Lemma subst_denot : forall t x u ρ1 ρ2, 
+    scoped t (ρ1 ++ x ~ (denot_val u ρ2) ++ ρ2) ->
+    scoped u ρ2 ->
+    value u ->
+    valid_env (ρ1 ++ ρ2) ->
+    denot t (ρ1 ++ x ~ (denot_val u ρ2) ++ ρ2) ≃
+    denot (t [x ~> u]) (ρ1 ++ ρ2).
+Proof.
+  intro t.
+  eapply tm_induction with (t := t);
+  [move=>i|move=>y|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
+  all: intros x u ρ1 ρ2 ST SU VU NE.
+  all: simpl. 
+  all: simpl_env. 
+  all: autorewrite with denot.
+  all: try solve [reflexivity].
+  + destruct (y == x) eqn:EQ. subst.
+    ++ have NI: x `notin` dom ρ1.
+       { inversion ST. destruct_uniq. auto. }
+       have D2: fv_tm u [<=] dom ρ2. 
+       { inversion SU. auto. }
+       have U2: uniq (ρ1 ++ ρ2). 
+       { inversion ST. solve_uniq. }
+       rewrite access_app_fresh; auto.       
+       rewrite access_eq_var.
+       rewrite denot_val_RET; simpl_env; auto. fsetdec.
+       erewrite weaken_denot_val. reflexivity.
+       fsetdec. auto.
+    ++ repeat rewrite denot_var.
+       eapply Proper_Same_RET; eauto.
+       destruct (access_app_P ρ1 y) as [h1 | h2].
+       repeat rewrite h1. reflexivity.
+       move: (h2 ρ2) => [N1 ->]. 
+       move: (h2 (x ~ denot_val u ρ2 ++ ρ2)) => [N3 ->].
+       rewrite access_neq_var; auto.
+       reflexivity.
+  + move: (scoped_app_inv1 _ _ _ _ ST) => S1.
+    move: (scoped_app_inv2 _ _ _ _ ST) => S2.
+    eapply Proper_Same_BIND.
+    eapply IH1; eauto.
+    intros v1 v2 ->.
+    eapply Proper_Same_BIND.
+    eapply IH2; eauto.
+    intros w1 w2 ->.
+    reflexivity.
+  + have LCU: lc_tm u. inversion SU. auto.
+    pick fresh z.
+    specialize (IH z ltac:(auto) x u).
+    simpl. simpl_env.
+    repeat rewrite (denot_abs z).
+    simpl_env. fsetdec.
+    simpl_env. rewrite fv_tm_subst_tm_upper. fsetdec.
+    eapply Proper_Same_RET.
+    eapply Λ_ext. intros D DV.
+    have FZ: z `notin` (dom (ρ1 ++ x ~ denot_val u ρ2 ++ ρ2) \u fv_tm t').
+    simpl_env. fsetdec. 
+    move: (scoped_abs_inv _ z t' D _ FZ ST) => h.
+    rewrite <- app_assoc.
+    rewrite IH; auto.
+    simpl_env. eapply extend_valid_env; eauto.
+    rewrite subst_tm_open_tm_wrt_tm. eauto.
+    rewrite subst_neq_var. auto.
+    reflexivity.
+  + move: (scoped_tcons_inv1 _ _ _ _ ST) => S1.
+    move: (scoped_tcons_inv2 _ _ _ _ ST) => S2.
+    eapply Proper_Same_BIND.
+    eapply IH1; eauto.
+    intros v' v ->.
+    eapply Proper_Same_BIND.
+    eapply IH2; eauto.    
+    intros w' w ->. 
+    reflexivity.
+Qed.
+
+Lemma subst_denot1 :
+  forall (t : tm) (x : atom) (u : tm) (ρ : Env (P Value)),
+    scoped t (x ~ denot_val u ρ ++ ρ) 
+    -> scoped u ρ 
+    -> value u
+    -> valid_env ρ
+    -> denot t (x ~ denot_val u ρ ++ ρ) ≃ denot (t [x ~> u]) ρ.
+Proof.
+  intros. 
+  eapply subst_denot with (ρ1 := nil); auto. 
+Qed.
+
+
 
 Lemma soundness: 
   forall t u, 
@@ -313,12 +461,14 @@ Proof.
     destruct SCt as [FV U lc]. inversion lc. subst.
     simpl in FV.
     pick fresh x.
-    erewrite denot_abs with (x:=x).
-    rewrite BIND_RET; auto.  admit. admit. eapply valid_Λ; auto.
-    
+    erewrite denot_abs with (x:=x). 2: fsetdec.
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_Λ; auto.
+    rewrite denot_val_RET; eauto. fsetdec.
+    rewrite BIND_RET; solve_continuous.
+    eapply denot_value_valid; auto. fsetdec.
     rewrite Λ_denot_APPLY_id; auto.
-    eapply value_nonempty; auto.
-    fsetdec.
+    eapply denot_value_valid; auto. fsetdec.
     rewrite (subst_tm_intro x t v); auto.
     replace ρ with (nil ++ ρ) at 3.
     rewrite <- subst_denot with (ρ1 := nil). reflexivity.
@@ -328,12 +478,14 @@ Proof.
     inversion H; eauto.
     econstructor; eauto. 
     fsetdec.
+    auto.
+    auto.
     reflexivity.
-    fsetdec.
   - (* abs-cong *)
     pick fresh x.
     repeat erewrite denot_abs with (x:=x); try fsetdec.
     specialize (H0 x ltac:(auto)).
+    eapply Proper_Same_RET.
     eapply Λ_ext.
     intros X NEX.
     eapply H0.
@@ -346,57 +498,114 @@ Proof.
     have SC1: scoped t ρ. eapply scoped_app_inv1; eauto.
     have SC2: scoped t' ρ. eapply scoped_app_inv1; eauto.
     have SC3: scoped u ρ. eapply scoped_app_inv2; eauto.
-    eapply APPLY_cong; eauto.
-    reflexivity.
+    eapply Proper_Same_BIND. eauto.
+    intros v v' ->.
+    eapply Proper_Same_BIND. reflexivity.
+    intros w w' ->.    
+    eapply APPLY_cong. reflexivity. reflexivity.
   - (* app2 *)
     have SC1: scoped t ρ.  eapply scoped_app_inv1; eauto.
     have SC2: scoped u ρ.  eapply scoped_app_inv2; eauto.
     have SC3: scoped u' ρ.  eapply scoped_app_inv2; eauto.
-    eapply APPLY_cong; eauto.
-    reflexivity.
+    eapply Proper_Same_BIND. reflexivity.
+    intros v v' ->.
+    eapply Proper_Same_BIND. auto.
+    intros w w' ->.    
+    eapply APPLY_cong. reflexivity. reflexivity.
   - (* cons1 *)
-    eapply CONS_cong; eauto.
     have SC1: scoped t ρ.  eapply scoped_tcons_inv1; eauto.
     have SC2: scoped u ρ.  eapply scoped_tcons_inv2; eauto.
     have SC3: scoped t' ρ.  eapply scoped_tcons_inv1; eauto.
-    eapply IHRED; eauto.
-    reflexivity.
+    eapply Proper_Same_BIND. eauto.
+    intros v v' ->.
+    eapply Proper_Same_BIND. reflexivity.
+    intros w w' ->.    
+    eapply Proper_Same_RET.
+    eapply CONS_cong. reflexivity. reflexivity.
   - (* cons2 *)
     have SC1: scoped t ρ.  eapply scoped_tcons_inv1; eauto.
     have SC2: scoped u ρ.  eapply scoped_tcons_inv2; eauto.
     have SC3: scoped u' ρ.  eapply scoped_tcons_inv2; eauto.
-    rewrite IHRED; eauto.
-    reflexivity.
+    eapply Proper_Same_BIND. reflexivity.
+    intros v v' ->.
+    eapply Proper_Same_BIND. auto.
+    intros w w' ->.    
+    eapply Proper_Same_RET.
+    eapply CONS_cong. reflexivity. reflexivity.
   - (* prj_zero *)
+
     destruct SCt. simpl in s.
-    move: (@denot_value_valid w ρ ltac:(fsetdec) NE) => [w1 w2].
-    move: (w1 (sv_list _ H0)) => [[uu ss] NW].
-    move: (w2 H0 uu ss) => [ll tt]. subst.
-    split. eapply CONS_APPLY_ZERO1.
-    eapply CONS_APPLY_ZERO2; eauto.
+    have Vv : valid (denot_val v ρ). { eapply denot_value_valid; eauto. fsetdec. }
+    move: (@denot_value_valid w ρ ltac:(fsetdec) NE) => [h1 h2]. specialize (h2 H0).
+    have Vw : valid (denot_val w ρ). eauto. 
+    destruct (h1 ltac:(auto)) as [x xIn]. destruct (h2 x xIn) as [l1 <-]. 
+
+    rewrite denot_val_RET; eauto. fsetdec.
+    rewrite BIND_RET; solve_continuous.
+    eapply BIND_continuous; solve_continuous.
+
+    rewrite denot_val_RET; eauto. fsetdec.
+    rewrite BIND_RET; solve_continuous.
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_CONS; eauto.
+
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_NAT.
+
+    eapply CONS_APPLY_ZERO.
+    eauto.
   - (* prj_suc *)
-    split.
-    + eapply CONS_APPLY_SUCC1.
-    + intros x In.
-      destruct SCt. simpl in s.
-      move: (@denot_value_valid v ρ ltac:(fsetdec) NE) => [h1 h2].
-      move: (@denot_value_valid w ρ ltac:(fsetdec) NE) => [w1 w2].
-      move: (h1 H) => [[vv rr] NW]. clear h1 h2.
-      move: (w1 (sv_list _ H0)) => [[uu ss] NW2].
-      move: (w2 H0) => mm.  
-      inversion In; try done; subst.
-      ++ move: (mm _ H1) => [o OO]. done.
-      ++ move: (mm _ H1) => [o OO]. done.
-      ++ move: (mm _ H1) => [o OO]. 
-      inversion H2. subst.
-      eapply PROJ. instantiate (1 := (vv :: VS)).
-      econstructor; eauto.
-      instantiate (1:= (1 + k0)). econstructor.
-      simpl.
-      auto.
-      ++ move: (mm _ H1) => [o OO].  subst. simpl in H3; done.
-      ++ destruct x0; try done. exfalso.  eapply H4; eauto. 
+
+    destruct SCt. simpl in s.
+    have Vv : valid (denot_val v ρ). { eapply denot_value_valid; eauto. fsetdec. }
+    move: (@denot_value_valid w ρ ltac:(fsetdec) NE) => [h1 h2]. specialize (h2 H0).
+    have Vw : valid (denot_val w ρ). eauto. 
+    destruct (h1 ltac:(auto)) as [x xIn]. destruct (h2 x xIn) as [l1 <-]. 
+
+    rewrite denot_val_RET; eauto. fsetdec.
+    rewrite BIND_RET; solve_continuous.
+    eapply BIND_continuous; solve_continuous.
+
+    rewrite denot_val_RET; eauto. fsetdec.
+    rewrite BIND_RET; solve_continuous.
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_CONS; eauto.
+
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_NAT.
+
+    rewrite BIND_RET; solve_continuous.
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_NAT.
+
+    eapply CONS_APPLY_SUCC.
+    eauto.
   - (* add *) 
+    rewrite (BIND_RET ADD); solve_continuous.
+    eapply valid_ADD.
+
+    rewrite (BIND_RET (NAT k1)); solve_continuous.
+    eapply BIND_continuous; solve_continuous.
+    eapply valid_NAT.
+
+
+    rewrite (BIND_RET (NAT k2)); solve_continuous.
+    eapply BIND_continuous; solve_continuous.
+    eapply valid_NAT.
+
+
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_NIL.
+
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_CONS. eapply valid_NAT. eapply valid_NIL.
+    instantiate (1:= nil). cbv. econstructor; eauto.
+    
+    rewrite BIND_RET; solve_continuous.
+    eapply valid_CONS. eapply valid_NAT. eapply valid_CONS. eapply valid_NAT. eapply valid_NIL.
+    instantiate (1:= nil). cbv. econstructor; eauto.
+    instantiate (1:= v_nat k2 :: nil). cbv. split. auto. econstructor; eauto.
+    
     eapply ADD_APPLY_CONS; eauto.
 Qed.
 

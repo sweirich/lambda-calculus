@@ -74,6 +74,15 @@ Definition head (v : Value) : v_head :=
   | v_list _ => h_list
   end.
 
+Inductive ConsistentComp {A} (f : A -> A -> Prop) : Comp A -> Comp A -> Prop :=
+  | cc_wrong : ConsistentComp f c_wrong c_wrong
+  | cc_multi : forall AS BS, 
+      List.Forall2 f AS BS ->
+      ConsistentComp f (c_multi AS) (c_multi BS).
+Inductive InconsistentComp {A} (f : A -> A -> Prop) : Comp A -> Comp A -> Prop :=
+  | i_wrong_multi : forall AS, InconsistentComp f c_wrong (c_multi AS)
+  | i_multi_wrong : forall AS, InconsistentComp f (c_multi AS) c_wrong
+  | i_multi : forall AS BS, List.Exists2 f AS BS -> InconsistentComp f (c_multi AS) (c_multi BS).
 
 Inductive Consistent : Value -> Value -> Prop :=
   | c_nat : forall i, Consistent (v_nat i) (v_nat i)
@@ -84,10 +93,10 @@ Inductive Consistent : Value -> Value -> Prop :=
   | c_fun2 : forall X r, Consistent (X ↦ r) v_fun
 
   | c_map2 : forall X1 X2 r1 r2, 
-      Forall2_any Consistent r1 r2 -> 
+      ConsistentComp (List.Forall2_any Consistent) r1 r2 -> 
       Consistent (X1 ↦ r1) (X2 ↦ r2)
   | c_map1 : forall X1 X2 r1 r2, 
-      Exists2_any Inconsistent X1 X2 ->
+      List.Exists2_any Inconsistent X1 X2 ->
       Consistent (X1 ↦ r1) (X2 ↦ r2)
 
 with Inconsistent : Value -> Value -> Prop :=
@@ -101,8 +110,8 @@ with Inconsistent : Value -> Value -> Prop :=
       List.Exists2 Inconsistent XS YS ->
       Inconsistent (v_list XS) (v_list YS)
   | i_map : forall X1 X2 r1 r2,
-      Forall2_any Consistent X1 X2 ->
-      Inconsistent r1 r2 ->
+      List.Forall2_any Consistent X1 X2 ->
+      ConsistentComp (List.Exists2_any Inconsistent) r1 r2 ->
       Inconsistent (X1 ↦ r1) (X2 ↦ r2).
 
 #[export] Hint Constructors Consistent Inconsistent v_head : core.
@@ -119,6 +128,7 @@ Definition consistent_env : Rho -> Type := Env.ForallT ConsistentSet.
 
 (* ------------------------------------------------------------------------------- *)
 
+Check Value_ind.
 
 (* 
    The default induction principle for values is not
@@ -128,21 +138,21 @@ Definition consistent_env : Rho -> Type := Env.ForallT ConsistentSet.
    Value_ind
      : forall P : Value -> Prop,
        (forall n : nat, P (v_nat n)) ->
-       (forall (l : list Value) (v : Value), P v -> P (v_map l v)) ->
+       (forall (l : list Value) (c : Comp (list Value)), P (v_map l v)) ->
        P v_fun -> 
        (forall l : list Value, P (v_list l)) -> 
-       P v_wrong -> 
        forall v : Value, P v 
 *)
 
+(*
 Fixpoint Value_ind' (P : Value -> Prop)
        (n : forall n : nat, P (v_nat n)) 
-       (m : forall (l : list Value) (v : Value), Forall P l -> P v -> P (v_map l v)) 
+       (m : forall (l : list Value) (c : Comp (list Value)), 
+           Forall P l -> Comp.Forall (List.Forall P) c -> P (v_map l c)) 
        (f : P v_fun)
        (l : (forall l : list Value, Forall P l -> P (v_list l)))
-       (w : P v_wrong) 
        (v : Value) : P v := 
-  let rec := Value_ind' P n m f l w 
+  let rec := Value_ind' P n m f l  
   in
   let fix rec_list (vs : list Value) : Forall P vs :=
     match vs with 
@@ -150,17 +160,23 @@ Fixpoint Value_ind' (P : Value -> Prop)
     | cons w ws => @Forall_cons Value P w ws (rec w) (rec_list ws)
     end
   in 
+  let rec_comp (c : Comp (list Value)) : Comp.Forall (List.Forall P) c :=
+    match c as c1 return Comp.Forall (List.Forall P) c1 with 
+    | c_wrong => I
+    | c_multi vs => rec_list _
+    end
+  in
   match v with 
   | v_nat k => n k
   | v_map X v => 
-      m X v (rec_list X) (rec v)
+      m X v (rec_list X) (rec_comp v)
   | v_fun => f
   | v_list X => l X (rec_list X)
-  | v_wrong => w 
   end.
-
+*)
 (* We do the same thing for Value_rect *)
 
+(*
 Fixpoint Value_rec' (P : Value -> Type)
        (n : forall n : nat, P (v_nat n)) 
        (m : forall (l : list Value) (v : Value),
@@ -184,7 +200,7 @@ Fixpoint Value_rec' (P : Value -> Type)
   | v_list X => l X (rec_list X)
   | v_wrong => w 
   end.
-
+*)
 
 (* ----------------------------------------------- *)
 
@@ -201,6 +217,8 @@ Lemma Consistent_not_Inconsistent :
   forall x y, Consistent x y -> Inconsistent x y -> False.
 Proof.
   intros x.
+Admitted. 
+(*
   eapply Value_ind' with (P := fun x => 
   forall y : Value, Consistent x y -> Inconsistent x y -> False).
   all: intros.
@@ -222,7 +240,7 @@ Proof.
         inversion h1; inversion h2; subst.  
       inversion H7; subst. eauto.
       inversion H7; subst. eauto.
-Qed.
+Qed. *)
 
 
 
@@ -237,14 +255,14 @@ Definition ConsistentDecidable := fun v1 => forall v2 : Value,
 
 
 
-Lemma dec_any : forall XS, List.ForallT ConsistentDecidable XS -> forall YS, { Forall2_any Consistent XS YS } + {Exists2_any Inconsistent XS YS}.
+Lemma dec_any : forall XS, List.ForallT ConsistentDecidable XS -> forall YS, { List.Forall2_any Consistent XS YS } + { List.Exists2_any Inconsistent XS YS}.
 induction XS.
 - intros h. intros ys. left. intros x y h1 h2. inversion h1.
 - intros h. inversion h. subst. clear h.
   intros YS. unfold ConsistentDecidable in H1.
   destruct (IHXS H2 YS).
   + induction YS. left. intros x y h1 h2. inversion h2.
-    have CE: (Forall2_any Consistent XS YS).
+    have CE: (List.Forall2_any Consistent XS YS).
     intros x y h1 h2. 
     eapply f; eauto. simpl. eauto.
     specialize (IHYS CE). destruct IHYS.
@@ -283,6 +301,8 @@ Qed.
   
 Lemma dec_con : forall v1 v2, {Consistent v1 v2 } + {Inconsistent v1 v2 }.
 intros v1. 
+Admitted.
+(*
 eapply Value_rec' with 
 (P := fun v1 =>  forall v2 : Value, {Consistent v1 v2} + {Inconsistent v1 v2}).
 all: intros.
@@ -301,6 +321,7 @@ all: try solve [left; eauto].
   left; eauto.
   right. destruct i; eauto.
 Qed.
+*)
 
 Lemma DecSetList : forall XS, List.ForallT ConsistentDecidable XS.
 intros XS. induction XS. econstructor; eauto.
@@ -319,10 +340,12 @@ Qed.
 
 #[export] Instance Consistent_refl : Reflexive Consistent.
 intro x.
+Admitted.
+(*
 eapply Value_ind' with (P := ConsistentReflexive).
 all: unfold ConsistentReflexive; intros; eauto using ConsistentPointwiseList_refl.
 econstructor. rewrite <- List.Forall_Forall2. auto.
-Qed.
+Qed. *)
 
 
 (* ------------------------------------------------- *)
@@ -347,8 +370,8 @@ Qed.
 Lemma ConsistentSets_Singleton_refl {x} : ConsistentSets ⌈ x ⌉ ⌈ x ⌉.
 Proof. intros x1 x2 I1 I2. inversion I1. inversion I2. subst. reflexivity. Qed.
 
-Lemma ConsistentSets_mem : forall l1 l2, Forall2_any Consistent l1 l2 -> ConsistentSets (mem l1)(mem l2).
-Proof. intros l1 l2 h. unfold Forall2_any in h. intros x y I1 I2.
+Lemma ConsistentSets_mem : forall l1 l2, List.Forall2_any Consistent l1 l2 -> ConsistentSets (mem l1)(mem l2).
+Proof. intros l1 l2 h. unfold List.Forall2_any in h. intros x y I1 I2.
        eapply h; eauto using mem_In.
 Qed.
 
@@ -356,6 +379,8 @@ Qed.
 (* All of the Operations respect Consistency         *)
 (* ------------------------------------------------- *)
 
+
+(*
 Lemma Λ_ConsistentSets : forall F1 F2,
   (forall D1 D2 : P Value,
        valid D1 -> valid D2 -> ConsistentSets D1 D2 -> ConsistentSets (F1 D1) (F2 D2)) ->
@@ -610,3 +635,5 @@ Proof.
   rewrite Env.Forall_Forall2 in H.
   eapply denot_ConsistentSets. auto.
 Qed.
+
+*)
