@@ -90,6 +90,9 @@ Proof.
 Qed.
 
 
+Lemma monad_law {A} {y : Comp A} : y = x <- y;; ret x.
+Admitted.
+
 (* ------------------------------------------------------- *)
 
 Definition Comp_In {A} (x : A) (u : Comp A) := 

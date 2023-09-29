@@ -618,24 +618,73 @@ Qed.
 Definition tm_Add : tm := 
   app add (tcons (lit 3) (tcons (lit 4) tnil)).
 
-Lemma denot_tm : denot tm_Add nil ≃ NAT 7.
+Lemma denot_tm : denot tm_Add nil ≃ RET (NAT 7).
 Proof.
   unfold tm_Add.
   autorewrite with denot.
-Admitted.
+  
+  rewrite BIND_RET; solve_continuous. eapply valid_ADD.
+  rewrite BIND_RET; solve_continuous. eapply BIND_continuous; solve_continuous. 
+  eapply valid_NAT.
+  rewrite BIND_RET; solve_continuous. eapply BIND_continuous; solve_continuous.
+  eapply valid_NAT.
+  rewrite BIND_RET; solve_continuous. eapply valid_NIL.
+  rewrite BIND_RET; solve_continuous. eapply valid_CONS. eapply valid_NAT. eapply valid_NIL.
+  instantiate (1:=nil). econstructor; eauto.
+  rewrite BIND_RET; solve_continuous. eapply valid_CONS. eapply valid_NAT. 
+  eapply valid_CONS. eapply valid_NAT. eapply valid_NIL.
+  instantiate (1:=nil). econstructor; eauto.
+  instantiate (1:= (v_nat 4 :: nil)). repeat econstructor; eauto.
+
+  rewrite ADD_APPLY_CONS.
+  reflexivity.
+Qed.
 
 Definition tm_Id : tm := abs (var_b 0).
 
-Lemma denot_Id {v} : success v  -> (v :: nil ↦ v) ∈ denot tm_Id nil.
+Lemma denot_Id {v} : c_multi (ret (v :: nil ↦ c_multi (ret v :: nil)) :: nil) ∈ denot tm_Id nil.
 Proof.
-  intro NE.
   pick fresh x.
   rewrite (denot_abs x); simpl; auto.
   cbn.
   destruct (x == x); try done.
-  cbn. split. left. auto. 
-  econstructor; eauto. done.
+  split. 2: done.
+  intros y yIn. cbv in yIn. destruct yIn; try done. subst.
+  cbn. 
+  repeat split. reflexivity.
+  done.
+  done.
 Qed. 
+
+(* A term with an unbound variable has no value. *)
+Definition tm_Wrong : tm := app (var_b 1) (var_b 0).
+
+Lemma RET_strict : RET (fun (x : Value) => False) ≃ fun x => False.
+Proof.
+  unfold RET.
+  split.
+  intros x xIn.
+  destruct x; try done.
+  destruct l; try done.
+  destruct l0; try done.
+  destruct xIn.
+  destruct l; try done.
+  specialize (H v ltac:(auto)).  done.
+  intros x xIn. done.
+Qed.
+
+Lemma denot_Wrong : c_wrong ∈ denot tm_Wrong nil.
+Proof.
+  unfold tm_Wrong.
+  rewrite denot_app.
+  repeat rewrite denot_var_b.
+  rewrite -> RET_strict.
+  unfold BIND. 
+  simpl.
+  unfold RET.
+  rewrite BIND_RET; solve_continuous.
+  auto.
+Qed.  
 
 
 Lemma denot_Id_inv : forall x ρ, x ∈ denot tm_Id ρ ->
@@ -734,17 +783,6 @@ inversion h; subst; clear h.
   inversion C; subst.
 Abort.
 
-(* A term with an unbound variable has no value. *)
-Definition tm_Wrong : tm := app (var_b 1) (var_b 0).
-
-Lemma denot_Wrong : v_wrong ∈ denot tm_Wrong nil.
-Proof.
-  unfold tm_Wrong.
-  rewrite denot_app.
-  repeat rewrite denot_var_b.
-  eapply FUNWRONG.
-  auto.
-Qed.  
 
 
 

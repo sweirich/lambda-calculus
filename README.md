@@ -1,5 +1,7 @@
-This repository contains a formalization of part of Chapter 3 of 
-H.P. Barendregt, "The Lambda Calculus, Its Syntax and Semantics".
+This repository contains a formalization of a "Graph Model" denotational semantics  
+for the untyped lambda calculus.
+
+
 
 The main result shown here is a proof of the Church-Rosser theorem for the
 untyped lambda calculus, that Barendregt attributes to Tait and Martin-Lof.

@@ -161,16 +161,15 @@ Proof.
      split.
      cbv.
      done.
-     intros a aIn.
-     specialize (h4 _ aIn).
+     intros a aIn NE.
+     specialize (h4 _ aIn NE).
      specialize (H0 (mem a)). 
      specialize (H0 (h1 a) h4).
      eauto.
   - exists (c_multi l).
     exists h1. 
     repeat split; eauto.
-    eapply H; auto.
-    intros a aIn. eapply H0. eapply h4. auto.
+    intros a aIn NE. eapply H0. eapply h4; auto.
 Qed.
 
 Lemma BIND_cong {A B} : forall (D1 D2 : P (Comp (list A))) (K1 K2 : P A -> P (Comp B)),

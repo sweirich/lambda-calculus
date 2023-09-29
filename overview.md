@@ -1,8 +1,7 @@
 This file provides an overview of the use of the locally nameless
-representation in Coq to prove the Church-Rosser theorem for the untyped
-lambda calculus.
+representation in Coq.
 
-Unless otherwise specified, all files are in the `coq/` subdirectory.
+Unless otherwise specified, all files are in the `coq/lc` subdirectory.
 
 1. Read over the language specification in `lc.ott` (toplevel directory) in 
    parallel with the Ott-generated definitions in `lc_ott.v`.
@@ -59,6 +58,5 @@ Unless otherwise specified, all files are in the `coq/` subdirectory.
    automatic. This file has not been automatically generated, so it contains 
    comments describing the purpose of its definitions.
 
-4. Finally, begin the development proper with `relations_full.v` : the version of 
-   the tutorial with exercises. Exercise answers are available in `relations_sol.v`.
-   This file contains the proof of the Church Rosser theorem.
+4. Finally, take a look at `scoped.v`. This file specifies what it means for 
+   lambda calculus terms to be well scoped. with respect to some environment.

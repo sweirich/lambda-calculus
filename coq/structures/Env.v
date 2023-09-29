@@ -26,6 +26,7 @@ Polymorphic Fixpoint access (d : A) (e : Env) (x : atom) : A :=
       end
   end.
 
+
 Polymorphic Fixpoint update (x : atom) (D : A) (ρ : Env) : Env :=
   match ρ with 
   | nil => nil

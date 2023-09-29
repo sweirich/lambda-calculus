@@ -638,10 +638,10 @@ Proof.
     intros a aIn. inversion aIn.
   + have lemma :
       forall l, 
-         (forall a : list A, Comp_In a (c_multi l) -> K ρ (mem a) (k a)) -> 
+         (forall a : list A, Comp_In a (c_multi l) -> a <> nil -> K ρ (mem a) (k a)) -> 
          exists ρ', exists (_ : finite_env ρ'), 
            ρ' ⊆e ρ /\
-           (forall a : list A, Comp_In a (c_multi l) -> K ρ' (mem a) (k a)).
+           (forall a : list A, Comp_In a (c_multi l) -> a <> nil -> K ρ' (mem a) (k a)).
     { clear uIn ρ1 F1 S1 uIn1 l h1 h2.
       induction l; intros h2.
       ++ exists (initial_finite_env ρ NE). eexists; repeat split; eauto.
@@ -650,7 +650,13 @@ Proof.
           as [ρ2 [F2 [S2 uIn2]]].
           { intros x xIn. apply h2. simpl. simpl in xIn. right.  auto. }
           move: (h2 a ltac:(econstructor; eauto)) => Ka.
-          destruct (IHK (mem a) _ Ka) as
+          destruct a.
+          +++ exists ρ2. 
+            repeat split; eauto.
+            intros. eapply uIn2. simpl in H. destruct H; try done.
+            subst. done. auto.
+          +++ specialize (Ka ltac:(done)).
+          destruct (IHK (mem (a :: a0)) _ Ka) as
             [ρ1 [F1 [S1 uIn1]]].
           have SS1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
           have SS2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
@@ -659,8 +665,8 @@ Proof.
           repeat split.
           - eapply join_finite_env; eauto.    
           - eapply join_lub; eauto.
-          - intros x xIn. simpl in xIn. destruct xIn. 
-            subst. eapply (mK (mem x)); try eassumption. eapply join_sub_left; auto.
+          - intros x xIn NEx. simpl in xIn. destruct xIn. 
+            subst. eapply (mK (mem (a :: a0))); try eassumption. eapply join_sub_left; auto.
             eapply (mK (mem x)). 2: { eapply uIn2; eauto. }
             eapply join_sub_right; eauto.
     }
@@ -676,7 +682,7 @@ Proof.
     - exists (c_multi l). exists k.
     repeat split; eauto.
     eapply mD; try eassumption. eapply join_sub_left; auto.
-    intros a aIn.
+    intros a aIn NEa.
     eapply (mK (mem a)). 2: { eapply In2; eauto. }
     eapply join_sub_right; eauto.
 Qed.                 
@@ -962,6 +968,7 @@ Proof.
   cbn.
   move: h2 => [h2 NL].
   specialize (h4 l ltac:(cbv;eauto)).
+  specialize (h4 NL).
   rewrite append_Comp_nil.
   eapply MK; eauto.
 Qed.
@@ -988,7 +995,7 @@ Proof.
   - cbn.
     destruct y; auto. 
     cbn. rewrite app_nil_r. auto.
-  - intros v vIn.
+  - intros v vIn vNE.
     simpl in vIn. destruct vIn; try done.
     subst.
     eapply S2.
@@ -1008,6 +1015,29 @@ Proof.
 Qed.
 
 
+
+Lemma monad_law {A} {y : Comp A} : y = x <- y;; ret x.
+Proof.
+  destruct y.
+  cbn. done.
+  cbn. 
+Admitted.
+
+Lemma RET_BIND2 : forall {A B} (m : P (Comp (list A))) (k : P A -> P (Comp (list B))), 
+    m ⊆ BIND m RET.
+Proof.
+  intros.
+  unfold BIND, RET.
+  intros y yIn.
+  unfold Ensembles.In.
+  exists y. exists ret.
+  repeat split.
+  auto.
+  eapply monad_law.
+  reflexivity.
+  auto.
+Qed.
+
 Lemma RET_BIND1 : forall {A B} (m : P (Comp (list A))) (k : P A -> P (Comp (list B))), 
     BIND m RET ⊆ m.
 Proof.
@@ -1018,18 +1048,12 @@ Proof.
   move: yIn => [u1 [k1 [h1 [h2 h3]]]].
   destruct u1; cbn in h2.
   + subst. eauto.
-  + subst. unfold concat_Comp.
-    move: l h1 h3.
-    induction l;
-    move=> h1 h3.
-    cbn. eauto.
-    cbn.
-    specialize (h3 a ltac:(simpl; eauto)).
-    destruct (k1 a); try done.
-    destruct l0; try done. 
-    destruct l1; try done.
-    cbn.
-Admitted.
+  + subst. 
+Abort.
+
+(* BIND m RET may contain some a in c_multi l that is a less precise
+   approximation of m. 
+*)
 
 (* -------------------------------------------------------- *)
 
@@ -1312,9 +1336,9 @@ Proof.
          eapply mK. 2: eapply yIn. auto.
     + have lemma:          
       forall l, 
-         (forall a : list A, Comp_In a (c_multi l) -> K w (mem a) (k a)) -> 
+         (forall a : list A, Comp_In a (c_multi l) -> a <> nil -> K w (mem a) (k a)) -> 
          exists D0, (mem D0 ⊆ w) /\
-           (forall a : list A, Comp_In a (c_multi l) -> K (mem D0) (mem a) (k a)) /\ valid_mem D0.
+           (forall a : list A, Comp_In a (c_multi l) -> a <> nil -> K (mem D0) (mem a) (k a)) /\ valid_mem D0.
       { clear uIn D1 IS1 OS1 V1 h1 h2.
         induction l0; intros h2.
         ++ exists D2. 
@@ -1324,13 +1348,26 @@ Proof.
         ++ destruct IHl0 as [D3 [IS3 [OS3 V3]]].
            { intros x xIn. apply h2. simpl. simpl in xIn. right. auto. }
            move: (h2 a0 ltac:(econstructor; eauto)) => Ka.
+           destruct a0.
+           +++
+             exists (D2 ++ D3).
+           repeat rewrite union_mem.
+           repeat split; eauto.
+           eapply union_left; auto. 
+           intros x xIn NE.            
+           destruct xIn; subst. try done.
+           eapply mK. 2: eapply OS3; eauto.
+             right. auto.
+           +++
            unfold continuous in IHK.
-           destruct (IHK (mem a0) w (k a0 :: nil) ltac:(eauto) VW) as [D4 [IS4 [OS4 V4]]].
+           specialize (Ka ltac:(done)).
+           remember (a0 :: a1) as a2.
+           destruct (IHK (mem a2) w (k a2 :: nil) ltac:(eauto) VW) as [D4 [IS4 [OS4 V4]]].
            exists (D2 ++ D3 ++ D4).
            repeat rewrite union_mem.
            repeat split; eauto.
            eapply union_left; auto.  eapply union_left; auto.
-           intros x xIn.           
+           intros x xIn NE.           
            destruct xIn; subst.
            - eapply mK. 2: eapply OS4; eauto.
              right. right. auto.
@@ -1347,7 +1384,7 @@ Proof.
          exists (c_multi l). exists k.
          repeat split; eauto.
          eapply mD. 2: eapply OS2; eauto. right. left. auto.
-         intros x xIn.
+         intros x xIn NEx.
          eapply (mK (mem x)). 2: eapply OS3; eauto.
          right. right. auto.
       ++ eapply BIND_mono. 3: eapply OS1; auto.
