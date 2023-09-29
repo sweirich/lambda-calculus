@@ -3,18 +3,6 @@ for the untyped lambda calculus.
 
 
 
-The main result shown here is a proof of the Church-Rosser theorem for the
-untyped lambda calculus, that Barendregt attributes to Tait and Martin-Lof.
-
-The goal of this formalization is an advanced tutorial on the use of Ott/LNgen
-for working with the locally nameless representation of variable binding.  It
-is intended to follow the [`Stlc`
-tutorial](https://github.com/plclub/metalib/tree/master/Stlc) found in the
-Penn `metalib` repository.
-
-To start the tutorial, read [overview.md](overview.md).
-
-
 Compilation instructions
 ------------------------
 
