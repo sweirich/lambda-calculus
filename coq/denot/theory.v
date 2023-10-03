@@ -164,6 +164,9 @@ Proof.
   eapply ADD_APPLY_LIST.
 Qed. 
 
+(* The semantics for projection is still wrong, so not updating this 
+   proof yet. *)
+
 Lemma CONS_APPLY_ZERO1 {D1 D2} : (CONS D1 D2 ▩ NAT 0) ⊆ RET D1.
   intros w APP. inversion APP; try inversion H.
   + subst.
@@ -618,24 +621,88 @@ Qed.
 Definition tm_Add : tm := 
   app add (tcons (lit 3) (tcons (lit 4) tnil)).
 
-Lemma denot_tm : denot tm_Add nil ≃ NAT 7.
+Lemma denot_tm : denot tm_Add nil ≃ RET (NAT 7).
 Proof.
   unfold tm_Add.
   autorewrite with denot.
-Admitted.
+  
+  rewrite BIND_RET; solve_continuous. eapply valid_ADD.
+  rewrite BIND_RET; solve_continuous. eapply BIND_continuous; solve_continuous. 
+  eapply valid_NAT.
+  rewrite BIND_RET; solve_continuous. eapply BIND_continuous; solve_continuous.
+  eapply valid_NAT.
+  rewrite BIND_RET; solve_continuous. eapply valid_NIL.
+  rewrite BIND_RET; solve_continuous. eapply valid_CONS. eapply valid_NAT. eapply valid_NIL.
+  instantiate (1:=nil). econstructor; eauto.
+  rewrite BIND_RET; solve_continuous. eapply valid_CONS. eapply valid_NAT. 
+  eapply valid_CONS. eapply valid_NAT. eapply valid_NIL.
+  instantiate (1:=nil). econstructor; eauto.
+  instantiate (1:= (v_nat 4 :: nil)). repeat econstructor; eauto.
+
+  rewrite ADD_APPLY_CONS.
+  reflexivity.
+Qed.
+
 
 Definition tm_Id : tm := abs (var_b 0).
 
-Lemma denot_Id {v} : success v  -> (v :: nil ↦ v) ∈ denot tm_Id nil.
+
+Lemma denot_Id {v} : c_multi (ret (v :: nil ↦ c_multi (ret v :: nil)) :: nil) ∈ denot tm_Id nil.
 Proof.
-  intro NE.
   pick fresh x.
   rewrite (denot_abs x); simpl; auto.
   cbn.
   destruct (x == x); try done.
-  cbn. split. left. auto. 
-  econstructor; eauto. done.
-Qed. 
+  split. 2: done.
+  intros y yIn. cbv in yIn. destruct yIn; try done. subst.
+  cbn. 
+  repeat split. reflexivity.
+  done.
+  done.
+Qed.
+ 
+
+(* A term with an unbound variable has no value. *)
+Definition tm_IllScoped : tm := app (var_b 1) (var_b 0).
+
+Lemma RET_strict : RET (fun (x : Value) => False) ≃ fun x => False.
+Proof.
+  unfold RET.
+  split.
+  intros x xIn.
+  destruct x; try done.
+  destruct l; try done.
+  destruct l0; try done.
+  destruct xIn.
+  destruct l; try done.
+  specialize (H v ltac:(auto)).  done.
+  intros x xIn. done.
+Qed.
+
+Lemma BIND_strict {A}{B} : forall (k : P A -> P (Comp B)), BIND (fun x => False) k ≃ fun x => False.
+Proof.
+  intros k.
+  unfold BIND.
+  split.
+  - intros x xIn.
+    destruct x.
+    + move: xIn => [t1 [k1 [h _]]]. done.
+    + move: xIn => [t1 [k1 [h _]]]. done.
+  - intros x xIn. done.
+Qed.
+
+
+Lemma denot_Wrong : forall x, not (x ∈ denot tm_IllScoped nil).
+Proof.
+  unfold tm_IllScoped.
+  rewrite denot_app.
+  repeat rewrite denot_var_b.
+  intros x h.
+  rewrite -> RET_strict in h.
+  rewrite -> BIND_strict in h.
+  done.
+Qed.  
+
 
 
 Lemma denot_Id_inv : forall x ρ, x ∈ denot tm_Id ρ ->

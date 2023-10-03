@@ -439,7 +439,7 @@ Qed.
 
 (* --------------------------------------- *)
 
-(* Operations are continuous *)
+(* Operations are continuous in the environment *)
 
 Lemma const_continuous_env {A} {v:P A}{ρ} : 
   valid_env ρ 
@@ -590,7 +590,136 @@ Proof.
     eapply join_sub_right; eauto. auto.
 Qed. 
 
+Lemma ONE_continuous_env {D ρ} : 
+  continuous_env D ρ ->
+  monotone_env D ->
+  continuous_env (fun ρ => ONE (D ρ)) ρ.
+Proof.
+  intros IHD mD.
+  intros v vIn.
+  unfold ONE in vIn.
+  destruct vIn as [l mIn].
+  destruct (IHD _ mIn) as    [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
+  exists ρ1 . exists fρ1 . split. auto. 
+  exists l. auto.
+Qed.
 
+Lemma ALL_continuous_env {D ρ} : 
+  continuous_env D ρ ->
+  monotone_env D ->
+  continuous_env (fun ρ => ALL (D ρ)) ρ.
+Proof.
+  intros IHD mD.
+  intros v vIn.
+  unfold ALL in vIn.
+  destruct v; try done. cbn in vIn.
+  destruct (IHD _ vIn) as    [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
+  exists ρ1 . exists fρ1 . split. auto. 
+  unfold ALL. cbn. auto.
+Qed.
+
+Lemma CHOOSE_continuous_env {D E ρ} : 
+  continuous_env D ρ 
+  -> continuous_env E ρ
+  -> monotone_env D 
+  -> monotone_env E
+  -> continuous_env (fun ρ => (CHOOSE (D ρ) (E ρ))) ρ.
+Proof.  
+  intros IHD IHE mD mE.
+  intros v vIn.
+  unfold CHOOSE in vIn.
+  destruct v; try done.
+  cbn in vIn.
+  destruct vIn as [l1 [l2 [-> [h1 h2]]]].
+  destruct (IHD _ h1) as 
+      [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
+  destruct (IHE _ h2) as
+      [ ρ2 [ fρ2 [ ρ2ρ VwDp2 ]]].
+  have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+  have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
+  have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+  exists (ρ1 ⊔e ρ2).
+    repeat split.
+  - eapply join_finite_env; eauto.
+  - eapply join_lub; eauto.
+  - exists l1. exists l2. 
+    repeat split; eauto.
+    eapply mD. instantiate (1:= ρ1). 
+    eapply join_sub_left; eauto. auto.
+    eapply mE. instantiate (1:= ρ2). 
+    eapply join_sub_right; eauto. auto.
+Qed. 
+
+
+Lemma UNIFY_continuous_env {D E ρ} : 
+  valid_env ρ
+  -> continuous_env D ρ 
+  -> continuous_env E ρ
+  -> monotone_env D 
+  -> monotone_env E
+  -> continuous_env (fun ρ => (UNIFY (D ρ) (E ρ))) ρ.
+Proof.  
+  intros VE IHD IHE mD mE.
+  intros v vIn.
+  unfold UNIFY in vIn.
+  destruct v; try done.
+  destruct l; try done.
+  + cbn in vIn.
+    unfold InconsistentSets in vIn.
+    destruct vIn as [x [y [h1 [h2 W]]]].
+    destruct (IHD _ h1) as 
+      [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
+  destruct (IHE _ h2) as
+      [ ρ2 [ fρ2 [ ρ2ρ VwDp2 ]]].
+  have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+  have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
+  have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+  exists (ρ1 ⊔e ρ2).
+    repeat split.
+  - eapply join_finite_env; eauto.
+  - eapply join_lub; eauto.
+  - cbn.
+    exists x. exists y.
+    repeat split; eauto.
+    eapply mD. instantiate (1:= ρ1). 
+    eapply join_sub_left; eauto. auto.
+    eapply mE. instantiate (1:= ρ2). 
+    eapply join_sub_right; eauto. auto.
+  +
+  destruct l0; try done.
+  cbn in vIn.
+  destruct vIn as [l1 [l2 [-> [NE1 [NE2 [h1 [h2 h3]]]]]]].
+  destruct (continuous_In_sub _ _ VE mD _ h1) as 
+      [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
+  { unfold continuous_In.
+    intros v I1 I2.
+    eapply IHD. auto. }
+  destruct (continuous_In_sub _ _ VE mE _ h2) as
+      [ ρ2 [ fρ2 [ ρ2ρ VwDp2 ]]].
+  { unfold continuous_In.
+    intros v I1 I2.
+    eapply IHE. auto. }
+
+  have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+  have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
+  have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+  exists (ρ1 ⊔e ρ2).
+    repeat split.
+  - eapply join_finite_env; eauto.
+  - eapply join_lub; eauto.
+  - exists l1. exists l2. 
+    repeat split; eauto.
+    move: (mD ρ1 (ρ1 ⊔e ρ2)) => SS1.
+    rewrite <- SS1. auto.
+    eapply join_sub_left; eauto. auto.
+    move: (mE ρ2 (ρ1 ⊔e ρ2)) => SS2.
+    rewrite <- SS2. auto.
+    eapply join_sub_right; eauto. 
+Qed. 
+
+
+
+(* ------------------------------------------------------- *)
 
 Lemma RET_continuous_env {D: Rho -> (P Value)}{ρ} : 
   valid_env ρ ->
@@ -933,6 +1062,89 @@ Proof.
     eapply ForallT_uniq; eauto.
 Qed.
 
+(* --------------------------------------------------- *)
+(* CHOOSE / FAIL is a monoid *)
+
+Lemma choose_fail_left1 (c : P (Comp (list Value))) : CHOOSE FAIL c ⊆ c.
+Proof.
+  intros x xIn.
+  destruct x; try done.
+  cbn in xIn.
+  destruct xIn as [l1 [l2 [-> [h1 h2]]]].
+  cbv in h1. inversion h1. cbn. auto.
+Qed.
+
+Lemma choose_fail_left2 (c : P (Comp (list Value))) : 
+  not (c_wrong ∈ c) ->
+  c ⊆ CHOOSE FAIL c.
+Proof.
+  intros NW x xIn.
+  destruct x; try done.
+  cbn.
+  exists nil. exists l.
+  repeat split.  auto.
+Qed.
+
+Lemma choose_fail_left (c : P (Comp (list Value))) : 
+  not (c_wrong ∈ c) ->  
+  CHOOSE FAIL c ≃ c.
+Proof.
+  intros. split. eapply choose_fail_left1; eauto. eapply choose_fail_left2; eauto. Qed.
+
+Lemma choose_fail_right1 (c : P (Comp (list Value))) : CHOOSE c FAIL ⊆ c.
+  intros x xIn.
+  destruct x; try done.
+  cbn in xIn.
+  destruct xIn as [l1 [l2 [-> [h1 h2]]]].
+  cbv in h2. inversion h2. rewrite app_nil_r. auto.
+Qed.
+
+Lemma choose_fail_right2 (c : P (Comp (list Value))) : 
+  not (c_wrong ∈ c) ->
+  c ⊆ CHOOSE c FAIL.
+Proof.
+  intros NW x xIn.
+  destruct x; try done.
+  cbn.
+  exists l. exists nil. 
+  repeat split. rewrite app_nil_r. auto. auto.
+Qed.
+
+Lemma choose_fail_right (c : P (Comp (list Value))) : 
+  not (c_wrong ∈ c) ->  
+  CHOOSE c FAIL ≃ c.
+Proof.
+  intros. split. eapply choose_fail_right1; eauto. eapply choose_fail_right2; eauto. Qed.
+
+Lemma choose_assoc1 (c1 c2 c3 : P (Comp (list Value))) : 
+  CHOOSE c1 (CHOOSE c2 c3) ⊆ CHOOSE (CHOOSE c1 c2) c3.
+Proof.
+  intros x xIn.
+  destruct x; try done.
+  cbn in xIn.
+  destruct xIn as [l1 [l2' [-> [h1 h2]]]].
+  destruct h2 as [l2 [l3 [-> [h3 h4]]]].
+  exists (l1 ++ l2). exists l3.
+  repeat split; eauto.
+  exists l1. exists l2. split; eauto.
+Qed.
+
+Lemma choose_assoc2 (c1 c2 c3 : P (Comp (list Value))) : 
+  CHOOSE (CHOOSE c1 c2) c3 ⊆ CHOOSE c1 (CHOOSE c2 c3).
+Proof.
+  intros x xIn.
+  destruct x; try done.
+  cbn in xIn.
+  destruct xIn as [l1' [l3 [-> [h1 h2]]]].
+  destruct h1 as [l1 [l2 [-> [h3 h4]]]].
+  exists l1. exists (l2 ++ l3).
+  repeat split; eauto.
+  exists l2. exists l3. split; eauto.
+Qed.
+
+
+Lemma choose_assoc  (c1 c2 c3 : P (Comp (list Value))) : CHOOSE (CHOOSE c1 c2) c3 ≃ CHOOSE c1 (CHOOSE c2 c3).
+intros. split. eapply choose_assoc2; eauto. eapply choose_assoc1; eauto. Qed.
 
 (*  RETURN followed by BIND applies ------------------- *)
 

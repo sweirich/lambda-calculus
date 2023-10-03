@@ -20,7 +20,29 @@ Local Open Scope set_scope.
 Import EnvNotations.
 Import LCNotations.
 
-(*  Application is a Congruence ------------------------------------------------ *)
+Lemma UNIFY_mono { D1 D2 D3 D4 } :
+    D1 ⊆ D3 -> D2 ⊆ D4 -> ((UNIFY D1 D2) ⊆ (UNIFY D3 D4)).
+Proof.  
+  intros D13 D24 w C. 
+  unfold UNIFY in *.
+  destruct w; try done.
+  destruct l; try done.
+  + cbn. cbn in C.
+    unfold InconsistentSets in *.
+    destruct C as [x [y [h1 [h2 I]]]].
+    exists x. exists y. repeat split; auto.
+  + destruct l0; try done.
+    cbn. cbn in C.
+    destruct C as [l1 [l2 [-> [NE1 [NE2 [h1 [h2 CC]]]]]]].
+    exists l1. exists l2.
+    repeat split; auto.
+    rewrite <- D13. auto.
+    rewrite <- D24. auto.
+Qed.
+
+
+
+(*  Cons is a Congruence ------------------------------------------------ *)
 
 Lemma CONS_mono_sub { D1 D2 D3 D4 } :
     D1 ⊆ D3 -> D2 ⊆ D4 -> ((CONS D1 D2) ⊆ (CONS D3 D4)).
@@ -99,6 +121,79 @@ Proof.
   intros g. split;
   eapply Λ_ext_sub; intros X NEX; destruct (g X); eauto.
 Qed.
+
+
+(* ---------------------------------------------------- *)
+
+(* Congruence for logical operations *)
+
+Lemma ONE_mono : forall U V,  U ⊆ V -> ONE U ⊆ ONE V.
+Proof.
+  intros U V h x xIn.
+  unfold ONE in *.
+  destruct xIn as [l lh].
+  exists l. eapply h. auto.
+Qed.
+
+
+Lemma ONE_cong : forall U V,  U ≃ V -> ONE U ≃ ONE V. 
+Proof. 
+intros x1 y1 E1. split. eapply ONE_mono. rewrite E1. reflexivity.
+eapply ONE_mono. rewrite E1. reflexivity. Qed.
+
+#[export] Instance Proper_Included_ONE : Proper (Included ==> Included) ONE.
+unfold Proper. intros x1 y1 E1. eapply ONE_mono; auto. Qed.
+
+#[export] Instance Proper_Same_ONE : Proper (Same_set ==> Same_set) ONE.
+unfold Proper. intros x1 y1 E1. eapply ONE_cong; auto. Qed.
+
+Lemma CHOOSE_mono : 
+  forall U1 U2 V1 V2, U1 ⊆ V1 -> U2 ⊆ V2 -> CHOOSE U1 U2 ⊆ CHOOSE V1 V2.
+Proof.
+  intros.
+  intros x xIn.
+  unfold CHOOSE in *.
+  destruct x; try done.
+  cbn in xIn. cbn.
+  destruct xIn as [l1 [l2 [-> [h1 h2]]]].
+  exists l1. exists l2.
+  unfold Included in *.
+  repeat split; eauto.
+Qed. 
+
+Lemma CHOOSE_cong :  forall U1 U2 V1 V2, U1 ≃ V1 -> U2 ≃ V2 -> CHOOSE U1 U2 ≃ CHOOSE V1 V2.
+intros U1 U2 V1 V2 [S1 S2] [T1 T2].  split; eapply CHOOSE_mono; eauto. Qed.
+
+
+#[export] Instance Proper_Included_CHOOSE : Proper (Included ==> Included ==> Included) CHOOSE.
+unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply CHOOSE_mono; auto. Qed.
+
+#[export] Instance Proper_Same_CHOOSE : Proper (Same_set ==> Same_set ==> Same_set) CHOOSE.
+unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply CHOOSE_cong; auto. Qed.
+
+
+Lemma ALL_mono : 
+forall U V,  U ⊆ V -> ALL U ⊆ ALL V.
+Proof.
+  intros U V h x xIn.
+  unfold ALL in *.
+  destruct x; try done.
+  cbn in xIn. cbn.
+  unfold Included in h. eauto.
+Qed.
+
+
+Lemma ALL_cong : forall U V,  U ≃ V -> ALL U ≃ ALL V. 
+Proof. 
+intros x1 y1 E1. split. eapply ALL_mono. rewrite E1. reflexivity.
+eapply ALL_mono. rewrite E1. reflexivity. Qed.
+
+#[export] Instance Proper_Included_ALL : Proper (Included ==> Included) ALL.
+unfold Proper. intros x1 y1 E1. eapply ALL_mono; auto. Qed.
+
+#[export] Instance Proper_Same_ALL : Proper (Same_set ==> Same_set) ALL.
+unfold Proper. intros x1 y1 E1. eapply ALL_cong; auto. Qed.
+
 
 
 (* ---------------------------------------------------------------- *)
