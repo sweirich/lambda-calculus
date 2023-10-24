@@ -59,34 +59,26 @@ Proof.
   all: f_equal.
   all: try extensionality b.
   all: try (f_equal; extensionality a0).
-  - remember (fresh_for (dom ρ \u fv_tm a)) as x.
-    destruct (IH n ltac:(auto) (a ^ x)) as [IHC IHV].
-    autorewrite with lngen. lia.
-    rewrite IHC. 
-    autorewrite with lngen. auto.
-  - edestruct (IH n ltac:(lia) a1 ltac:(lia)) as [IHC1 IHV1]. 
-    edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a1 ltac:(lia)) as [IHC2 IHV2]. 
-    rewrite IHC1. rewrite IHC2. auto. 
-  - edestruct (IH n ltac:(lia) a2 ltac:(lia)) as [IHC1 IHV1]. 
-    edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a2 ltac:(lia)) as [IHC2 IHV2]. 
-    rewrite IHC1. rewrite IHC2. auto.      
-  - edestruct (IH n ltac:(lia) a1 ltac:(lia)) as [IHC1 IHV1]. 
-    edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a1 ltac:(lia)) as [IHC2 IHV2]. 
-    rewrite IHC1. rewrite IHC2. auto. 
-  - edestruct (IH n ltac:(lia) a2 ltac:(lia)) as [IHC1 IHV1]. 
-    edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a2 ltac:(lia)) as [IHC2 IHV2]. 
-    rewrite IHC1. rewrite IHC2. auto.      
-  - remember (fresh_for (dom ρ \u fv_tm a)) as x.
-    destruct (IH n ltac:(auto) (a ^ x)) as [IHC IHV].
-    autorewrite with lngen. lia.
-    rewrite IHC. 
-    autorewrite with lngen. auto.
-  - edestruct (IH n ltac:(lia) a1 ltac:(lia)) as [IHC1 IHV1]. 
-    edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a1 ltac:(lia)) as [IHC2 IHV2]. 
-    rewrite IHV1. rewrite IHV2. auto. 
-  - edestruct (IH n ltac:(lia) a2 ltac:(lia)) as [IHC1 IHV1]. 
-    edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a2 ltac:(lia)) as [IHC2 IHV2]. 
-    rewrite IHV1. rewrite IHV2. auto. 
+  all: try solve [ edestruct (IH n ltac:(lia) a ltac:(lia)) as [IHC1 IHV1];
+    rewrite IHC1; auto].
+  all: try solve [  edestruct (IH n ltac:(lia) a1 ltac:(lia)) as [IHC1 IHV1];
+                    edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a1 ltac:(lia)) as [IHC2 IHV2];
+                    rewrite IHC1; rewrite IHC2; auto ].
+  all: try solve [  edestruct (IH n ltac:(lia) a2 ltac:(lia)) as [IHC1 IHV1];
+                    edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a2 ltac:(lia)) as [IHC2 IHV2];
+                    rewrite IHC1; rewrite IHC2; auto ].
+  all: try solve [ edestruct (IH n ltac:(lia) a1 ltac:(lia)) as [IHC1 IHV1]; 
+                   edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a1 ltac:(lia)) as [IHC2 IHV2];
+                   rewrite IHV1; rewrite IHV2; auto ].
+  all: try solve [ edestruct (IH n ltac:(lia) a2 ltac:(lia)) as [IHC1 IHV1]; 
+                   edestruct (IH (size_tm a1 + size_tm a2) ltac:(lia) a2 ltac:(lia)) as [IHC2 IHV2];
+                   rewrite IHV1; rewrite IHV2; auto ].
+
+  all: try solve [ remember (fresh_for (dom ρ \u fv_tm a)) as x;
+    destruct (IH n ltac:(auto) (a ^ x)) as [IHC IHV];
+    autorewrite with lngen; try lia;
+    rewrite IHC;
+    autorewrite with lngen; auto ].
 Qed.
 
 Lemma size_is_enough : 
@@ -218,11 +210,9 @@ Proof.
     name_binder y0 Fry0.
 
     pick fresh z.
-    rewrite (subst_tm_intro z _ (var_f x0)). 
-    auto. 
-    rewrite (subst_tm_intro z _ (var_f y0)). 
-    { autorewrite with lngen. simpl.
-      clear Frx0 Fry0 Fry Frw. fsetdec. }
+    rewrite (subst_tm_intro z _ (var_f x0)). { clear Frx0 Fry0 Frw Fry Heqx0 Heqy0. fsetdec. } 
+    rewrite (subst_tm_intro z _ (var_f y0)). { autorewrite with lngen. simpl.
+                                               clear Frx0 Fry0 Fry Frw. fsetdec. }
     replace (t [w ~> var_f y] ^ z) with ((t ^ z) [w ~> var_f y]).
     2: {
       rewrite subst_tm_open_tm_wrt_tm; auto.
@@ -236,9 +226,10 @@ Proof.
 
     replace (((x0, D1) :: ρ1) ++ (w, D) :: ρ2) with
       (nil ++ (x0 ~ D1) ++ (ρ1 ++ (w ~ D) ++ ρ2)). 2: { simpl_env; auto. }
-    rewrite <- IHn; simpl_env; auto.
+    rewrite <- IHn; simpl_env. 
+    2: { fsetdec. }
     2: { autorewrite with lngen. 
-         clear Fry0 Frw Fry.
+         clear Fry0 Frw Fry Heqx0 Heqy0.
          simpl.
          fsetdec.
     }
@@ -246,18 +237,19 @@ Proof.
     replace ((y0 ~ D1) ++ ρ1 ++ (y ~ D) ++ ρ2) with
       (nil ++ (y0 ~ D1) ++ (ρ1 ++ (y ~ D) ++ ρ2)). 2: { simpl_env; auto. }
 
-    rewrite <- IHn; simpl_env; auto.
+    rewrite <- IHn; simpl_env. 
+    2: { fsetdec. } 
     2: { rewrite fv_tm_subst_tm_upper.            
          rewrite fv_tm_open_tm_wrt_tm_upper.
          simpl.
-         clear Frx0 Frw Fry.
+         clear Frx0 Frw Fry Heqx0 Heqy0.
          rewrite <- fv_tm_subst_tm_lower in Fry0.
          fsetdec.
     }
     
     repeat rewrite <- (app_assoc _ (z ~ D1)).
     eapply IHn.
-    simpl_env. { clear Fry0 Fry Frx0. fsetdec. }
+    simpl_env. { clear Fry0 Fry Frx0 Heqx0 Heqy0. fsetdec. }
     rewrite fv_tm_open_tm_wrt_tm_upper.
     simpl_env. simpl.
 
@@ -275,6 +267,78 @@ Proof.
     apply IHn; simpl_env; auto.
     extensionality v1. f_equal.
     apply IHn; simpl_env; auto. 
+  + simpl_env.
+    f_equal.
+    apply IHn; simpl_env; auto.
+    apply IHn; simpl_env; auto. 
+  + f_equal. 
+    extensionality D0.
+    name_binder x0 Frx0.
+    name_binder y0 Fry0.
+    pick fresh z.
+    rewrite (subst_tm_intro z _ (var_f x0)). { clear Frx0 Fry0 Frw Fry Heqx0 Heqy0. fsetdec. } 
+    auto. 
+    rewrite (subst_tm_intro z _ (var_f y0)).  { autorewrite with lngen. simpl. clear Frx0 Fry0 Fry Frw.  fsetdec. }
+    replace (t [w ~> var_f y] ^ z) with ((t ^ z) [w ~> var_f y]).
+    2: {
+      rewrite subst_tm_open_tm_wrt_tm; auto.
+      rewrite subst_neq_var. 
+      fsetdec.
+      auto.
+    } 
+
+    rewrite <- cons_app_assoc.
+
+    replace (((x0, D0) :: ρ1) ++ (w, D) :: ρ2) with
+      (nil ++ (x0 ~ D0) ++ (ρ1 ++ (w ~ D) ++ ρ2)). 2: { simpl_env; auto. }
+    rewrite <- IHn; simpl_env. 
+    2: { fsetdec. }
+    2: { autorewrite with lngen. 
+         clear Fry0 Frw Fry Heqx0 Heqy0.
+         simpl.
+         fsetdec.
+    }
+
+    replace ((y0 ~ D0) ++ ρ1 ++ (y ~ D) ++ ρ2) with
+      (nil ++ (y0 ~ D0) ++ (ρ1 ++ (y ~ D) ++ ρ2)). 2: { simpl_env; auto. }
+
+    rewrite <- IHn; simpl_env. 
+    2: { fsetdec. } 
+    2: { rewrite fv_tm_subst_tm_upper.            
+         rewrite fv_tm_open_tm_wrt_tm_upper.
+         simpl.
+         clear Frx0 Frw Fry Heqx0 Heqy0.
+         rewrite <- fv_tm_subst_tm_lower in Fry0.
+         fsetdec.
+    }
+    
+    repeat rewrite <- (app_assoc _ (z ~ D0)).
+    eapply IHn.
+    simpl_env. { clear Fry0 Fry Frx0 Heqx0 Heqy0. fsetdec. }
+    rewrite fv_tm_open_tm_wrt_tm_upper.
+    simpl_env. simpl.
+
+    clear Frx0 Fry0 Frw.
+    simpl in Fry.
+    fsetdec.
+
+
+  + simpl_env;
+    f_equal;
+    apply IHn; simpl_env; auto.
+  + simpl_env.
+    f_equal.
+    apply IHn; simpl_env; auto.
+    extensionality v1.
+    f_equal.
+    apply IHn; simpl_env; auto.
+  + f_equal. 
+    f_equal.
+    apply IHn; simpl_env; auto.    
+  + f_equal. 
+    f_equal.
+    apply IHn; simpl_env; auto.    
+
 Qed.
 
 
@@ -311,12 +375,73 @@ Proof.
   rewrite -> (rename_open_denot x0 x); eauto.
 Qed.
 
+Lemma denot_ex : forall x t ρ,
+    x `notin` dom ρ \u fv_tm t -> 
+    denot (ex t) ρ = 
+      EXISTS (fun D => denot (t ^ x) (x ~ D ++ ρ)).
+Proof.
+  intros.
+  unfold denot. simpl.
+  rewrite size_tm_open_tm_wrt_tm_var.
+  f_equal.
+  extensionality D.
+  name_binder x0 Frx0.
+  simpl_env. 
+  rewrite -> (rename_open_denot x0 x); eauto.
+Qed.
+
+
+
+Lemma denot_choice : forall t u ρ, 
+    denot (choice t u) ρ = CHOICE (denot t ρ) (denot u ρ).
+Proof.
+  intros. unfold denot. simpl.
+  f_equal.
+  rewrite size_is_enough. lia. auto.
+  rewrite size_is_enough. lia. auto.
+Qed.
+
+Lemma denot_seq : forall t u ρ, 
+    denot (seq t u) ρ = SEQ (denot t ρ) (denot u ρ).
+Proof.
+  intros. unfold denot. simpl.
+  f_equal.
+  rewrite size_is_enough. lia. auto.
+  rewrite size_is_enough. lia. auto.
+Qed.
+
+Lemma denot_unify : forall t u ρ, 
+    denot (unify t u) ρ =  
+      BIND (denot t ρ) (fun v1 =>
+      BIND (denot u ρ) (fun v2 =>
+           (UNIFY v1 v2))).
+Proof.
+  intros. unfold denot. simpl.
+  f_equal.
+  rewrite size_is_enough. lia. auto.
+  extensionality v.
+  rewrite size_is_enough. lia. auto.
+Qed.
+
+Lemma denot_one : forall t ρ, 
+    denot (one t) ρ = RET (ONE (denot t ρ)).
+Proof.
+  intros. unfold denot. simpl.
+  f_equal.
+Qed.
+
+Lemma denot_all : forall t ρ, 
+    denot (all t) ρ = RET (ALL (denot t ρ)).
+Proof.
+  intros. unfold denot. simpl.
+  f_equal.
+Qed.
 
 Create HintDb denot.
 #[export] Hint Opaque denot : denot.
 #[export] Hint Rewrite denot_var_b denot_var denot_app denot_lit 
-  denot_add denot_tnil denot_tcons : denot.
-(* no hint for abs, must pick fresh first *)
+  denot_add denot_tnil denot_tcons denot_choice denot_seq denot_unify denot_one denot_all : denot.
+(* no hint for abs, ex must pick fresh first *)
 
 
 

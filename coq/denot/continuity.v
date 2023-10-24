@@ -598,10 +598,10 @@ Proof.
   intros IHD mD.
   intros v vIn.
   unfold ONE in vIn.
-  destruct vIn as [l mIn].
+  destruct vIn as [V [l  [mIn hl]]].
   destruct (IHD _ mIn) as    [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
   exists ρ1 . exists fρ1 . split. auto. 
-  exists l. auto.
+  exists V. exists l. auto.
 Qed.
 
 Lemma ALL_continuous_env {D ρ} : 
@@ -618,16 +618,16 @@ Proof.
   unfold ALL. cbn. auto.
 Qed.
 
-Lemma CHOOSE_continuous_env {D E ρ} : 
+Lemma CHOICE_continuous_env {D E ρ} : 
   continuous_env D ρ 
   -> continuous_env E ρ
   -> monotone_env D 
   -> monotone_env E
-  -> continuous_env (fun ρ => (CHOOSE (D ρ) (E ρ))) ρ.
+  -> continuous_env (fun ρ => (CHOICE (D ρ) (E ρ))) ρ.
 Proof.  
   intros IHD IHE mD mE.
   intros v vIn.
-  unfold CHOOSE in vIn.
+  unfold CHOICE in vIn.
   destruct v; try done.
   cbn in vIn.
   destruct vIn as [l1 [l2 [-> [h1 h2]]]].
@@ -820,7 +820,12 @@ Lemma denot_continuous_env {t} : forall ρ,
   -> continuous_env (denot t) ρ.
 Proof.
   eapply tm_induction with (t := t);
-  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
+  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2 | 
+  | move=> t1 t2 IH1 IH2
+  | move=> t' IH
+  | move=> t1 t2 IH1 IH2 |  move=> t1 t2 IH1 IH2 
+  | move=> t1 IH1 
+  | move=> t1 IH1 ].
   all: intros ρ NE.
   all: intros c cIn.
   all: autorewrite with denot in cIn.
@@ -959,9 +964,36 @@ Proof.
    exists ρ'. exists F'. repeat split. auto.
    autorewrite with denot.
    auto.
+  + (* CHOICE *)
+     specialize (IH1 _ NE).
+     specialize (IH2 _ NE).
+     edestruct (CHOICE_continuous_env IH1 IH2) as [ ρ' [F' [S' In']]].
+     eapply denot_monotone; auto.
+     eapply denot_monotone; auto.
+     eauto.
+     exists ρ'. exists F'. repeat split. auto.
+     autorewrite with denot. auto.
+  + (* ex *)
+    pick fresh x.
+    rewrite (denot_ex x) in cIn. fsetdec.
+    specialize (IH x ltac:(auto) _ NE).
+    admit.
+  + (* SEQ *)
+     specialize (IH1 _ NE).
+     specialize (IH2 _ NE).
+     admit.
+  + (* UNIFY *)
+     specialize (IH1 _ NE).
+     specialize (IH2 _ NE).
+     admit.
+  + (* ONE *)
+    specialize (IH1 _ NE).
+    admit.
+  + (* ALL *)
+    admit.
 Unshelve.
 eapply NE.
-Qed.
+Admitted.
 
 (* ⟦⟧-continuous-⊆ *) 
 Lemma generic_continuous_sub {A}{ρ}{F : Rho -> P A} : 
@@ -1063,9 +1095,9 @@ Proof.
 Qed.
 
 (* --------------------------------------------------- *)
-(* CHOOSE / FAIL is a monoid *)
+(* CHOICE / FAIL is a monoid *)
 
-Lemma choose_fail_left1 (c : P (Comp (list Value))) : CHOOSE FAIL c ⊆ c.
+Lemma choose_fail_left1 (c : P (Comp (list Value))) : CHOICE FAIL c ⊆ c.
 Proof.
   intros x xIn.
   destruct x; try done.
@@ -1076,7 +1108,7 @@ Qed.
 
 Lemma choose_fail_left2 (c : P (Comp (list Value))) : 
   not (c_wrong ∈ c) ->
-  c ⊆ CHOOSE FAIL c.
+  c ⊆ CHOICE FAIL c.
 Proof.
   intros NW x xIn.
   destruct x; try done.
@@ -1087,11 +1119,11 @@ Qed.
 
 Lemma choose_fail_left (c : P (Comp (list Value))) : 
   not (c_wrong ∈ c) ->  
-  CHOOSE FAIL c ≃ c.
+  CHOICE FAIL c ≃ c.
 Proof.
   intros. split. eapply choose_fail_left1; eauto. eapply choose_fail_left2; eauto. Qed.
 
-Lemma choose_fail_right1 (c : P (Comp (list Value))) : CHOOSE c FAIL ⊆ c.
+Lemma choose_fail_right1 (c : P (Comp (list Value))) : CHOICE c FAIL ⊆ c.
   intros x xIn.
   destruct x; try done.
   cbn in xIn.
@@ -1101,7 +1133,7 @@ Qed.
 
 Lemma choose_fail_right2 (c : P (Comp (list Value))) : 
   not (c_wrong ∈ c) ->
-  c ⊆ CHOOSE c FAIL.
+  c ⊆ CHOICE c FAIL.
 Proof.
   intros NW x xIn.
   destruct x; try done.
@@ -1112,12 +1144,12 @@ Qed.
 
 Lemma choose_fail_right (c : P (Comp (list Value))) : 
   not (c_wrong ∈ c) ->  
-  CHOOSE c FAIL ≃ c.
+  CHOICE c FAIL ≃ c.
 Proof.
   intros. split. eapply choose_fail_right1; eauto. eapply choose_fail_right2; eauto. Qed.
 
 Lemma choose_assoc1 (c1 c2 c3 : P (Comp (list Value))) : 
-  CHOOSE c1 (CHOOSE c2 c3) ⊆ CHOOSE (CHOOSE c1 c2) c3.
+  CHOICE c1 (CHOICE c2 c3) ⊆ CHOICE (CHOICE c1 c2) c3.
 Proof.
   intros x xIn.
   destruct x; try done.
@@ -1130,7 +1162,7 @@ Proof.
 Qed.
 
 Lemma choose_assoc2 (c1 c2 c3 : P (Comp (list Value))) : 
-  CHOOSE (CHOOSE c1 c2) c3 ⊆ CHOOSE c1 (CHOOSE c2 c3).
+  CHOICE (CHOICE c1 c2) c3 ⊆ CHOICE c1 (CHOICE c2 c3).
 Proof.
   intros x xIn.
   destruct x; try done.
@@ -1143,7 +1175,7 @@ Proof.
 Qed.
 
 
-Lemma choose_assoc  (c1 c2 c3 : P (Comp (list Value))) : CHOOSE (CHOOSE c1 c2) c3 ≃ CHOOSE c1 (CHOOSE c2 c3).
+Lemma choose_assoc  (c1 c2 c3 : P (Comp (list Value))) : CHOICE (CHOICE c1 c2) c3 ≃ CHOICE c1 (CHOICE c2 c3).
 intros. split. eapply choose_assoc2; eauto. eapply choose_assoc1; eauto. Qed.
 
 (*  RETURN followed by BIND applies ------------------- *)

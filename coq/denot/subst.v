@@ -68,6 +68,13 @@ Proof.
   3: move=>t1 t2 IH1 IH2. 
   4: move=> u IH.
   8: move=> t1 t2 IH1 IH2.
+  10: move=> t1 t2 IH1 IH2.
+  11: move=> u IH.
+  12: move=> t1 t2 IH1 IH2.
+  13: move=> t1 t2 IH1 IH2.
+  14: move=> t1 IH1.
+  15: move=> t1 IH1.
+
   all: intros ρ ρ1 ρ2 FV U.
   all: simpl_env in FV; simpl in FV. 
   all: autorewrite with denot.
@@ -82,7 +89,8 @@ Proof.
     extensionality v1. f_equal.
     eapply IH2; simpl_env; eauto.
     fsetdec.
-  + pick fresh x.
+  + (* abs *) 
+    pick fresh x.
     repeat rewrite (denot_abs x).
     simpl_env; fsetdec.
     simpl_env; fsetdec.
@@ -92,13 +100,52 @@ Proof.
     erewrite IH; simpl_env; eauto.
     rewrite fv_tm_open_tm_wrt_tm_upper; simpl; eauto.
     fsetdec.
-  + f_equal.
+  + (* CONS *)
+    f_equal.
     eapply IH1; simpl_env; eauto.
     fsetdec.
     extensionality v1. 
     f_equal.
     eapply IH2; simpl_env; eauto.
     fsetdec.
+  + (* CHOICE *)
+    f_equal.
+    eapply IH1; simpl_env; eauto.
+    fsetdec.
+    eapply IH2; simpl_env; eauto.
+    fsetdec.
+  + (* EX *)     
+    pick fresh x.
+    repeat rewrite (denot_ex x).
+    simpl_env; fsetdec.
+    simpl_env; fsetdec.
+    f_equal.
+    extensionality D.
+    rewrite <- app_assoc.
+    erewrite IH; simpl_env; eauto.
+    rewrite fv_tm_open_tm_wrt_tm_upper; simpl; eauto.
+    fsetdec.
+  + (* SEQ *)
+    f_equal.
+    eapply IH1; simpl_env; eauto.
+    fsetdec.
+    eapply IH2; simpl_env; eauto.
+    fsetdec.
+  + (* UNIFY *)    
+    f_equal.
+    eapply IH1; simpl_env; eauto.
+    fsetdec.
+    extensionality v1. f_equal.
+    eapply IH2; simpl_env; eauto.
+    fsetdec.
+  + (* ONE *)
+    f_equal.
+    f_equal.
+    eapply IH1; simpl_env; eauto.
+  + (* ALL *)
+    f_equal.
+    f_equal.
+    eapply IH1; simpl_env; eauto.
 Qed.
 
 Lemma weaken_denot : forall t ρ2 ρ,

@@ -53,6 +53,20 @@ tm, t , u, v, w :: '' ::= {{ com terms }}
 
   | t , u               ::   :: tcons
 
+  | t1 || t2            ::   :: choice
+
+  | fail                ::   :: fail
+
+  | exists x . t        ::   :: ex
+     (+ bind x in t +)
+
+  | t1 ; t2             ::   :: seq
+
+  | t1 = t2             ::   :: unify
+
+  | one { t }           ::   :: one
+
+  | all { t }           ::   :: all
 
 substitutions
   single t x     :: subst
@@ -213,6 +227,13 @@ Fixpoint is_value (t_5:tm) : Prop :=
       end
   | tnil => True
   | add => True
+  | fail => False
+  | choice t1 t2 => False
+  | (ex t) => False
+  | seq e1 e2 => False
+  | unify e1 e2 => False
+  | one e => False
+  | all e => False
 end.
 
 Fixpoint nth (t : tm) (k : nat) :  option tm :=

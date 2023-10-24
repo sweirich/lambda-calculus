@@ -131,8 +131,8 @@ Lemma ONE_mono : forall U V,  U ⊆ V -> ONE U ⊆ ONE V.
 Proof.
   intros U V h x xIn.
   unfold ONE in *.
-  destruct xIn as [l lh].
-  exists l. eapply h. auto.
+  destruct xIn as [W [l [lh1 lh2]]].
+  exists W. exists l. split; auto. 
 Qed.
 
 
@@ -147,12 +147,12 @@ unfold Proper. intros x1 y1 E1. eapply ONE_mono; auto. Qed.
 #[export] Instance Proper_Same_ONE : Proper (Same_set ==> Same_set) ONE.
 unfold Proper. intros x1 y1 E1. eapply ONE_cong; auto. Qed.
 
-Lemma CHOOSE_mono : 
-  forall U1 U2 V1 V2, U1 ⊆ V1 -> U2 ⊆ V2 -> CHOOSE U1 U2 ⊆ CHOOSE V1 V2.
+Lemma CHOICE_mono : 
+  forall U1 U2 V1 V2, U1 ⊆ V1 -> U2 ⊆ V2 -> CHOICE U1 U2 ⊆ CHOICE V1 V2.
 Proof.
   intros.
   intros x xIn.
-  unfold CHOOSE in *.
+  unfold CHOICE in *.
   destruct x; try done.
   cbn in xIn. cbn.
   destruct xIn as [l1 [l2 [-> [h1 h2]]]].
@@ -161,15 +161,15 @@ Proof.
   repeat split; eauto.
 Qed. 
 
-Lemma CHOOSE_cong :  forall U1 U2 V1 V2, U1 ≃ V1 -> U2 ≃ V2 -> CHOOSE U1 U2 ≃ CHOOSE V1 V2.
-intros U1 U2 V1 V2 [S1 S2] [T1 T2].  split; eapply CHOOSE_mono; eauto. Qed.
+Lemma CHOICE_cong :  forall U1 U2 V1 V2, U1 ≃ V1 -> U2 ≃ V2 -> CHOICE U1 U2 ≃ CHOICE V1 V2.
+intros U1 U2 V1 V2 [S1 S2] [T1 T2].  split; eapply CHOICE_mono; eauto. Qed.
 
 
-#[export] Instance Proper_Included_CHOOSE : Proper (Included ==> Included ==> Included) CHOOSE.
-unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply CHOOSE_mono; auto. Qed.
+#[export] Instance Proper_Included_CHOICE : Proper (Included ==> Included ==> Included) CHOICE.
+unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply CHOICE_mono; auto. Qed.
 
-#[export] Instance Proper_Same_CHOOSE : Proper (Same_set ==> Same_set ==> Same_set) CHOOSE.
-unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply CHOOSE_cong; auto. Qed.
+#[export] Instance Proper_Same_CHOICE : Proper (Same_set ==> Same_set ==> Same_set) CHOICE.
+unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply CHOICE_cong; auto. Qed.
 
 
 Lemma ALL_mono : 
@@ -339,7 +339,14 @@ Qed.
 Proof.
   intros t1 t ->.
   eapply tm_induction with (t := t);
-  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
+  [ move=>i | move=>x |move=>t1 t2 IH1 IH2 |move=> t' IH |move=>k | | 
+  | move=> t1 t2 IH1 IH2 
+  | 
+  | move=> t1 t2 IH1 IH2
+  | move=> t' IH
+  | move=> t1 t2 IH1 IH2 |  move=> t1 t2 IH1 IH2 
+  | move=> t1 IH1 
+  | move=> t1 IH1 ].
   all: move => ρ1 ρ2 SUB.
   all: autorewrite with denot.
   all: try solve [reflexivity].
@@ -367,7 +374,29 @@ Proof.
     intros y.
     eapply RET_mono.
     eapply CONS_mono_sub. reflexivity. reflexivity.
-Qed.
+  - repeat rewrite denot_choice. 
+    eapply CHOICE_mono. eapply IH1. auto. 
+    eapply IH2. auto.
+  - pick fresh x.
+    repeat rewrite(denot_ex x). fsetdec. fsetdec.
+    admit.
+  - admit. (* eapply SEQ_mono. *)
+  - eapply BIND_mono.
+    eapply IH1. auto.
+    intros x.
+    eapply BIND_mono.
+    eapply IH2. auto.
+    intros y.
+    eapply UNIFY_mono. reflexivity. reflexivity.
+  - eapply RET_mono.
+    eapply ONE_mono.
+    eapply IH1.
+    auto.
+  - eapply RET_mono.
+    eapply ALL_mono.
+    eapply IH1.
+    auto.
+Admitted.
 
 (* TODO: move???*)
 Lemma same_env_sub_env : forall x y, same_env x y <-> (x ⊆e y) /\ (y ⊆e x).
@@ -400,7 +429,13 @@ Qed.
 
 Lemma monotone_env_denot_val {t} : monotone_env (denot_val t).
   eapply tm_induction with (t := t);
-  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
+  [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2 
+  | 
+  | move=> t1 t2 IH1 IH2
+  | move=> t' IH
+  | move=> t1 t2 IH1 IH2 |  move=> t1 t2 IH1 IH2 
+  | move=> t1 IH1 
+  | move=> t1 IH1 ].
   all: move => ρ1 ρ2 SUB.
   all: autorewrite with denot.
   all: try solve  [ simpl; reflexivity].
