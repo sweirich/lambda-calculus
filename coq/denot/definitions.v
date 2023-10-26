@@ -180,6 +180,7 @@ Context
 Definition Consistent_fset := fun '(FSet XS) '(FSet YS) => List.Forall2_any f XS YS.
 Definition Inconsistent_fset := fun '(FSet XS) '(FSet YS) => List.Exists2_any g XS YS.
 
+End FSet.
 
 #[export] Instance Consistency_fset { A : Type}  `{ Consistency A } : Consistency (fset A) := 
   { Consistent := Consistent_fset (f := Consistent) ;
