@@ -4,6 +4,7 @@ Require Export structures.List.
 Require Export structures.Env.
 Require Export structures.Monad.
 Require Export structures.Comp.
+Require Export structures.FSet.
 
 (*
   In : forall {A}, A -> M A -> Prop;

@@ -305,3 +305,23 @@ Proof. intros. induction l. cbv in H. done.
                  p1 y \/ p2 y
    }.
 
+
+Definition valid {A} (V : P A) : Type :=
+  nonemptyT V.
+
+
+Lemma union_left {A}{X Y Z: P A} : X ⊆ Z -> Y ⊆ Z -> X ∪ Y ⊆ Z.
+Proof. intros h1 h2.
+       intros x xIn. destruct xIn; eauto.
+Qed.
+
+
+Lemma in_singleton_sub {A}{v:A}{X} : v ∈ X -> ⌈ v ⌉ ⊆ X.
+Proof.
+  intros. 
+  rewrite In_Sub in H.
+  rewrite <- mem_singleton_eq.
+  auto.
+Qed.
+
+#[export] Hint Resolve in_singleton_sub : core.
