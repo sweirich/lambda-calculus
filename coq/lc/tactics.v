@@ -180,14 +180,23 @@ Lemma tm_induction : forall (P : tm -> Prop),
     -> P add
     -> P tnil
     -> (forall t1 t2, P t1 -> P t2 -> P (tcons t1 t2))
+    -> P fail
+    -> (forall t1 t2, P t1 -> P t2 -> P (choice t1 t2))
+    -> (forall t, 
+          (forall x , x `notin` fv_tm t -> P (t ^ x)) 
+          -> P (ex t))
+    -> (forall t1 t2, P t1 -> P t2 -> P (seq t1 t2))
+    -> (forall t1 t2, P t1 -> P t2 -> P (unify t1 t2))
+    -> (forall t, P t -> P (one t))
+    -> (forall t, P t -> P (all t))
     -> forall t, P t.
 Proof.
-  intros P VARB VARF APP ABS LIT ADD NIL CONS t.
+  intros P VARB VARF APP ABS LIT ADD NIL CONS FAIL CHOICE EX SEQ UNIFY ONE ALL t.
   remember (size_tm t) as n.
   have GE: n >= size_tm t. subst. auto. clear Heqn.
   move: t GE.
   induction (lt_wf n) as [n _ IH].
-  intros [ i | x | u | t | k | (* add *) | (* nil *) | t ] SZ; simpl in SZ; eauto.
+  intros [ i | x | u | t | k | (* add *) | (* nil *) | t | t | | u | t | t | t | t] SZ; simpl in SZ; eauto.
   + eapply ABS.
     intros x FV.
     eapply (IH (size_tm u)). lia.
@@ -195,4 +204,13 @@ Proof.
     lia.
   + eapply APP; eapply IH; eauto; lia. 
   + eapply CONS; eapply IH; eauto; lia. 
+  + eapply CHOICE; eapply IH; eauto; lia.
+  + eapply EX.
+    intros x FV.
+    eapply (IH (size_tm u)). lia.
+    autorewrite with lngen.
+    lia.
+  + eapply SEQ; eapply IH; eauto; lia. 
+  + eapply UNIFY; eapply IH; eauto; lia.
+
 Qed.    

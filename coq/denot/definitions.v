@@ -98,14 +98,12 @@ Local Open Scope set_scope.
 
 (* Sets of Values:   P Value === Value -> Prop *)
 
-(* Some lists are finite representations of sets. Others 
-   are sequences of results. Use a newtype
-   to distingiush. *)
+
+Definition strict {A B} (f : P A -> P B) := f (fun x => False) ≃ (fun x => False) . 
 
 
 (* ------------------------------------------------------- *)
 
-(* `P (Comp (P A))` is *almost* a Monad *)
 
 Definition RET {A} (x : P A) : P (Comp (fset A)) :=
   fun z => match z with 
@@ -113,12 +111,24 @@ Definition RET {A} (x : P A) : P (Comp (fset A)) :=
           |  _ => False
         end.
 
-(* V must be nonempty because RET is strict. If V is empty then the 
-   set should be empty. *)
-
 Definition BIND {A B} (S : P (Comp (fset A))) (K : P A -> P (Comp B)) (t : Comp B) : Prop :=
   exists (u : Comp (fset A)), exists (k : fset A -> Comp B), 
-    S u /\ t = bind u k /\ forall a, Comp_In a u -> K (mem a) (k a).
+    (u ∈ S) /\ t = bind u k /\ forall a, Comp_In a u -> K (mem a) (k a).
+
+(* RET is strict *)
+Lemma RET_strict {A : Type} : strict (@RET A).
+unfold strict. split.
+- unfold RET. intros x xIn.
+destruct x; try done.
+destruct l; try done.
+destruct l; try done.
+move: xIn => [h1 h2].
+destruct f; destruct l; try done.
+specialize (h1 a ltac:(left; auto)). done.
+- unfold RET.
+  intros x xIn. done.
+Qed.
+
 
 (* ----------------------------------------------------------- *)
 
@@ -726,6 +736,7 @@ Definition ADD : P Value :=
 
 (* ------------ LOGIC PROGRAMMING ----------------- *)
 
+
 Definition ONE (C : P (Comp (fset Value))) : P Value :=
   fun v => exists l, c_multi (singleton_fset v  :: l) ∈ C.
 
@@ -737,7 +748,7 @@ Definition ALL (C : P (Comp (fset Value))) : P Value :=
 
 Definition FAIL : P (Comp (fset Value)) := ⌈ c_multi nil ⌉.
 
-Definition CHOOSE (C1 : P (Comp (fset Value))) (C2 : P (Comp (fset Value))) : 
+Definition CHOICE (C1 : P (Comp (fset Value))) (C2 : P (Comp (fset Value))) : 
   P (Comp (fset Value)) := 
   fun c => 
     match c with 
@@ -746,8 +757,11 @@ Definition CHOOSE (C1 : P (Comp (fset Value))) (C2 : P (Comp (fset Value))) :
     | _ => False
     end.
 
-(* Fails when V and W don't unify. Returns their union when they do. *)
+Definition SEQ (C1 : P (Comp (fset Value))) (C2 : P (Comp (fset Value))) : 
+  P (Comp (fset Value)) := BIND C1 (fun x => C2).
 
+(* Fails when V and W don't unify. Returns their union when they do. *)
+(* Can we replace last line below with "Consistent sets"? *)
 
 Definition UNIFY (V : P Value) (W: P Value) : P (Comp (fset Value)) :=
   fun c => match c with 
@@ -762,9 +776,9 @@ Definition UNIFY (V : P Value) (W: P Value) : P (Comp (fset Value)) :=
         | _ => False
   end.
     
-  
-
-(* This definition includes all values that produce c. *)
+(* Questions: Do we make sure the existentially chosen value is consisten? 
+   What about the final set? (Can we do that elsewhere?)
+*)
 
 Definition EXISTS (f : P Value -> P (Comp (fset Value))) : P (Comp (fset Value)) :=
   fun c => exists V, c ∈ f (mem V).
@@ -824,6 +838,39 @@ Definition same_env : Rho -> Rho -> Prop := Env.Forall2 Same_set.
 Import LCNotations.
 Open Scope tm.
 
+Fixpoint exn (n : nat) (t: tm) : tm :=
+  match n with 
+  | 0 => t
+  | S n => ex (exn n t)
+  end.
+
+Fixpoint choice_free (t : tm) : bool :=
+  match t with 
+  | choice t u => false
+  | seq t u => choice_free t && choice_free u 
+  | unify t u => choice_free t && choice_free u 
+  | ex u => choice_free u
+  | _ => true
+  end.
+
+Inductive CX := CX_hole | CX_seq1 of tm | CX_seq2 of tm | CX_unify1 of tm | CX_unify2 of tm | CX_ex of tm.
+
+(* CX := [] | v = CX ; e | CX ; e | ceq ; CX | exists x. CX *)
+
+(*  CX [ e1 || e2 ] =>  CX [e1] || CX [e2] *)
+
+(* Pull out inner choice expressions, in order *)
+(* 
+Fixpoint choose  (s : tm) : CX * list tm :=
+  match s with 
+  | choice t u => CX_hole , t :: u :: nil
+  | seq t u => 
+  | unify t u => 
+  | ex t =>
+  | _ => s 
+  end *)
+
+
 (* Denotation function *)
 (* `n` is is a termination metric. *)
 Fixpoint denot_comp_n (n : nat) (a : tm) (ρ : Rho) : P (Comp (fset Value)) :=
@@ -857,14 +904,35 @@ Fixpoint denot_comp_n (n : nat) (a : tm) (ρ : Rho) : P (Comp (fset Value)) :=
       match a with 
        | app t u   => 
            BIND (denot_comp_n m t ρ) (fun v1 =>
-           BIND (denot_comp_n m u ρ) (fun v2 =>
-           (v1 ▩ v2)))
+             BIND (denot_comp_n m u ρ) (fun v2 =>
+             (v1 ▩ v2))) 
 
        | tcons t u => 
+(*           RET CONS <*> (denot_comp_n m t ρ) <*> (denot_comp_n m u ρ) *)
+
            BIND (denot_comp_n m t ρ) (fun v1 =>
            BIND (denot_comp_n m u ρ) (fun v2 => 
-           RET (CONS v1 v2 )))
+           RET (CONS v1 v2 ))) 
 
+       | fail => FAIL
+
+       | choice t u => CHOICE (denot_comp_n m t ρ) (denot_comp_n m u ρ)
+
+       | ex t => let x := fresh_for (dom ρ \u fv_tm t) in 
+                EXISTS (fun D => (denot_comp_n m (t ^ x) (x ~ D ++ ρ)))
+
+       | seq t u =>   
+           SEQ (denot_comp_n m t ρ) (denot_comp_n m u ρ)
+
+       | unify t u =>  
+           BIND (denot_comp_n m t ρ) (fun v1 =>
+           BIND (denot_comp_n m u ρ) (fun v2 =>
+           (UNIFY v1 v2)))
+
+       | one t => RET (ONE (denot_comp_n m t ρ))
+
+       | all t => RET (ALL (denot_comp_n m t ρ))
+  
        | _ => RET (denot_val_n n a ρ)
      end
 

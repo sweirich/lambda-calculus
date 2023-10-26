@@ -15,7 +15,14 @@ Inductive tm : Set :=  (*r terms *)
  | lit (k:j)
  | add : tm
  | tnil : tm
- | tcons (t:tm) (u:tm).
+ | tcons (t:tm) (u:tm)
+ | choice (t1:tm) (t2:tm)
+ | fail : tm
+ | ex (t:tm)
+ | seq (t1:tm) (t2:tm)
+ | unify (t1:tm) (t2:tm)
+ | one (t:tm)
+ | all (t:tm).
 
 Definition relation : Type := tm -> tm -> Prop.
 
@@ -25,24 +32,31 @@ Definition relation : Type := tm -> tm -> Prop.
 (** subrules *)
 (** arities *)
 (** opening up abstractions *)
-Fixpoint open_tm_wrt_tm_rec (k:nat) (t5:tm) (t_6:tm) {struct t_6}: tm :=
-  match t_6 with
+Fixpoint open_tm_wrt_tm_rec (k:nat) (t_5:tm) (t__6:tm) {struct t__6}: tm :=
+  match t__6 with
   | (var_b nat) => 
       match lt_eq_lt_dec nat k with
         | inleft (left _) => var_b nat
-        | inleft (right _) => t5
+        | inleft (right _) => t_5
         | inright _ => var_b (nat - 1)
       end
   | (var_f x) => var_f x
-  | (abs t) => abs (open_tm_wrt_tm_rec (S k) t5 t)
-  | (app t u) => app (open_tm_wrt_tm_rec k t5 t) (open_tm_wrt_tm_rec k t5 u)
+  | (abs t) => abs (open_tm_wrt_tm_rec (S k) t_5 t)
+  | (app t u) => app (open_tm_wrt_tm_rec k t_5 t) (open_tm_wrt_tm_rec k t_5 u)
   | (lit k) => lit k
   | add => add 
   | tnil => tnil 
-  | (tcons t u) => tcons (open_tm_wrt_tm_rec k t5 t) (open_tm_wrt_tm_rec k t5 u)
+  | (tcons t u) => tcons (open_tm_wrt_tm_rec k t_5 t) (open_tm_wrt_tm_rec k t_5 u)
+  | (choice t1 t2) => choice (open_tm_wrt_tm_rec k t_5 t1) (open_tm_wrt_tm_rec k t_5 t2)
+  | fail => fail 
+  | (ex t) => ex (open_tm_wrt_tm_rec (S k) t_5 t)
+  | (seq t1 t2) => seq (open_tm_wrt_tm_rec k t_5 t1) (open_tm_wrt_tm_rec k t_5 t2)
+  | (unify t1 t2) => unify (open_tm_wrt_tm_rec k t_5 t1) (open_tm_wrt_tm_rec k t_5 t2)
+  | (one t) => one (open_tm_wrt_tm_rec k t_5 t)
+  | (all t) => all (open_tm_wrt_tm_rec k t_5 t)
 end.
 
-Definition open_tm_wrt_tm t5 t_6 := open_tm_wrt_tm_rec 0 t_6 t5.
+Definition open_tm_wrt_tm t_5 t__6 := open_tm_wrt_tm_rec 0 t__6 t_5.
 
 (** terms are locally-closed pre-terms *)
 (** definitions *)
@@ -67,10 +81,33 @@ Inductive lc_tm : tm -> Prop :=    (* defn lc_tm *)
  | lc_tcons : forall (t u:tm),
      (lc_tm t) ->
      (lc_tm u) ->
-     (lc_tm (tcons t u)).
+     (lc_tm (tcons t u))
+ | lc_choice : forall (t1 t2:tm),
+     (lc_tm t1) ->
+     (lc_tm t2) ->
+     (lc_tm (choice t1 t2))
+ | lc_fail : 
+     (lc_tm fail)
+ | lc_ex : forall (t:tm),
+      ( forall x , lc_tm  ( open_tm_wrt_tm t (var_f x) )  )  ->
+     (lc_tm (ex t))
+ | lc_seq : forall (t1 t2:tm),
+     (lc_tm t1) ->
+     (lc_tm t2) ->
+     (lc_tm (seq t1 t2))
+ | lc_unify : forall (t1 t2:tm),
+     (lc_tm t1) ->
+     (lc_tm t2) ->
+     (lc_tm (unify t1 t2))
+ | lc_one : forall (t:tm),
+     (lc_tm t) ->
+     (lc_tm (one t))
+ | lc_all : forall (t:tm),
+     (lc_tm t) ->
+     (lc_tm (all t)).
 (** free variables *)
-Fixpoint fv_tm (t5:tm) : vars :=
-  match t5 with
+Fixpoint fv_tm (t_5:tm) : vars :=
+  match t_5 with
   | (var_b nat) => {}
   | (var_f x) => {{x}}
   | (abs t) => (fv_tm t)
@@ -79,19 +116,33 @@ Fixpoint fv_tm (t5:tm) : vars :=
   | add => {}
   | tnil => {}
   | (tcons t u) => (fv_tm t) \u (fv_tm u)
+  | (choice t1 t2) => (fv_tm t1) \u (fv_tm t2)
+  | fail => {}
+  | (ex t) => (fv_tm t)
+  | (seq t1 t2) => (fv_tm t1) \u (fv_tm t2)
+  | (unify t1 t2) => (fv_tm t1) \u (fv_tm t2)
+  | (one t) => (fv_tm t)
+  | (all t) => (fv_tm t)
 end.
 
 (** substitutions *)
-Fixpoint subst_tm (t5:tm) (x5:tmvar) (t_6:tm) {struct t_6} : tm :=
-  match t_6 with
+Fixpoint subst_tm (t_5:tm) (x5:tmvar) (t__6:tm) {struct t__6} : tm :=
+  match t__6 with
   | (var_b nat) => var_b nat
-  | (var_f x) => (if eq_var x x5 then t5 else (var_f x))
-  | (abs t) => abs (subst_tm t5 x5 t)
-  | (app t u) => app (subst_tm t5 x5 t) (subst_tm t5 x5 u)
+  | (var_f x) => (if eq_var x x5 then t_5 else (var_f x))
+  | (abs t) => abs (subst_tm t_5 x5 t)
+  | (app t u) => app (subst_tm t_5 x5 t) (subst_tm t_5 x5 u)
   | (lit k) => lit k
   | add => add 
   | tnil => tnil 
-  | (tcons t u) => tcons (subst_tm t5 x5 t) (subst_tm t5 x5 u)
+  | (tcons t u) => tcons (subst_tm t_5 x5 t) (subst_tm t_5 x5 u)
+  | (choice t1 t2) => choice (subst_tm t_5 x5 t1) (subst_tm t_5 x5 t2)
+  | fail => fail 
+  | (ex t) => ex (subst_tm t_5 x5 t)
+  | (seq t1 t2) => seq (subst_tm t_5 x5 t1) (subst_tm t_5 x5 t2)
+  | (unify t1 t2) => unify (subst_tm t_5 x5 t1) (subst_tm t_5 x5 t2)
+  | (one t) => one (subst_tm t_5 x5 t)
+  | (all t) => all (subst_tm t_5 x5 t)
 end.
 
 
@@ -110,6 +161,13 @@ Fixpoint is_value (t_5:tm) : Prop :=
       end
   | tnil => True
   | add => True
+  | fail => False
+  | choice t1 t2 => False
+  | (ex t) => False
+  | seq e1 e2 => False
+  | unify e1 e2 => False
+  | one e => False
+  | all e => False
 end.
 
 Fixpoint nth (t : tm) (k : nat) :  option tm :=

@@ -40,6 +40,25 @@ Local Open Scope tm.
 
 (* ---- -------------------------------------- *)
 
+Lemma RET_strict {A} : RET (fun (x : A) => False) ≃ fun x => False.
+  move: (@definitions.RET_strict) => RS.
+  unfold strict in RS.
+  rewrite RS.
+  reflexivity.
+Qed.
+
+Lemma BIND_strict {A}{B} : forall (k : P A -> P (Comp B)), BIND (fun x => False) k ≃ fun x => False.
+Proof.
+  intros k.
+  unfold BIND.
+  split.
+  - intros x xIn.
+    destruct x.
+    + move: xIn => [t1 [k1 [h _]]]. done.
+    + move: xIn => [t1 [k1 [h _]]]. done.
+  - intros x xIn. done.
+Qed.
+
 (* k∈℘k *)
 Lemma k_in_den_k : forall k, v_nat k ∈ NAT k.
 Proof. intros. reflexivity. Qed.
@@ -263,7 +282,9 @@ Proof. intros Fr NEP NEX. eapply ForallT_cons; eauto. Qed.
 Ltac invert_value :=
   repeat match goal with 
     | [ H : value (_ _) |- _ ] => inversion H; clear H; subst
+    | [ H : value fail |- _ ] => inversion H; clear H; subst
     | [ H : listvalue (_ _) |- _ ] => inversion H; clear H; subst
+    | [ H : listvalue fail |- _ ] => inversion H; clear H; subst
   end.
 
 
@@ -371,7 +392,14 @@ Lemma subst_denot : forall t x u ρ1 ρ2,
 Proof.
   intro t.
   eapply tm_induction with (t := t);
-  [move=>i|move=>y|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2].
+  [move=>i|move=>y|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2
+  | 
+  | move=> t1 t2 IH1 IH2
+  | move=> t' IH
+  | move=> t1 t2 IH1 IH2 |  move=> t1 t2 IH1 IH2 
+  | move=> t1 IH1 
+  | move=> t1 IH1 ].
+
   all: intros x u ρ1 ρ2 ST SU VU NE.
   all: simpl. 
   all: simpl_env. 
@@ -433,7 +461,13 @@ Proof.
     eapply IH2; eauto.    
     intros w' w ->. 
     reflexivity.
-Qed.
+  + admit.
+  + admit.
+  + admit.
+  + admit.
+  + admit.
+  + admit.
+Admitted.
 
 Lemma subst_denot1 :
   forall (t : tm) (x : atom) (u : tm) (ρ : Env (P Value)),
@@ -646,56 +680,74 @@ Qed.
 
 
 Definition tm_Id : tm := abs (var_b 0).
+Definition value_Id (w : Value) : Value := (singleton_fset w) ↦ c_multi (singleton_fset w :: nil).
+Definition comp_Id (w : Value) : Comp (fset Value) := c_multi (singleton_fset (value_Id w) :: nil).
 
-
-(*
-Lemma denot_Id {v} : c_multi ((singleton_fset v) ↦ c_multi (singleton_fset v :: nil)) ∈ denot tm_Id nil.
+Lemma denot_Id {v} : comp_Id v ∈ denot tm_Id nil.
 Proof.
   pick fresh x.
   rewrite (denot_abs x); simpl; auto.
   cbn.
-  destruct (x == x); try done.
+  rewrite eq_dec_refl.
   split. 2: done.
   intros y yIn. cbv in yIn. destruct yIn; try done. subst.
   cbn. 
   repeat split. reflexivity.
   done.
   done.
-Qed. *)
- 
+Qed. 
+
+(* 
+Definition ConsistentDenot : Comp (fset Value) -> Comp (fset Value) -> Prop :=
+   ConsistentComp (List.Forall2_any Consistent).
+
+Lemma c_map : 
+     forall (X1 X2 : list Value) (r1 r2 : Comp (list Value)), 
+    (List.Forall2_any Consistent X1 X2 -> ConsistentDenot r1 r2) -> Consistent (X1 ↦ r1) (X2 ↦ r2).
+Proof.
+  intros.
+Admitted.
+
+Lemma denot_Id_inv : forall (x : Comp (list Value)) ρ, x ∈ denot tm_Id ρ -> forall w,  ConsistentDenot x (comp_Id w).
+Proof.
+  intros x ρ.
+  unfold tm_Id. 
+  pick fresh y.
+  rewrite (denot_abs y); auto.
+  intro h. 
+  destruct x; try done.
+  destruct l; try done.
+  destruct l0; try done.
+  cbn in h. rewrite eq_dec_refl in h.
+  move: h => [h0 h1].
+  intros w.
+  eapply cc_multi.
+  econstructor; eauto.
+  unfold List.Forall2_any.
+  intros x0 y0 I0 I1.
+  cbn in I1. destruct I1; try done. subst.
+  unfold value_Id.
+  specialize (h0 x0 I0).
+  destruct x0; try done.
+  cbn in h0.
+  destruct h0 as [h2 h3].
+  destruct c; try done.
+  destruct l1; try done.
+  destruct l2; try done.
+  cbn in h2.
+  destruct h2 as [h4 h5].
+  eapply c_map. intros h.
+  eapply cc_multi.
+  econstructor; eauto.
+Admitted.
+*)
+(* Need a better definition of consistency??? *)
+
 
 (* A term with an unbound variable has no value. *)
 Definition tm_IllScoped : tm := app (var_b 1) (var_b 0).
 
-Lemma RET_strict : RET (fun (x : Value) => False) ≃ fun x => False.
-Proof.
-  unfold RET.
-  split.
-  intros x xIn.
-  destruct x; try done.
-  destruct l; try done.
-  destruct l; try done.
-  destruct xIn.
-Admitted.
-(*  destruct f; try done.
-  specialize (H v ltac:(auto)).  done.
-  intros x xIn. done.
-Qed. *)
-
-Lemma BIND_strict {A}{B} : forall (k : P A -> P (Comp B)), BIND (fun x => False) k ≃ fun x => False.
-Proof.
-  intros k.
-  unfold BIND.
-  split.
-  - intros x xIn.
-    destruct x.
-    + move: xIn => [t1 [k1 [h _]]]. done.
-    + move: xIn => [t1 [k1 [h _]]]. done.
-  - intros x xIn. done.
-Qed.
-
-
-Lemma denot_Wrong : forall x, not (x ∈ denot tm_IllScoped nil).
+Lemma denot_IllScoped : forall x, not (x ∈ denot tm_IllScoped nil).
 Proof.
   unfold tm_IllScoped.
   rewrite denot_app.
@@ -706,42 +758,12 @@ Proof.
   done.
 Qed.  
 
-
-(*
-Lemma denot_Id_inv : forall x ρ, x ∈ denot tm_Id ρ ->
-                          forall w,  Consistent x ((singleton_fset w) ↦ w).
-Proof.
-  intros x ρ.
-  unfold tm_Id. 
-  pick fresh y.
-  rewrite (denot_abs y); auto.
-  intro h. 
-  destruct x; try done.
-  move: h => [h0 [h1 h2]].
-  cbn in h0. rewrite eq_dec_refl in h0.
-  intros w.
-  destruct (dec_con x w). eauto.
-  eapply c_map1.
-  exists x. exists w.
-  
-  repeat split; eauto. 
-  unfold In. eauto.
-Qed.
-
 Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
 
 
 #[global] Hint Rewrite access_eq_var : lngen.
 
-Lemma wrong_not_successful {l}: 
-  Forall success l -> v_wrong ∈ mem l -> False.
-Proof. 
-  induction l; intros h1 h2. done.
-  inversion h1. subst. 
-  inversion h2. subst. done.
-  eauto.
-Qed.
-
+(*
 Lemma denot_Delta_inv :
   forall x, x ∈ denot tm_Delta nil -> 
        exists v w, Consistent x (((v :: nil ↦ w) :: v :: nil) ↦ w).
@@ -806,18 +828,20 @@ Abort.
 *)
 
 (* A term with an unbound variable has no value. *)
-(*
+
 Definition tm_Wrong : tm := app (var_b 1) (var_b 0).
 
-Lemma denot_Wrong : v_wrong ∈ denot tm_Wrong nil.
+Lemma denot_Wrong : forall v, not (v ∈ denot tm_Wrong nil).
 Proof.
+  intro v.
   unfold tm_Wrong.
   rewrite denot_app.
   repeat rewrite denot_var_b.
-  eapply FUNWRONG.
-  auto.
-Qed.  
-*)
+  rewrite -> RET_strict.
+  rewrite -> BIND_strict.
+  intro h.
+  done.
+Qed.
 
 
 

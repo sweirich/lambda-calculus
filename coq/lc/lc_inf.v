@@ -39,6 +39,13 @@ Fixpoint close_tm_wrt_tm_rec (n1 : nat) (x1 : tmvar) (t1 : tm) {struct t1} : tm 
     | add => add
     | tnil => tnil
     | tcons t2 u1 => tcons (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 u1)
+    | choice t2 t3 => choice (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 t3)
+    | fail => fail
+    | ex t2 => ex (close_tm_wrt_tm_rec (S n1) x1 t2)
+    | seq t2 t3 => seq (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 t3)
+    | unify t2 t3 => unify (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 t3)
+    | one t2 => one (close_tm_wrt_tm_rec n1 x1 t2)
+    | all t2 => all (close_tm_wrt_tm_rec n1 x1 t2)
   end.
 
 Definition close_tm_wrt_tm x1 t1 := close_tm_wrt_tm_rec 0 x1 t1.
@@ -60,6 +67,13 @@ Fixpoint size_tm (t1 : tm) {struct t1} : nat :=
     | add => 1
     | tnil => 1
     | tcons t2 u1 => 1 + (size_tm t2) + (size_tm u1)
+    | choice t2 t3 => 1 + (size_tm t2) + (size_tm t3)
+    | fail => 1
+    | ex t2 => 1 + (size_tm t2)
+    | seq t2 t3 => 1 + (size_tm t2) + (size_tm t3)
+    | unify t2 t3 => 1 + (size_tm t2) + (size_tm t3)
+    | one t2 => 1 + (size_tm t2)
+    | all t2 => 1 + (size_tm t2)
   end.
 
 
@@ -90,7 +104,30 @@ Inductive degree_tm_wrt_tm : nat -> tm -> Prop :=
   | degree_wrt_tm_tcons : forall n1 t1 u1,
     degree_tm_wrt_tm n1 t1 ->
     degree_tm_wrt_tm n1 u1 ->
-    degree_tm_wrt_tm n1 (tcons t1 u1).
+    degree_tm_wrt_tm n1 (tcons t1 u1)
+  | degree_wrt_tm_choice : forall n1 t1 t2,
+    degree_tm_wrt_tm n1 t1 ->
+    degree_tm_wrt_tm n1 t2 ->
+    degree_tm_wrt_tm n1 (choice t1 t2)
+  | degree_wrt_tm_fail : forall n1,
+    degree_tm_wrt_tm n1 (fail)
+  | degree_wrt_tm_ex : forall n1 t1,
+    degree_tm_wrt_tm (S n1) t1 ->
+    degree_tm_wrt_tm n1 (ex t1)
+  | degree_wrt_tm_seq : forall n1 t1 t2,
+    degree_tm_wrt_tm n1 t1 ->
+    degree_tm_wrt_tm n1 t2 ->
+    degree_tm_wrt_tm n1 (seq t1 t2)
+  | degree_wrt_tm_unify : forall n1 t1 t2,
+    degree_tm_wrt_tm n1 t1 ->
+    degree_tm_wrt_tm n1 t2 ->
+    degree_tm_wrt_tm n1 (unify t1 t2)
+  | degree_wrt_tm_one : forall n1 t1,
+    degree_tm_wrt_tm n1 t1 ->
+    degree_tm_wrt_tm n1 (one t1)
+  | degree_wrt_tm_all : forall n1 t1,
+    degree_tm_wrt_tm n1 t1 ->
+    degree_tm_wrt_tm n1 (all t1).
 
 Scheme degree_tm_wrt_tm_ind' := Induction for degree_tm_wrt_tm Sort Prop.
 
@@ -121,7 +158,30 @@ Inductive lc_set_tm : tm -> Set :=
   | lc_set_tcons : forall t1 u1,
     lc_set_tm t1 ->
     lc_set_tm u1 ->
-    lc_set_tm (tcons t1 u1).
+    lc_set_tm (tcons t1 u1)
+  | lc_set_choice : forall t1 t2,
+    lc_set_tm t1 ->
+    lc_set_tm t2 ->
+    lc_set_tm (choice t1 t2)
+  | lc_set_fail :
+    lc_set_tm (fail)
+  | lc_set_ex : forall t1,
+    (forall x1 : tmvar, lc_set_tm (open_tm_wrt_tm t1 (var_f x1))) ->
+    lc_set_tm (ex t1)
+  | lc_set_seq : forall t1 t2,
+    lc_set_tm t1 ->
+    lc_set_tm t2 ->
+    lc_set_tm (seq t1 t2)
+  | lc_set_unify : forall t1 t2,
+    lc_set_tm t1 ->
+    lc_set_tm t2 ->
+    lc_set_tm (unify t1 t2)
+  | lc_set_one : forall t1,
+    lc_set_tm t1 ->
+    lc_set_tm (one t1)
+  | lc_set_all : forall t1,
+    lc_set_tm t1 ->
+    lc_set_tm (all t1).
 
 Scheme lc_tm_ind' := Induction for lc_tm Sort Prop.
 
@@ -637,10 +697,21 @@ forall x1 t1,
   lc_tm (abs t1).
 Proof. Admitted.
 
+Lemma lc_ex_exists :
+forall x1 t1,
+  lc_tm (open_tm_wrt_tm t1 (var_f x1)) ->
+  lc_tm (ex t1).
+Proof. Admitted.
+
 #[export] Hint Extern 1 (lc_tm (abs _)) =>
   let x1 := fresh in
   pick_fresh x1;
   apply (lc_abs_exists x1) : core.
+
+#[export] Hint Extern 1 (lc_tm (ex _)) =>
+  let x1 := fresh in
+  pick_fresh x1;
+  apply (lc_ex_exists x1) : core.
 
 Lemma lc_body_tm_wrt_tm :
 forall t1 t2,
@@ -658,6 +729,14 @@ forall t1,
 Proof. Admitted.
 
 #[export] Hint Resolve lc_body_abs_1 : lngen.
+
+Lemma lc_body_ex_1 :
+forall t1,
+  lc_tm (ex t1) ->
+  body_tm_wrt_tm t1.
+Proof. Admitted.
+
+#[export] Hint Resolve lc_body_ex_1 : lngen.
 
 (* begin hide *)
 
@@ -1199,6 +1278,15 @@ forall x2 t2 t1 x1,
 Proof. Admitted.
 
 #[export] Hint Resolve subst_tm_abs : lngen.
+
+Lemma subst_tm_ex :
+forall x2 t2 t1 x1,
+  lc_tm t1 ->
+  x2 `notin` fv_tm t1 `union` fv_tm t2 `union` singleton x1 ->
+  subst_tm t1 x1 (ex t2) = ex (close_tm_wrt_tm x2 (subst_tm t1 x1 (open_tm_wrt_tm t2 (var_f x2)))).
+Proof. Admitted.
+
+#[export] Hint Resolve subst_tm_ex : lngen.
 
 (* begin hide *)
 

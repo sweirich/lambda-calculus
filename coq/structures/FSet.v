@@ -22,15 +22,35 @@ Definition Forall_fset {A:Type} (f : A -> Prop) : (fset A) -> Prop :=
 Definition ForallT_fset {A:Type} (f : A -> Type) : (fset A) -> Type := 
   fun '(FSet xs) => List.ForallT f xs.
 
-
 Definition mem {A: Type} : fset A -> P A := fun xs => fun x => In_fset x xs.
 Definition valid_mem {A} (V : fset A) : Prop :=
   match V with FSet XS => XS <> nil end.
+
+Definition Included_fset {A:Type} : fset A -> fset A -> Prop :=
+  fun x y => mem x ⊆ mem y.
+
+Definition Equal_fset {A:Type} : fset A -> fset A -> Prop :=
+  fun x y => mem x ≃ mem y.
+
 
 
 Section FSetTheory.
 
 Context {A : Type} {E : fset A}.
+
+#[export] Instance Reflexive_Included_fset : Reflexive (@Included_fset A).
+Admitted.
+#[export] Instance Transitive_Included_fset : Transitive (@Included_fset A).
+Admitted.
+
+
+#[export] Instance Reflexive_Equal_fset : Reflexive (@Equal_fset A).
+Admitted.
+#[export] Instance Symmetric_Equal_fset : Symmetric (@Equal_fset A).
+Admitted.
+#[export] Instance Transitive_Equal_fset : Transitive (@Equal_fset A).
+Admitted.
+
 
 Lemma mem_one_inv : forall (h v : A),  h ∈ mem (singleton_fset v) -> h = v.
 Proof. intros. cbn in H. destruct H; try done. Qed. 
