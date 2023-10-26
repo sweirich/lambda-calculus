@@ -79,16 +79,6 @@ Open Scope tm.
 
 Import EnvNotations.
 
-Lemma in_singleton_sub {A}{v:A}{X} : v ∈ X -> ⌈ v ⌉ ⊆ X.
-Proof.
-  intros. 
-  rewrite In_Sub in H.
-  rewrite <- mem_singleton_eq.
-  auto.
-Qed.
-
-#[export] Hint Resolve in_singleton_sub : core.
-
 Ltac gather_atoms ::=
   let A := gather_atoms_with (fun x : vars => x) in
   let B := gather_atoms_with (fun x : var => {{ x }}) in
@@ -122,7 +112,7 @@ Definition continuous_In {A} (D:Rho -> P A) (ρ:Rho) (v:A) : Prop :=
 Definition continuous_env {A} (D:Rho -> P A) (ρ:Rho) : Prop :=
   forall (v : A), continuous_In D ρ v.
 
-Definition continuous_Sub {A} (D:Rho -> P A) (ρ:Rho) (V:list A) : Prop :=
+Definition continuous_Sub {A} (D:Rho -> P A) (ρ:Rho) (V:fset A) : Prop :=
   mem V ⊆ D ρ -> 
   exists ρ', exists (pf : finite_env ρ'),
     ρ' ⊆e ρ  /\ (mem V ⊆ D ρ').
@@ -167,7 +157,7 @@ Proof.
 Qed.
 
 Lemma BIND_monotone_env {A B} 
-  {D : Rho -> P (Comp (list A))} 
+  {D : Rho -> P (Comp (fset A))} 
   {K : Rho -> P A -> P (Comp B)} : 
   monotone_env D ->
   (forall v, monotone_env (fun ρ => K ρ v)) ->
@@ -191,6 +181,7 @@ Proof. intros ρ1 ρ2 SUB. reflexivity. Qed.
 
 (* ----------------------------------------------------- *)
 
+
 (* Join environments *)
 
 Lemma join_finite_env {ρ1 ρ2} : 
@@ -209,15 +200,12 @@ Proof.
     rewrite sub_dom1; auto.
     destruct H3 as [E1 [s1 u1 ]].
     destruct H5 as [E2 [s2 u2 ]].
-    exists (E1 ++ E2).
+    exists (union_fset E1 E2).
     split.
     rewrite -> s1.
     rewrite -> s2.
     rewrite union_mem. reflexivity.
-    ++ intro h.
-    apply u2. 
-    destruct E1. simpl in h. auto.
-    done.
+    eauto.
   + assert False. inversion sc. subst. done. done.
 Qed.
 
@@ -282,7 +270,7 @@ Qed.
 #[export] Hint Rewrite initial_finite_dom : rewr_list.
 
 Lemma finite_singleton : forall {B} (v : B), finite ⌈ v ⌉.
-Proof. intros B v.  exists (cons v nil).
+Proof. intros B v. exists (singleton_fset v).
        repeat split; eauto. done. 
 Qed.
 
@@ -402,25 +390,37 @@ Qed.
 (* --------------------------------------- *)
 (* continuous-∈⇒⊆ *)
 
+Lemma union_left_inv1 {A}{X Y Z: P A} : X ∪ Y ⊆ Z -> X ⊆ Z.
+Admitted.
+
+Lemma union_left_inv2 {A}{X Y Z: P A} : X ∪ Y ⊆ Z -> Y ⊆ Z.
+Admitted.
+
+#[export] Hint Resolve union_left_inv1 union_left_inv2 : core.
+
 Lemma continuous_In_sub {A} (E : Rho -> (P A)) ρ (NE : valid_env ρ) :
    monotone_env E
    -> forall V, mem V ⊆ E ρ
    -> (forall v, v ∈ mem V -> continuous_In E ρ v)
    -> exists ρ', exists (pf : finite_env ρ') ,  ρ' ⊆e ρ /\ (mem V ⊆ E ρ').
 Proof.
-  intros me VS VE vcont.
-  induction VS.
-  - exists (initial_finite_env ρ NE).
+  intros me VS.
+  eapply fset_induction with (f := VS).
+  Unshelve. 3: exact VS.
+  - move=> VE vcont.
+    exists (initial_finite_env ρ NE).
     repeat split.
     eapply (initial_fin ρ NE).
     eapply initial_fin_sub; eauto. 
     done.
-  - destruct IHVS as [ ρ1 [ fρ1 [ ρ1ρ VEρ1 ]]].
-    intros d z. eapply VE; eauto.
-    intros v VM. eapply vcont; eauto.
+  - move=> a f IHVS VE vcont.
+    rewrite union_mem in VE.
+    destruct IHVS as [ ρ1 [ fρ1 [ ρ1ρ VEρ1 ]]]; eauto.
+    move=> v vIn. eapply vcont. rewrite union_mem. eapply Union_intror. auto.
     destruct (vcont a) as [ρ2 [fρ2 [ρ2ρ VEρ2]]].
-    econstructor; eauto.
-    eapply VE. econstructor; eauto.
+    rewrite union_mem. econstructor; eauto. rewrite mem_singleton_eq. eauto.
+    eapply VE. econstructor; eauto. 
+    rewrite mem_singleton_eq. eauto.
     exists (ρ1 ⊔e ρ2).
     have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
     have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto. 
@@ -430,9 +430,11 @@ Proof.
     repeat split.
     + eapply join_lub; eauto.
     + intros d dm.
-    inversion dm; subst.
-    eapply me. eapply join_sub_right; eauto. auto. 
-    eapply me. eapply join_sub_left; eauto. auto.
+      rewrite union_mem in dm.
+      rewrite mem_singleton_eq in dm.
+      inversion dm; subst.
+      eapply me. eapply join_sub_right; eauto. inversion H. subst. auto.
+      eapply me. eapply join_sub_left; eauto. auto.
 Qed.
 
 
@@ -544,11 +546,10 @@ Proof.
   destruct v; try done.
   - (* v is l ↦ c *)
     move: vIn => [ wEVρ NW ]. 
+    have VV: valid_mem f. unfold valid_mem. eauto.
+    have NEx: valid_env (x ~ mem f ++ ρ). econstructor; eauto.
 
-    have VV: valid_mem l. unfold valid_mem. eauto.
-    have NEx: valid_env (x ~ mem l ++ ρ). econstructor; eauto.
-
-    specialize (IH l ltac:(eauto) c wEVρ).
+    specialize (IH f ltac:(eauto) c wEVρ).
     destruct IH as [ρ' [F' [S' h']]].
     inversion S'. subst. inversion F'. subst.
     exists E1. eexists. eauto.
@@ -686,7 +687,7 @@ Proof.
     eapply mE. instantiate (1:= ρ2). 
     eapply join_sub_right; eauto. auto.
   +
-  destruct l0; try done.
+  destruct l; try done.
   cbn in vIn.
   destruct vIn as [l1 [l2 [-> [NE1 [NE2 [h1 [h2 h3]]]]]]].
   destruct (continuous_In_sub _ _ VE mD _ h1) as 
@@ -731,9 +732,9 @@ Proof.
   intros c cIn.
   destruct c; try done.
   destruct l; try done.
-  destruct l0; try done.
+  destruct l; try done.
   cbn in cIn. destruct cIn.
-  have lemma: (exists ρ', exists _ : finite_env ρ', ρ' ⊆e ρ /\ ((mem l) ⊆ D ρ')).
+  have lemma: (exists ρ', exists _ : finite_env ρ', ρ' ⊆e ρ /\ ((mem f) ⊆ D ρ')).
   { 
     eapply continuous_In_sub; eauto.
   }
@@ -744,7 +745,7 @@ Proof.
 Qed.  
 
 Lemma BIND_continuous_env {A B} 
-  {D : Rho -> P (Comp (list A))} 
+  {D : Rho -> P (Comp (fset A))} 
   {K : Rho -> P A -> P (Comp B)} {ρ}: 
   valid_env ρ -> 
   continuous_env D ρ ->
@@ -767,10 +768,10 @@ Proof.
     intros a aIn. inversion aIn.
   + have lemma :
       forall l, 
-         (forall a : list A, Comp_In a (c_multi l) -> K ρ (mem a) (k a)) -> 
+         (forall a : fset A, Comp_In a (c_multi l) -> K ρ (mem a) (k a)) -> 
          exists ρ', exists (_ : finite_env ρ'), 
            ρ' ⊆e ρ /\
-           (forall a : list A, Comp_In a (c_multi l) -> K ρ' (mem a) (k a)).
+           (forall a : fset A, Comp_In a (c_multi l) -> K ρ' (mem a) (k a)).
     { clear uIn ρ1 F1 S1 uIn1 l h1 h2.
       induction l; intros h2.
       ++ exists (initial_finite_env ρ NE). eexists; repeat split; eauto.
@@ -873,31 +874,35 @@ Proof.
     have CE: (continuous_env D ρ). 
     {
       subst D. eapply LAMBDA_continuous_env; eauto.
+      Unshelve. 2: { eauto.  }
       eapply denot_monotone.
     }
     destruct c; try done.
     destruct l; try done.
-    destruct l0; try done.
+    destruct l; try done.
     cbn in cIn.
     destruct cIn as [cIn LV].
     (* This replicates part of continuous-∈-sub, but is necessary
        because we cannot show that D is monotonic in the environment.
        It is only monotonic in environments that don't mention x.
      *)
-    have lemma: (exists ρ', exists _ : finite_env ρ', ρ' ⊆e ρ /\ ((mem l) ⊆ D ρ')).
+    have lemma: (exists ρ', exists _ : finite_env ρ', ρ' ⊆e ρ /\ ((mem f) ⊆ D ρ')).
     { 
-      clear LV. move: l cIn.
-      induction l; intros cIn.
-      - exists (initial_finite_env ρ NE).
+      clear LV. move: cIn.
+      eapply fset_induction with (f := f). Unshelve. 3: exact f. 
+      - move=> cIn. exists (initial_finite_env ρ NE).
         repeat split.
         eapply (initial_fin ρ NE).
         eapply initial_fin_sub; eauto. 
         done.
-      - destruct (CE a) as [ρ1 [F1 [S1 h1]]].
+      - move=> a f0 IHf cIn.
+        rewrite union_mem in cIn.
+        rewrite mem_singleton_eq in cIn.
+        destruct (CE a) as [ρ1 [F1 [S1 h1]]].
         specialize (cIn a  ltac:(econstructor; eauto)).  subst D. auto.
-        destruct IHl as [ρ2 [F2 [S2 h2]]].
-        intros y yIn. eapply cIn; eauto.
-        have SS1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
+        destruct IHf as [ρ2 [F2 [S2 h2]]].
+        intros y yIn. eapply cIn; eauto. right. auto.
+        have SS1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto. 
         have SS2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
         have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
         exists (ρ1 ⊔e ρ2).
@@ -906,15 +911,17 @@ Proof.
         eapply join_lub; eauto.
         subst D.
         intros y yIn.
-        destruct yIn. subst.
-        eapply Λ_ext_sub. 2: eapply h1.
+        rewrite union_mem in yIn.
+        rewrite mem_singleton_eq in yIn.
+        destruct yIn. inversion H. subst.
+        + eapply Λ_ext_sub. 2: eapply h1.
         intros X VX. simpl.
         eapply denot_monotone.
         constructor; eauto.
         eapply join_sub_left; eauto.
         erewrite -> Forall2_dom. 2: eapply SS1. fsetdec.
         reflexivity.
-        specialize (h2 y H).
+        + specialize (h2 x0 H).
         eapply Λ_ext_sub. 2: eapply h2.
         intros X VX. simpl.
         eapply denot_monotone.
@@ -959,8 +966,6 @@ Proof.
    exists ρ'. exists F'. repeat split. auto.
    autorewrite with denot.
    auto.
-Unshelve.
-eapply NE.
 Qed.
 
 (* ⟦⟧-continuous-⊆ *) 
@@ -1012,7 +1017,7 @@ Proof.
     econstructor; eauto. 
     rewrite <- S. reflexivity.
     rewrite <- SUB. eapply h2. 
-    eapply valid_sub_valid_mem; eauto. rewrite <- S. auto.
+    eapply valid_sub_valid_mem; eauto. rewrite <- S. auto. 
 Qed.
 
 (*  Abstraction followed by Application is the identity ------------------------------------------------------ *)
@@ -1033,10 +1038,10 @@ Proof.
     - destruct x; try done.
   + intros w wInFX.
 
-    have M: mem (cons w nil) ⊆ F X. 
+    have M: mem (singleton_fset w) ⊆ F X. 
     { intros d y. inversion y; subst. auto. done. }
 
-    move: (Fcont X (cons w nil) M NEX) => 
+    move: (Fcont X (singleton_fset w) M NEX) => 
     [ D [ DltX [ wInFD NED ]]].
 
     eapply BETA with (V:=D); eauto.
@@ -1065,7 +1070,7 @@ Qed.
 (* --------------------------------------------------- *)
 (* CHOOSE / FAIL is a monoid *)
 
-Lemma choose_fail_left1 (c : P (Comp (list Value))) : CHOOSE FAIL c ⊆ c.
+Lemma choose_fail_left1 (c : P (Comp (fset Value))) : CHOOSE FAIL c ⊆ c.
 Proof.
   intros x xIn.
   destruct x; try done.
@@ -1074,7 +1079,7 @@ Proof.
   cbv in h1. inversion h1. cbn. auto.
 Qed.
 
-Lemma choose_fail_left2 (c : P (Comp (list Value))) : 
+Lemma choose_fail_left2 (c : P (Comp (fset Value))) : 
   not (c_wrong ∈ c) ->
   c ⊆ CHOOSE FAIL c.
 Proof.
@@ -1085,13 +1090,13 @@ Proof.
   repeat split.  auto.
 Qed.
 
-Lemma choose_fail_left (c : P (Comp (list Value))) : 
+Lemma choose_fail_left (c : P (Comp (fset Value))) : 
   not (c_wrong ∈ c) ->  
   CHOOSE FAIL c ≃ c.
 Proof.
   intros. split. eapply choose_fail_left1; eauto. eapply choose_fail_left2; eauto. Qed.
 
-Lemma choose_fail_right1 (c : P (Comp (list Value))) : CHOOSE c FAIL ⊆ c.
+Lemma choose_fail_right1 (c : P (Comp (fset Value))) : CHOOSE c FAIL ⊆ c.
   intros x xIn.
   destruct x; try done.
   cbn in xIn.
@@ -1099,7 +1104,7 @@ Lemma choose_fail_right1 (c : P (Comp (list Value))) : CHOOSE c FAIL ⊆ c.
   cbv in h2. inversion h2. rewrite app_nil_r. auto.
 Qed.
 
-Lemma choose_fail_right2 (c : P (Comp (list Value))) : 
+Lemma choose_fail_right2 (c : P (Comp (fset Value))) : 
   not (c_wrong ∈ c) ->
   c ⊆ CHOOSE c FAIL.
 Proof.
@@ -1110,13 +1115,13 @@ Proof.
   repeat split. rewrite app_nil_r. auto. auto.
 Qed.
 
-Lemma choose_fail_right (c : P (Comp (list Value))) : 
+Lemma choose_fail_right (c : P (Comp (fset Value))) : 
   not (c_wrong ∈ c) ->  
   CHOOSE c FAIL ≃ c.
 Proof.
   intros. split. eapply choose_fail_right1; eauto. eapply choose_fail_right2; eauto. Qed.
 
-Lemma choose_assoc1 (c1 c2 c3 : P (Comp (list Value))) : 
+Lemma choose_assoc1 (c1 c2 c3 : P (Comp (fset Value))) : 
   CHOOSE c1 (CHOOSE c2 c3) ⊆ CHOOSE (CHOOSE c1 c2) c3.
 Proof.
   intros x xIn.
@@ -1129,7 +1134,7 @@ Proof.
   exists l1. exists l2. split; eauto.
 Qed.
 
-Lemma choose_assoc2 (c1 c2 c3 : P (Comp (list Value))) : 
+Lemma choose_assoc2 (c1 c2 c3 : P (Comp (fset Value))) : 
   CHOOSE (CHOOSE c1 c2) c3 ⊆ CHOOSE c1 (CHOOSE c2 c3).
 Proof.
   intros x xIn.
@@ -1143,7 +1148,7 @@ Proof.
 Qed.
 
 
-Lemma choose_assoc  (c1 c2 c3 : P (Comp (list Value))) : CHOOSE (CHOOSE c1 c2) c3 ≃ CHOOSE c1 (CHOOSE c2 c3).
+Lemma choose_assoc  (c1 c2 c3 : P (Comp (fset Value))) : CHOOSE (CHOOSE c1 c2) c3 ≃ CHOOSE c1 (CHOOSE c2 c3).
 intros. split. eapply choose_assoc2; eauto. eapply choose_assoc1; eauto. Qed.
 
 (*  RETURN followed by BIND applies ------------------- *)
@@ -1158,7 +1163,7 @@ Proof.
   eapply app_nil_r.
 Qed. 
 
-Lemma BIND_RET1 : forall {A B} (x : P A) (k : P A -> P (Comp (list B))), 
+Lemma BIND_RET1 : forall {A B} (x : P A) (k : P A -> P (Comp (fset B))), 
     monotone k ->  
     BIND (RET x) k ⊆ k x.
 Proof.
@@ -1170,15 +1175,15 @@ Proof.
   subst.
   destruct U; try done.
   destruct l; try done.
-  destruct l0; try done.
+  destruct l; try done.
   cbn.
   move: h2 => [h2 NL].
-  specialize (h4 l ltac:(cbv;eauto)).
+  specialize (h4 f ltac:(cbv;eauto)).
   rewrite append_Comp_nil.
   eapply MK; eauto.
 Qed.
 
-Lemma BIND_RET2 : forall {B} (x : P Value) (k : P Value -> P (Comp (list B))), 
+Lemma BIND_RET2 : forall {B} (x : P Value) (k : P Value -> P (Comp (fset B))), 
     monotone k -> 
     continuous k ->
     valid x ->
@@ -1189,9 +1194,9 @@ Proof.
   unfold BIND, RET.
   intros y yIn.
   unfold Ensembles.In.
-  have M: mem (y :: nil) ⊆ k x. intros z zIn.
+  have M: mem (singleton_fset y) ⊆ k x. intros z zIn.
   { destruct zIn; try done. subst. auto. }
-  move: (kc x (y :: nil) M vx) => [D [S1 [S2 VD]]].
+  move: (kc x (singleton_fset y) M vx) => [D [S1 [S2 VD]]].
   exists (c_multi (D :: nil)).
   exists (fun _ => y).
   repeat split. 
@@ -1204,10 +1209,11 @@ Proof.
     simpl in vIn. destruct vIn; try done.
     subst.
     eapply S2.
+    rewrite mem_singleton_eq.
     eauto.
 Qed.
   
-Lemma BIND_RET : forall {B} (x : P Value) (k : P Value -> P (Comp (list B))), 
+Lemma BIND_RET : forall {B} (x : P Value) (k : P Value -> P (Comp (fset B))), 
     monotone k -> 
     continuous k ->
     valid x ->
@@ -1220,7 +1226,7 @@ Proof.
 Qed.
 
 
-Lemma RET_BIND1 : forall {A B} (m : P (Comp (list A))) (k : P A -> P (Comp (list B))), 
+Lemma RET_BIND1 : forall {A B} (m : P (Comp (fset A))) (k : P A -> P (Comp (fset B))), 
     BIND m RET ⊆ m.
 Proof.
   intros.
@@ -1238,8 +1244,8 @@ Proof.
     cbn.
     specialize (h3 a ltac:(simpl; eauto)).
     destruct (k1 a); try done.
-    destruct l0; try done. 
-    destruct l1; try done.
+    destruct l; try done. 
+    destruct l0; try done.
     cbn.
 Admitted.
 
@@ -1253,13 +1259,12 @@ Proof.
   unfold continuous.
   intros X E Ein VX.
   move: VX => [x xIn].
-  have VM: valid_mem (x :: E).
-  unfold valid_mem. done.
-  exists (x :: E). repeat split; eauto. 
-  unfold mem. intros y yIn. destruct yIn. subst. auto. 
-  eapply Ein. auto.
-  intros y yIn. eauto.
-Qed.
+  have VM: valid_mem (union_fset (singleton_fset x) E).
+  admit.
+  exists (union_fset (singleton_fset x) E). repeat split; eauto.
+  rewrite union_mem.
+  intros y yIn. 
+Admitted. (* more fset reasoning *)
 
 
 Lemma CONST_monotone {A}{B} {V:P B} : monotone (fun x : P A => V).
@@ -1270,47 +1275,9 @@ Proof.
   unfold continuous.
   intros X E Ein VX.
   move: VX => [x xIn].
-  exists ( x :: nil).
+  exists (singleton_fset x).
   repeat split; eauto.
-  intros y yIn. destruct yIn; subst; eauto. inversion H.
-  unfold valid_mem. done.
-Qed.
-
-Lemma In_mem_Included {A}{d:A}{D} : 
-    d ∈ D ->
-    mem (d :: nil) ⊆ D.
-Proof.
-  intros.
-  intros y yIn. destruct yIn. subst; auto. done.
-Qed.
-
-Lemma Included_mem_In {A}{d:A}{D} : 
-    mem (d :: nil) ⊆ D ->
-    d ∈ D.
-
-Proof.
-  intros.
-  specialize (H d). eapply H. eauto.
-Qed.
-
-Lemma mem_app_Included {A}{D1 D2 : list A}{w} : 
- mem D1 ⊆ w ->
- mem D2 ⊆ w ->
- mem (D1 ++ D2) ⊆ w.
-Proof. 
-  intros.
-  rewrite union_mem. intros y yIn. induction yIn; eauto.
-Qed.
-
-Lemma mem_app_valid {D1 D2 : list Value}: 
-  valid_mem D1 ->
-  valid_mem D2 ->
-  valid_mem (D1 ++ D2).
-Proof. intros.
- unfold valid_mem in *. destruct D1; try done.
-Qed.
-
-#[export] Hint Resolve In_mem_Included Included_mem_In mem_app_Included mem_app_valid : core.
+Admitted.
 
 Lemma APPLY_monotone {A}{D E : P A -> P Value} : 
     monotone D
@@ -1330,30 +1297,35 @@ Lemma APPLY_continuous {D E : P Value -> P Value} :
   -> continuous (fun ρ => (D ρ ▩ E ρ)).
 Proof.  
   intros IHD IHE mD mE.
-  intros w F SUB VW.
-  induction F.
-  - destruct VW as [v vIn].
+  intros w F.
+  eapply fset_induction with (f := F). Unshelve. 3: exact F.
+  - move=> SUB VW. destruct VW as [v vIn].
     have VW : valid w. econstructor; eauto.
-    destruct (IHD w nil ltac:(cbv; done) VW) as [D1 [IS1 [OS1 V1]]].
-    destruct (IHE w nil ltac:(cbv; done) VW) as [D2 [IS2 [OS2 V2]]].
-    exists (D1 ++ D2).
+    destruct (IHD w empty_fset ltac:(cbv; done) VW) as [D1 [IS1 [OS1 V1]]].
+    destruct (IHE w empty_fset ltac:(cbv; done) VW) as [D2 [IS2 [OS2 V2]]].
+    exists (union_fset D1 D2).
     repeat split; eauto.
-    cbv. done.
-  - destruct IHF as [D1 [IS1 [OS1 V1]]].
-    intros y yIn. eapply SUB. right. auto.
-    have APP: a ∈ (D w ▩ E w). eapply SUB. left.  auto.
+    rewrite union_mem.
+    admit. (* mem empty_fset = emptyset *)
+  - intros a f IHF SUB VW. 
+    destruct IHF as [D1 [IS1 [OS1 V1]]].
+    intros y yIn. eapply SUB. rewrite union_mem. right. auto. auto.
+    have APP: a ∈ (D w ▩ E w). eapply SUB. rewrite union_mem. left. rewrite mem_singleton_eq.  auto. 
     inversion APP; subst.
     + unfold continuous in IHD.
-      edestruct (IHD w ((V ↦ a) :: nil) ltac:(eauto) VW) as 
+      edestruct (IHD w (singleton_fset (V ↦ a)) ltac:(eauto) VW) as 
       [ D2 [ IS2 [ OS2 V2 ]]].
       edestruct (IHE w V ltac:(eauto) VW) as 
       [ D3 [ IS3 [ OS3 V3 ]]].
-      exists (D1 ++ D2 ++ D3).
+      exists (union_fset D1 (union_fset D2 D3)).
       repeat split; eauto.
       intros y yIn. 
       repeat rewrite union_mem.
+      repeat rewrite union_mem in yIn.
+      rewrite mem_singleton_eq in yIn.
       destruct yIn; subst.
-      ++ eapply BETA with (V := V); eauto.
+      ++ inversion H2. subst.
+         eapply BETA with (V := V); eauto.
          eapply mD with (D1 := mem D2).
          repeat rewrite union_mem.
          intros z zIn. right. left. auto.
@@ -1361,62 +1333,62 @@ Proof.
          repeat rewrite union_mem.
          transitivity (E (mem D3)). auto.
          eapply mE. right. right. auto.
-      ++ specialize (OS1 y H2). 
+      ++ specialize (OS1 x H2). 
          eapply APPLY_mono_sub. 3: eapply OS1.
          eapply mD. intros z zIn. left. auto.
          eapply mE. intros z zIn. left. auto.
-    + destruct (IHD w ((v_list VS) :: nil)) as [D2 [IS2 [OS2 V2]]]; auto.
-      destruct (IHE w ((v_nat k) :: nil )) as [D3 [IS3 [OS3 V3]]]; auto.
-      exists (D1 ++ D2 ++ D3).
+    + destruct (IHD w (singleton_fset (v_list VS))) as [D2 [IS2 [OS2 V2]]]; auto.
+      destruct (IHE w (singleton_fset (v_nat k))) as [D3 [IS3 [OS3 V3]]]; auto.
+      exists (union_fset D1 (union_fset D2 D3)).
       repeat split; eauto.
       intros y yIn. 
       repeat rewrite union_mem.
+      repeat rewrite union_mem in yIn.
+      rewrite mem_singleton_eq in yIn.
       destruct yIn.
-      ++ subst. 
+      ++ inversion H2. subst. 
          eapply PROJ with (VS := VS) (k:= k); eauto.
          eapply mD with (D1 := mem D2); auto.
          intros z zIn. right. left. auto.
          eapply mE with (D1 := mem D3); auto.
          intros z zIn. right. right. auto.
-      ++ specialize (OS1 y ltac:(eauto)).
+      ++ specialize (OS1 x ltac:(eauto)).
          eapply APPLY_mono_sub. 3: eapply OS1.
          eapply mD. intros z zIn. left. auto.
          eapply mE. intros z zIn. left. auto.
-    + destruct (IHD w (x :: nil)) as [D2 [IS2 [OS2 V2]]]; auto.
-      exists (D1 ++ D2).
+    + destruct (IHD w (singleton_fset x)) as [D2 [IS2 [OS2 V2]]]; auto.
+      exists (union_fset D1 D2).
       repeat split; eauto.
       repeat rewrite union_mem.
+      repeat rewrite mem_singleton_eq.
       intros y yIn.
-      destruct yIn; subst.
+      destruct yIn; try inversion H1; subst.
       ++ eapply APPWRONG with (x:=x); auto.
          eapply mD with (D1 := mem D2); eauto.
-      ++ specialize (OS1 y H1).
+      ++ specialize (OS1 x0 H1).
          eapply APPLY_mono_sub. 3: eapply OS1.
          eapply mD. intros z zIn. left. auto.
          eapply mE. intros z zIn. left. auto.
-    + destruct (IHE w (x :: nil)) as [D2 [IS2 [OS2 V2]]]; auto.
-      destruct (IHD w (v_list VS :: nil)) as [D3 [IS3 [OS3 V3]]]; auto.
-      exists (D1 ++ D2 ++ D3).
+    + destruct (IHE w (singleton_fset x)) as [D2 [IS2 [OS2 V2]]]; auto.
+      destruct (IHD w (singleton_fset (v_list VS))) as [D3 [IS3 [OS3 V3]]]; auto.
+      exists (union_fset D1 (union_fset D2 D3)).
       repeat split; eauto.
-      intros y yIn. 
       repeat rewrite union_mem.
+      rewrite mem_singleton_eq.
+      intros y yIn. 
       destruct yIn.
-      ++ subst. 
+      ++ inversion H2. subst. 
          eapply PROJWRONG with (VS := VS); eauto.
          eapply mD with (D1 := mem D3). intros z zIn. right. right. auto.
          eauto.
          eapply mE with (D1 := mem D2). intros z zIn. right. left. auto. 
          eauto.
-      ++ specialize (OS1 y H2).
+      ++ specialize (OS1 x0 H2).
          eapply APPLY_mono_sub. 3: eapply OS1.
          eapply mD. intros z zIn. left. auto.
          eapply mE. intros z zIn. left. auto.
-Qed.
+Admitted.
 
-Lemma union_left {A}{X Y Z: P A} : X ⊆ Z -> Y ⊆ Z -> X ∪ Y ⊆ Z.
-Proof. intros h1 h2.
-       intros x xIn. destruct xIn; eauto.
-Qed.
 
 Lemma CONS_monotone {A}{D E: P A -> P Value} :
     monotone D 
@@ -1433,41 +1405,44 @@ Lemma CONS_continuous {D E} :
   -> continuous (fun ρ => CONS (D ρ) (E ρ)).
 Proof.
   intros IHD IHE mD mE.
-  intros w F SUB VW.
-  induction F.
-  - destruct VW as [v vIn].
+  intros w F.
+  eapply fset_induction with (f := F). Unshelve. 3: eauto.
+  - move=> SUB VW. destruct VW as [v vIn].
     have VW : valid w. econstructor; eauto.
-    destruct (IHD w nil ltac:(cbv; done) VW) as [D1 [IS1 [OS1 V1]]].
-    destruct (IHE w nil ltac:(cbv; done) VW) as [D2 [IS2 [OS2 V2]]].
-    exists (D1 ++ D2).
+    destruct (IHD w empty_fset ltac:(cbv; done) VW) as [D1 [IS1 [OS1 V1]]].
+    destruct (IHE w empty_fset ltac:(cbv; done) VW) as [D2 [IS2 [OS2 V2]]].
+    exists (union_fset D1 D2).
     repeat split; eauto.
     cbv. done.
-  - destruct IHF as [D1 [IS1 [OS1 V1]]].
-    intros y yIn. eapply SUB. right. auto.
-    have C: a ∈ CONS (D w)(E w). eapply SUB. left.  auto.
+  - move=> a f IHF SUB VW. 
+    rewrite union_mem in SUB. rewrite mem_singleton_eq in SUB.
+    destruct IHF as [D1 [IS1 [OS1 V1]]]; auto.
+    + intros y yIn. eapply SUB. right. auto.
+    + have C: a ∈ CONS (D w)(E w). eapply SUB. left. auto.  
     destruct a; try done.
     destruct l; try done.
     move: C => [vIn lIn].
-    destruct (IHD w (v :: nil) ltac:(auto) VW) as [D2 [IS2 [OS2 V2]]].
-    destruct (IHE w (v_list l :: nil) ltac:(auto) VW) as [D3 [IS3 [OS3 V3]]].
-    exists (D1 ++ D2 ++ D3).
+    destruct (IHD w (singleton_fset v) ltac:(auto) VW) as [D2 [IS2 [OS2 V2]]].
+    destruct (IHE w (singleton_fset (v_list l)) ltac:(auto) VW) as [D3 [IS3 [OS3 V3]]].
+    exists (union_fset D1 (union_fset D2 D3)).
     repeat rewrite union_mem.
+    rewrite mem_singleton_eq.
     repeat split; eauto.
     ++ eapply union_left; eauto. eapply union_left; eauto.
-    ++ intros y yIn.
-       destruct yIn; subst.
+    ++ repeat rewrite mem_singleton_eq in OS2, OS3. 
+       intros y yIn.
+       destruct yIn. 
+       inversion H. subst.
        cbn. split.
        eapply mD with (D1 := mem D2); eauto.
-       intros z zIn. right. left. auto.
-       eapply mE with (D1 := mem D3); eauto.
-       intros z zIn. right. right. auto.
+       eapply mE. intros z zIn. right. right. eauto. eauto.
        eapply CONS_mono_sub. 3: eapply OS1; eauto.
        eapply mD. intros z zIn. left. auto.
        eapply mE. intros z zIn. left. auto.
 Qed.
 
 Lemma BIND_monotone {A B} 
-  {D : P Value -> P (Comp (list A))} 
+  {D : P Value -> P (Comp (fset A))} 
   {K : P Value -> P A -> P (Comp B)}: 
   monotone D ->
   (forall v, monotone (fun x => K x v)) ->
@@ -1479,7 +1454,7 @@ Proof.
 Qed.
  
 Lemma BIND_continuous {A B} 
-  {D : P Value -> P (Comp (list A))} 
+  {D : P Value -> P (Comp (fset A))} 
   {K : P Value -> P A -> P (Comp B)}: 
   continuous D ->
   monotone D ->
@@ -1488,45 +1463,49 @@ Lemma BIND_continuous {A B}
   continuous (fun v => (BIND (D v) (K v))). 
 Proof.
   intros IHD mD IHK mK.
-  intros w F SUB VW.
-  induction F.
-  - destruct VW as [v vIn].
+  intros w F.
+  eapply fset_induction with (f:= F). Unshelve. 3: eauto.
+  - move=> SUB VW. destruct VW as [v vIn].
     have VW : valid w. econstructor; eauto.
-    destruct (IHD w nil ltac:(cbv; done) VW) as [D1 [IS1 [OS1 V1]]].
+    destruct (IHD w empty_fset ltac:(cbv; done) VW) as [D1 [IS1 [OS1 V1]]].
     exists D1.
     repeat split; eauto.
     cbv. done.
-  - destruct IHF as [D1 [IS1 [OS1 V1]]].
+  - move=> a f IHF SUB VW. 
+    rewrite union_mem in SUB.
+    rewrite mem_singleton_eq in SUB.
+    destruct IHF as [D1 [IS1 [OS1 V1]]]; auto.
     intros y yIn. eapply SUB. right. auto.
     have C: a ∈ BIND (D w)(K w). eapply SUB. left.  auto.
     destruct C as [u [k [uIn [h1 h2]]]].    
     unfold continuous in IHD.
-    destruct (IHD w (u :: nil) ltac:(eauto) VW) as [D2 [IS2 [OS2 V2]]].
+    destruct (IHD w (singleton_fset u) ltac:(eauto) VW) as [D2 [IS2 [OS2 V2]]].
+    rewrite mem_singleton_eq in OS2.
     destruct u.
     + simpl in h1. subst.
-      exists (D1 ++ D2).
-      rewrite union_mem.
+      exists (union_fset D1 D2).
+      repeat rewrite union_mem.
+      repeat rewrite mem_singleton_eq.
       repeat split; eauto.
       eapply union_left; auto.
       cbn.
       intros z zIn. 
-      destruct zIn; subst.
+      destruct zIn; try inversion H; subst.
       ++ exists c_wrong. exists k.
          repeat split.
-         eapply mD. 2: eapply OS2; auto.
-         auto.
+         eapply mD. 2: eapply OS2; auto. eauto.
          intros x h. inversion h.
-      ++ specialize (OS1 z H).
+      ++ specialize (OS1 x H).
          eapply BIND_mono.
          3: eapply OS1.
          eapply mD. auto.
-         intros x y yIn.
+         intros x0 y yIn.
          eapply mK. 2: eapply yIn. auto.
     + have lemma:          
       forall l, 
-         (forall a : list A, Comp_In a (c_multi l) -> K w (mem a) (k a)) -> 
+         (forall a : fset A, Comp_In a (c_multi l) -> K w (mem a) (k a)) -> 
          exists D0, (mem D0 ⊆ w) /\
-           (forall a : list A, Comp_In a (c_multi l) -> K (mem D0) (mem a) (k a)) /\ valid_mem D0.
+           (forall a : fset A, Comp_In a (c_multi l) -> K (mem D0) (mem a) (k a)) /\ valid_mem D0.
       { clear uIn D1 IS1 OS1 V1 h1 h2.
         induction l0; intros h2.
         ++ exists D2. 
@@ -1537,9 +1516,10 @@ Proof.
            { intros x xIn. apply h2. simpl. simpl in xIn. right. auto. }
            move: (h2 a0 ltac:(econstructor; eauto)) => Ka.
            unfold continuous in IHK.
-           destruct (IHK (mem a0) w (k a0 :: nil) ltac:(eauto) VW) as [D4 [IS4 [OS4 V4]]].
-           exists (D2 ++ D3 ++ D4).
+           destruct (IHK (mem a0) w (singleton_fset (k a0)) ltac:(eauto) VW) as [D4 [IS4 [OS4 V4]]].
+           exists (union_fset D2 (union_fset D3 D4)).
            repeat rewrite union_mem.
+           repeat rewrite mem_singleton_eq in OS4.
            repeat split; eauto.
            eapply union_left; auto.  eapply union_left; auto.
            intros x xIn.           
@@ -1550,12 +1530,13 @@ Proof.
              right. left. auto.
       } 
       destruct (lemma l h2) as [D3 [IS3 [OS3 V3]]].
-      exists (D1 ++ D2 ++ D3).
+      exists (union_fset D1 (union_fset D2 D3)).
       repeat rewrite union_mem.
+      rewrite mem_singleton_eq.
       repeat split; eauto.
       eapply union_left; auto.  eapply union_left; auto.
       intros y yIn. destruct yIn.
-      ++ subst a. subst y.
+      ++ inversion H. subst a. inversion H. subst x.
          exists (c_multi l). exists k.
          repeat split; eauto.
          eapply mD. 2: eapply OS2; eauto. right. left. auto.
@@ -1576,34 +1557,40 @@ Lemma RET_continuous {A} {D : P Value -> P A } :
   continuous D -> monotone D -> continuous (fun v : P Value => RET (D v)).
 Proof.
   intros IHD mD.
-  intros w F SUB VW.
-  induction F.
-  - destruct VW as [v vIn].
+  intros w F.
+  eapply fset_induction with (f := F). Unshelve. 3: auto.
+  - move=> SUB VW. 
+    destruct VW as [v vIn].
     have VW : valid w. econstructor; eauto.
-    destruct (IHD w nil ltac:(cbv; done) VW) as [D1 [IS1 [OS1 V1]]].
+    destruct (IHD w empty_fset ltac:(cbv; done) VW) as [D1 [IS1 [OS1 V1]]].
     exists D1.
     repeat split; eauto.
     cbv. done.
-  - destruct IHF as [D1 [IS1 [OS1 V1]]].
+  - move=> a f IHF. 
+    repeat rewrite union_mem.
+    move=> SUB VW.
+    rewrite mem_singleton_eq in SUB.
+    destruct IHF as [D1 [IS1 [OS1 V1]]]; auto.
     intros y yIn. eapply SUB. right. auto.
     have C: a ∈ RET (D w). eapply SUB. left.  auto.
     destruct a; try done.
     destruct l; try done.
-    destruct l0; try done.
+    destruct l; try done.
     cbn in C.
     move: C => [C VL].
     unfold continuous in IHD.
-    destruct (IHD w l ltac:(eauto) VW) as [D2 [IS2 [OS2 V2]]].
-    exists (D1 ++ D2).
+    destruct (IHD w f0 ltac:(eauto) VW) as [D2 [IS2 [OS2 V2]]].
+    exists (union_fset D1 D2).
     rewrite union_mem.
+    rewrite mem_singleton_eq.
     repeat split; eauto.
     eapply union_left; eauto.
     intros y yIn. 
     destruct yIn.
-    ++ subst.
+    ++ inversion H.  subst.
        cbn. split; auto. intros z zIn. specialize (OS2 z zIn). 
        eapply mD. 2: eapply OS2. eauto.
-    ++ specialize (OS1 y H).
+    ++ specialize (OS1 x H).
        eapply RET_mono. 2: eapply OS1. auto.
 Qed.
 

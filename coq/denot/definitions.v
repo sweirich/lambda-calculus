@@ -95,6 +95,27 @@ Open Scope monad_scope.
 Import SetNotations.
 Local Open Scope set_scope.
 
+Lemma union_left {A}{X Y Z: P A} : X ⊆ Z -> Y ⊆ Z -> X ∪ Y ⊆ Z.
+Proof. intros h1 h2.
+       intros x xIn. destruct xIn; eauto.
+Qed.
+
+
+Lemma in_singleton_sub {A}{v:A}{X} : v ∈ X -> ⌈ v ⌉ ⊆ X.
+Proof.
+  intros. 
+  rewrite In_Sub in H.
+  rewrite <- mem_singleton_eq.
+  auto.
+Qed.
+
+#[export] Hint Resolve in_singleton_sub : core.
+
+
+
+Definition valid {A} (V : P A) : Type :=
+  nonemptyT V.
+
 (* Sets of Values:   P Value === Value -> Prop *)
 
 (* Some lists are finite representations of sets. Others 
@@ -103,14 +124,22 @@ Local Open Scope set_scope.
 
 Inductive fset (A:Type) := FSet : (list A) -> fset A.
 Arguments FSet {_}.
+
 Definition In_fset {A: Type} (x: A) : fset A -> Prop := fun '(FSet X) => List.In x X.
+Definition empty_fset {A:Type} : fset A := FSet nil.
 Definition singleton_fset {A:Type} (x : A) : fset A := FSet (x :: nil).
 Definition union_fset {A:Type} '(FSet x) '(FSet y) : fset A := FSet (x ++ y).
 Definition nonempty_fset {A:Type} : fset A -> Prop := fun '(FSet xs) => xs <> nil.
 Definition Forall_fset {A:Type} (f : A -> Prop) : (fset A) -> Prop := 
   fun '(FSet xs) => List.Forall f xs.
+Definition ForallT_fset {A:Type} (f : A -> Type) : (fset A) -> Type := 
+  fun '(FSet xs) => List.ForallT f xs.
+
 
 Definition mem {A: Type} : fset A -> P A := fun xs => fun x => In_fset x xs.
+Definition valid_mem {A} (V : fset A) : Prop :=
+  match V with FSet XS => XS <> nil end.
+
 
 Section FSetTheory.
 
@@ -193,10 +222,98 @@ Proof. intros. destruct E as [l]. induction l. cbv in H. done.
        destruct H. subst. econstructor. auto. 
        simpl. right. eauto. Qed.
 
+
+Lemma valid_mem_valid {V : fset A} : valid_mem V -> valid (mem V).
+Proof.
+  intros V1.
+  destruct V; cbn in *.
+  destruct l; try done.
+  exists a. left; auto.
+Qed.
+
+
+(* A finite, inhabited subset of a valid set is valid *)
+Lemma valid_sub_valid_mem {D : fset A}{X} :
+ nonempty_fset D -> valid X -> mem D ⊆ X -> valid_mem D.
+Proof.
+  intros NE V1 S.
+  inversion V1.
+  induction D. try done. 
+Qed.
+
+
+Lemma valid_nonempty_mem : forall (V : fset A), 
+      valid_mem V -> nonemptyT (mem V).
+Proof. 
+  intros. eapply valid_mem_valid. auto. Qed.
+
+Lemma valid_mem_nonnil (V : list A) : valid_mem (FSet V) -> V <> nil.
+Proof. intros h; auto. Qed.
+
+
+
+Lemma In_mem_Included {d:A}{D} : 
+    d ∈ D ->
+    mem (singleton_fset d) ⊆ D.
+Proof.
+  intros.
+  intros y yIn. destruct yIn. subst; auto. done.
+Qed.
+
+Lemma Included_mem_In {d:A}{D} : 
+    mem (singleton_fset d) ⊆ D ->
+    d ∈ D.
+
+Proof.
+  intros.
+  specialize (H d). eapply H. 
+  cbv. left; auto.
+Qed.
+
+Lemma mem_union_Included {D1 D2 : fset A}{w} : 
+ mem D1 ⊆ w ->
+ mem D2 ⊆ w ->
+ mem (union_fset D1 D2) ⊆ w.
+Proof. 
+  intros.
+  rewrite union_mem. intros y yIn. induction yIn; eauto.
+Qed.
+
+Lemma nonempty_fset_union1 {E1 E2 : fset A} : 
+  nonempty_fset E1 ->
+  nonempty_fset (union_fset E1 E2).
+Proof.
+  intros. destruct E1. destruct E2. cbv in H. cbn.
+  destruct l. done.  done.
+Qed.
+
+Lemma mem_union_valid {D1 D2 : fset A}: 
+  valid_mem D1 ->
+  valid_mem D2 ->
+  valid_mem (union_fset D1 D2).
+Proof. intros.
+ unfold valid_mem in *. 
+Admitted.
+
+Lemma singleton_valid (x : A) :
+ valid_mem (singleton_fset x).
+Admitted.
+
+
+Lemma fset_induction (P : fset A -> Prop) : 
+       P empty_fset -> 
+       (forall (a:A) (l : fset A), P l -> P (union_fset (singleton_fset a) l)) -> 
+       forall f, P f.
+Admitted.
+
+
 End FSetTheory.
 
+#[export] Hint Resolve nonempty_fset_union1 : core.
 #[export] Hint Resolve mem_one_inv nonnil_nonempty_mem In_Sub : core.
-#[export] Hint Resolve singleton_mem mem_singleton : core. 
+#[export] Hint Resolve singleton_mem mem_singleton singleton_valid
+  valid_mem_valid valid_sub_valid_mem valid_nonempty_mem valid_mem_valid : core. 
+#[export] Hint Resolve In_mem_Included Included_mem_In mem_union_Included mem_union_valid : core.
 
 (* ------------------------------------------------------- *)
 
@@ -317,6 +434,8 @@ Proof.
 Qed.
 
 
+(* Consistency Reflexivity for lists *)
+
 End List.
 
 #[export] Instance Consistency_list { A : Type } `{ Consistency A } : Consistency (list A) := 
@@ -409,6 +528,8 @@ Proof.
        intros x1 y1 I3 I4. eapply  h1. right; eauto. eauto.
        exists x0. exists y0. repeat split; eauto.
 Qed. 
+
+(* Consistency is reflexive ?? *)
 
 End FSet.
 
@@ -644,10 +765,11 @@ Qed.
 (* We do the same thing for Value_rect *)
 
 
+
 Fixpoint Value_rec' (P : Value -> Type)
        (n : forall n : nat, P (v_nat n)) 
-       (m : forall (l : list Value) (c : Comp (list Value)), 
-           List.ForallT P l -> Comp.ForallT (List.ForallT P) c -> P (v_map l c)) 
+       (m : forall (l : fset Value) (c : Comp (fset Value)), 
+           ForallT_fset P l -> Comp.ForallT (ForallT_fset P) c -> P (v_map l c)) 
        (f : P v_fun)
        (l : (forall l : list Value, List.ForallT P l -> P (v_list l)))
        (v : Value) : P v := 
@@ -659,28 +781,29 @@ Fixpoint Value_rec' (P : Value -> Type)
     | cons w ws => @List.ForallT_cons Value P w ws (rec w) (rec_list ws)
     end
   in 
-  let fix rec_list_list (vs : list (list Value)) : List.ForallT (List.ForallT P) vs :=
+  let fix rec_fset (fs : fset Value) : ForallT_fset P fs :=
+    match fs with 
+      | FSet xs => rec_list xs
+    end in
+  let fix rec_list_fset (vs : list (fset Value)) : List.ForallT (ForallT_fset P) vs :=
     match vs with 
     | nil => List.ForallT_nil _
-    | cons w ws => @List.ForallT_cons (list Value) (List.ForallT P) w ws (rec_list w) (rec_list_list ws)
+    | cons w ws => @List.ForallT_cons (fset Value) (ForallT_fset P) w ws (rec_fset w) (rec_list_fset ws)
     end
   in 
 
-  let rec_comp (c : Comp (list Value)) : Comp.ForallT (List.ForallT P) c :=
-    match c as c1 return Comp.ForallT (List.ForallT P) c1 with 
+  let rec_comp (c : Comp (fset Value)) : Comp.ForallT (ForallT_fset P) c :=
+    match c as c1 return Comp.ForallT (ForallT_fset P) c1 with 
     | c_wrong => I
-    | c_multi vs => rec_list_list _
+    | c_multi vs => rec_list_fset _
     end
   in
   match v with 
   | v_nat k => n k
-  | v_map X v => 
-      m X v (rec_list X) (rec_comp v)
+  | v_map X v => m X v (rec_fset X) (rec_comp v)
   | v_fun => f
   | v_list X => l X (rec_list X)
   end.
-
-
 
 (* Two sets are consistent if all of their elements 
    are consistent. *)
@@ -694,17 +817,12 @@ Definition InconsistentSets {A:Type} `{Consistency A} V1 V2 :=
    { Consistent := ConsistentSets ; Inconsistent := InconsistentSets }.
 
 
-Definition ConsistentSet {A:Type} `{Consistency A} V := ConsistentSets V V.
+Definition ConsistentSet {A:Type} `{Consistency A} (V : P A) := ConsistentSets V V.
 
 
 (* ------------ Valid values and computations ------------------ *)
 
 
-Definition valid (V : P Value) : Type :=
-  nonemptyT V.
-
-Definition valid_mem (V : fset Value) : Prop :=
-  match V with FSet XS => XS <> nil end.
 
 (* Produces at least one result *)
 

@@ -31,7 +31,7 @@ Proof.
     unfold InconsistentSets in *.
     destruct C as [x [y [h1 [h2 I]]]].
     exists x. exists y. repeat split; auto.
-  + destruct l0; try done.
+  + match goal with [l : list (fset Value) |- _ ] => destruct l; try done end.
     cbn. cbn in C.
     destruct C as [l1 [l2 [-> [NE1 [NE2 [h1 [h2 CC]]]]]]].
     exists l1. exists l2.
@@ -240,7 +240,7 @@ unfold Proper. intros x1 y1 E1. eapply RET_mono; auto. Qed.
 #[export] Instance Proper_Same_RET {A} : Proper (Same_set ==> Same_set) (@RET A).
 unfold Proper. intros x1 y1 E1. eapply RET_cong; auto. Qed.
 
-Lemma BIND_mono {A B} : forall (D1 D2 : P (Comp (list A))) (K1 K2 : P A -> P (Comp B)),
+Lemma BIND_mono {A B} : forall (D1 D2 : P (Comp (fset A))) (K1 K2 : P A -> P (Comp B)),
   D1 ⊆ D2 -> (forall x, K1 x ⊆ K2 x) ->
   BIND D1 K1 ⊆ BIND D2 K2.
 Proof. 
@@ -268,7 +268,7 @@ Proof.
     intros a aIn. eapply H0. eapply h4. auto.
 Qed.
 
-Lemma BIND_cong {A B} : forall (D1 D2 : P (Comp (list A))) (K1 K2 : P A -> P (Comp B)),
+Lemma BIND_cong {A B} : forall (D1 D2 : P (Comp (fset A))) (K1 K2 : P A -> P (Comp B)),
   D1 ≃ D2 -> (forall x, K1 x ≃ K2 x) ->
   BIND D1 K1 ≃ BIND D2 K2.
 Proof.

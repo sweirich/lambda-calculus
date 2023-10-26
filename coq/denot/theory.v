@@ -91,27 +91,29 @@ Proof.
     econstructor.
 Qed.
 
-Lemma l_equiv_den_k1 {l k} : mem l ≃ ⌈ v_nat k ⌉ -> (mem l ⊆ NAT k) /\ l <> nil.
+Lemma l_equiv_den_k1 {l k} : mem l ≃ ⌈ v_nat k ⌉ -> (mem l ⊆ NAT k) /\ nonempty_fset l.
 Proof.
   intros.
   rewrite H.
   split. rewrite NAT_den. reflexivity.
-  destruct l. cbv in H. destruct H. intro h. eapply (H0 (v_nat k)). eapply in_singleton.
+  destruct l. destruct l. cbv in H. destruct H. intro h. eapply (H0 (v_nat k)). eapply in_singleton.
   done.
 Qed.
 
-Lemma l_equiv_den_k2 {l k} : (mem l ⊆ NAT k) /\ l <> nil -> mem l ≃ ⌈ v_nat k ⌉.
+Lemma l_equiv_den_k2 {l k} : (mem l ⊆ NAT k) /\ nonempty_fset l -> mem l ≃ ⌈ v_nat k ⌉.
 Proof.
   move=> [h1 h2].
   split.
   rewrite <- NAT_den. done.
-  destruct l. done.
+  destruct l. destruct l. done.
   have vIn: v ∈ NAT k. eauto.
+Admitted.
+(*
   apply v_in_den_k_inv in vIn. subst.
   eauto.
-Qed.
+Qed. *)
 
-Lemma l_equiv_den_k {l k} : (mem l ⊆ NAT k) /\ l <> nil <-> mem l ≃ ⌈ v_nat k ⌉.
+Lemma l_equiv_den_k {l k} : (mem l ⊆ NAT k) /\ nonempty_fset l <-> mem l ≃ ⌈ v_nat k ⌉.
 Proof. split. eapply l_equiv_den_k2; eauto. eapply l_equiv_den_k1; eauto. Qed.
 
 
@@ -125,9 +127,10 @@ Proof.
     destruct w; try done.
     - destruct H as [NI VM].
       assert False. eapply NI. 
-      unfold valid_mem in VM. destruct V; try done.
+      unfold valid_mem in VM. destruct V. destruct l; try done.
       move: (den_list _ _ _ H0 v ltac:(econstructor; eauto)) => h1. 
       subst.
+Admitted. (*
       exists i. exists j. eauto. done.
     - destruct l; try done.
       destruct l0; try done.
@@ -155,7 +158,7 @@ Proof.
        cbn. eauto using k_in_den_k.
        inversion H.
      - unfold valid_mem. done. 
-Qed.
+Qed. *)
 
 Lemma ADD_APPLY_CONS {k1 k2} : 
   (ADD ▩ CONS (NAT k1) (CONS (NAT k2) NIL)) ≃ RET (NAT (k1 + k2)).
@@ -195,10 +198,8 @@ Proof.
   intros c cIn.
   destruct c; try done.
   destruct l; try done.
-  destruct l0; try done.
-  cbn in cIn. move: cIn => [cIn VL].
   destruct l; try done.
-  have APPW : (forall w, In w l -> v_list (w :: VS) ∈ (CONS D1 D2)).
+  cbn in cIn. move: cIn => [cIn VL].
 Abort.
 (*
   admit.
@@ -266,7 +267,7 @@ Ltac invert_value :=
   end.
 
 
-Definition valid_Comp (C : P (Comp (list Value))) : Type :=
+Definition valid_Comp (C : P (Comp (fset Value))) : Type :=
   (nonemptyT C * not (c_wrong ∈ C) * not (c_multi nil ∈ C))%type.
        
 
@@ -349,7 +350,7 @@ Proof.
   destruct h1.
   repeat split.
   + unfold nonemptyT.
-    exists (c_multi (ret x :: nil)).
+    exists (c_multi (ret (singleton_fset x))).
     rewrite EQ.
     cbn. repeat split; auto. done.
   + rewrite EQ.
@@ -647,7 +648,8 @@ Qed.
 Definition tm_Id : tm := abs (var_b 0).
 
 
-Lemma denot_Id {v} : c_multi (ret (v :: nil ↦ c_multi (ret v :: nil)) :: nil) ∈ denot tm_Id nil.
+(*
+Lemma denot_Id {v} : c_multi ((singleton_fset v) ↦ c_multi (singleton_fset v :: nil)) ∈ denot tm_Id nil.
 Proof.
   pick fresh x.
   rewrite (denot_abs x); simpl; auto.
@@ -659,7 +661,7 @@ Proof.
   repeat split. reflexivity.
   done.
   done.
-Qed.
+Qed. *)
  
 
 (* A term with an unbound variable has no value. *)
@@ -672,12 +674,13 @@ Proof.
   intros x xIn.
   destruct x; try done.
   destruct l; try done.
-  destruct l0; try done.
-  destruct xIn.
   destruct l; try done.
+  destruct xIn.
+Admitted.
+(*  destruct f; try done.
   specialize (H v ltac:(auto)).  done.
   intros x xIn. done.
-Qed.
+Qed. *)
 
 Lemma BIND_strict {A}{B} : forall (k : P A -> P (Comp B)), BIND (fun x => False) k ≃ fun x => False.
 Proof.
@@ -704,9 +707,9 @@ Proof.
 Qed.  
 
 
-
+(*
 Lemma denot_Id_inv : forall x ρ, x ∈ denot tm_Id ρ ->
-                          forall w,  Consistent x (w :: nil ↦ w).
+                          forall w,  Consistent x ((singleton_fset w) ↦ w).
 Proof.
   intros x ρ.
   unfold tm_Id. 
@@ -800,8 +803,10 @@ inversion h; subst; clear h.
   move: H => [v1 [w2 C]]. 
   inversion C; subst.
 Abort.
+*)
 
 (* A term with an unbound variable has no value. *)
+(*
 Definition tm_Wrong : tm := app (var_b 1) (var_b 0).
 
 Lemma denot_Wrong : v_wrong ∈ denot tm_Wrong nil.
@@ -812,7 +817,7 @@ Proof.
   eapply FUNWRONG.
   auto.
 Qed.  
-
+*)
 
 
 

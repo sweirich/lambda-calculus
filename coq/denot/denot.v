@@ -115,9 +115,7 @@ Proof.
   intros x ρ.
   cbv. 
   extensionality b.
-  destruct b. done.
-  destruct l. done.
-  destruct l0; try done.   
+  match goal with [ b : Comp _ |- _ ] => destruct b; try done end.
 Qed.
 
 Lemma denot_val_var : forall x ρ, denot_val (var_f x) ρ = ρ ⋅ x.

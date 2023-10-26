@@ -49,422 +49,44 @@ Import SetNotations.
 Local Open Scope set_scope.
 
 
-Lemma exclusive_PointwiseList {A} (f g : A -> A -> Prop) :
-  exclusive f g ->
-  exclusive (ConsistentPointwiseList f) (InconsistentPointwiseList g).
-Proof.
-  intros efg. intros x y FF. 
-  induction FF; intros EG; inversion EG; eauto.
-  - inversion H.
-  - move: (Forall2_length _ _ FF) => eq. 
-    simpl in H0. rewrite eq in H0. done.
-  - inversion H0; subst. eauto.
-    eapply IHFF. right. eauto.
-Qed.
-
-
-Lemma decidable_PointwiseList {A} (f g : A -> A -> Prop) :
-  decidable f g ->
-  decidable (ConsistentPointwiseList f) (InconsistentPointwiseList g).
-Proof.
-  intros dfg. intros x.
-  induction x; intros y; destruct y.
-  - left; eauto. econstructor.
-  - right; eauto. left. done.
-  - right; eauto. left. done.
-  - destruct (IHx y). destruct (dfg a a0).
-    left. econstructor; eauto.
-    right. right. econstructor; eauto.
-    right. destruct i. left. eauto. right. eauto.
-Qed.
-
-
-Lemma reflexive_PointwiseList {A} (f : A -> A -> Prop): 
-  reflexive _ f ->
-  reflexive _ (ConsistentPointwiseList f).
-Proof.
-  unfold reflexive in *.
-  intros h x.
-  induction x; econstructor; eauto.
-Qed.  
-
-(*
-Lemma ConsistentPointwiseList_refl : forall XS, List.ForallT ConsistentReflexive XS -> ConsistentPointwiseList XS XS. 
-Proof.
-  induction 1; unfold ConsistentPointwiseList; eauto.
-Qed.
-*)
-
-(* ---------------------------------------------- *)
-
-Lemma exclusive_List2_any {A} (f g : A -> A -> Prop) :
-  exclusive f g ->
-  exclusive (List.Forall2_any f) (List.Exists2_any g).
-Proof.
-  intros efg. intros x. 
-  induction x; intros y FF EG; destruct y; 
-    unfold List.Forall2_any in FF;
-    unfold List.Exists2_any in EG.
-  - destruct EG as [x0 [y0 [h1 [h2 _]]]]. inversion h1.
-  - destruct EG as [x0 [y0 [h1 [h2 _]]]]. inversion h1.
-  - destruct EG as [x0 [y0 [h1 [h2 _]]]]. inversion h2.
-  - destruct EG as [x0 [y0 [h1 [h2 gg]]]]. 
-    specialize (FF x0 y0 h1 h2).
-    eapply efg; eauto.
-Qed.
-
-Lemma decidable_List2_any {A} (f g : A -> A -> Prop) :
-  decidable f g ->
-  decidable (List.Forall2_any f) (List.Exists2_any g).
-Proof.
-  intros dfg. intros x.
-  induction x; intros y;
-     unfold List.Forall2_any;
-     unfold List.Exists2_any.
-  - left. done.
-  - destruct (IHx y). 
-    + induction y.
-      left. intros x0 y0 h1 h2. inversion h2. 
-      have CE: (List.Forall2_any f x y). { intros x0 y0 h1 h2. eapply f0; eauto. simpl. eauto. }
-      specialize (IHy CE). destruct IHy.
-      ++ destruct (dfg a a0).
-         left.
-         { intros x0 y0 i1 i2.
-           destruct i1; destruct i2; subst. 
-           -- auto.
-           -- apply f1; eauto. simpl; auto.
-           -- apply f0; eauto. simpl; auto.
-           -- apply CE; eauto.
-         }
-         right.
-         exists a. exists a0. simpl. split; auto.
-      ++ right. destruct e as [x0 [y0 [h1 [h2 h3]]]].
-         exists x0. exists y0. simpl. eauto.
-    + right. destruct e as [x0 [y0 [i1 [i2 h]]]]. 
-      exists x0. exists y0. 
-      repeat split; try right; auto. 
-Qed.
-      
-
-Lemma reflexive_Forall2_any {A} (f : A -> A -> Prop): 
-  reflexive _ f ->
-  reflexive _ (List.Forall2_any f).
-Proof.
-  unfold reflexive in *.
-  intros h x.
-  unfold List.Forall2_any.
-  induction x; intros x0 y0 h1 h2.
-  - inversion h1.
-Abort.
-
-
-(* ---------------------------------------------- *)
-
-
-Section Computations.
-
-Context 
-  { A : Type }
-  ( f : A -> A -> Prop )
-  ( g : A -> A -> Prop )
-  ( efg : exclusive f g)
-  ( dfg : decidable f g).
-
-(*
-Inductive ConsistentComp  : Comp A -> Comp A -> Prop :=
-  | cc_wrong : ConsistentComp c_wrong c_wrong
-  | cc_multi : forall AS BS, 
-      ConsistentPointwiseList f AS BS ->
-      ConsistentComp (c_multi AS) (c_multi BS).
-
-Inductive InconsistentComp : Comp A -> Comp A -> Prop :=
-  | i_wrong_multi : forall AS, InconsistentComp c_wrong (c_multi AS)
-  | i_multi_wrong : forall AS, InconsistentComp (c_multi AS) c_wrong
-  | i_multi : forall AS BS, InconsistentPointwiseList g AS BS -> InconsistentComp (c_multi AS) (c_multi BS).
-*)
-
-Lemma exclusive_Comp : exclusive (ConsistentComp f) (InconsistentComp g).
-Proof.
-  intros x y CC IC.
-  induction CC; inversion IC.
-  eapply exclusive_PointwiseList; eauto.
-Qed.
-
-Lemma decidable_Comp : decidable (ConsistentComp f) (InconsistentComp g).
-Proof.
-  intros x y.
-  destruct x eqn:EX; destruct y eqn:EY.
-  - left; econstructor.
-  - right; econstructor.
-  - right; econstructor.
-  - destruct (decidable_PointwiseList f g dfg l l0).
-    left; econstructor; eauto.
-    right; econstructor; eauto.
-Qed.
-
-End Computations.
-
-
-#[export] Hint Constructors ConsistentComp InconsistentComp : core.
-
-(* ------------------------------------------------- *)
-
-(* Consistent values: we model function values as a set of approximations
-
-   But now that we have different sorts of values, those approximations should
-   all agree with eachother.
-
-   We can define this concept by first identifying the head of a value. 
-   Two values will *definitely* be inconsistent if they have different heads.
-*)
-
-(*
-Inductive v_head := 
-    h_nat  : nat -> v_head 
-  | h_fun  : v_head
-  | h_list : v_head
-.
-
-Definition head (v : Value) : v_head := 
-  match v with 
-  | v_nat k => h_nat k
-  | v_map _ _ => h_fun
-  | v_fun     => h_fun
-  | v_list _ => h_list
-  end.
-
-Inductive Consistent : Value -> Value -> Prop :=
-  | c_nat : forall i, Consistent (v_nat i) (v_nat i)
-  | c_list : forall XS YS, 
-      ConsistentPointwiseList Consistent XS YS ->  
-      Consistent (v_list XS) (v_list YS)
-
-  | c_fun : Consistent v_fun v_fun
-  | c_fun1 : forall X r, Consistent v_fun (X ↦ r)
-  | c_fun2 : forall X r, Consistent (X ↦ r) v_fun
-
-  | c_map2 : forall X1 X2 r1 r2, 
-      ConsistentComp (List.Forall2_any Consistent) r1 r2 -> 
-      Consistent (X1 ↦ r1) (X2 ↦ r2)
-  | c_map1 : forall X1 X2 r1 r2, 
-      List.Exists2_any Inconsistent X1 X2 ->
-      Consistent (X1 ↦ r1) (X2 ↦ r2)
-
-with Inconsistent : Value -> Value -> Prop :=
-  | i_head : forall x y, 
-      head x <> head y ->
-      Inconsistent x y
-  | i_list : forall XS YS, 
-      InconsistentPointwiseList Inconsistent XS YS ->
-      Inconsistent (v_list XS) (v_list YS)
-  | i_map : forall X1 X2 r1 r2,
-      List.Forall2_any Consistent X1 X2 ->
-      ConsistentComp (List.Exists2_any Inconsistent) r1 r2 ->
-      Inconsistent (X1 ↦ r1) (X2 ↦ r2).
-
-#[export] Hint Constructors Consistent Inconsistent v_head : core.
-
-(* ------------------------------------------------------------------------------- *)
-
-(* Two sets are consistent if all of their elements 
-   are consistent. *)
-Definition ConsistentSets V1 V2 := 
-    forall x y, x ∈ V1 -> y ∈ V2 -> Consistent x y.
-
-Definition ConsistentSet V := ConsistentSets V V.
-
-*)
-
 Definition consistent_env : Rho -> Type := Env.ForallT ConsistentSet. 
 
-
-
-(* ------------------------------------------------------------------------------- *)
-
-(*
-   The default induction principle for values is not
-   strong enough for lists in the v_map and v_list case. So we prove a stronger
-   version below.
-
-   Value_ind
-     : forall P : Value -> Prop,
-       (forall n : nat, P (v_nat n)) ->
-       (forall (l : list Value) (c : Comp (list Value)), P (v_map l v)) ->
-       P v_fun -> 
-       (forall l : list Value, P (v_list l)) -> 
-       forall v : Value, P v 
-*)
-
-
-Fixpoint Value_ind' (P : Value -> Prop)
-       (n : forall n : nat, P (v_nat n)) 
-       (m : forall (l : list Value) (c : Comp (list Value)), 
-           Forall P l -> Comp.Forall (List.Forall P) c -> P (v_map l c)) 
-       (f : P v_fun)
-       (l : (forall l : list Value, Forall P l -> P (v_list l)))
-       (v : Value) : P v := 
-  let rec := Value_ind' P n m f l  
-  in
-  let fix rec_list (vs : list Value) : Forall P vs :=
-    match vs with 
-    | nil => Forall_nil _
-    | cons w ws => @Forall_cons Value P w ws (rec w) (rec_list ws)
-    end
-  in 
-  let fix rec_list_list (vs : list (list Value)) : Forall (List.Forall P) vs :=
-    match vs with 
-    | nil => Forall_nil _
-    | cons w ws => @Forall_cons (list Value) (List.Forall P) w ws (rec_list w) (rec_list_list ws)
-    end
-  in 
-
-  let rec_comp (c : Comp (list Value)) : Comp.Forall (List.Forall P) c :=
-    match c as c1 return Comp.Forall (List.Forall P) c1 with 
-    | c_wrong => I
-    | c_multi vs => rec_list_list _
-    end
-  in
-  match v with 
-  | v_nat k => n k
-  | v_map X v => 
-      m X v (rec_list X) (rec_comp v)
-  | v_fun => f
-  | v_list X => l X (rec_list X)
-  end.
-
-(* We do the same thing for Value_rect *)
-
-
-Fixpoint Value_rec' (P : Value -> Type)
-       (n : forall n : nat, P (v_nat n)) 
-       (m : forall (l : list Value) (c : Comp (list Value)), 
-           List.ForallT P l -> Comp.ForallT (List.ForallT P) c -> P (v_map l c)) 
-       (f : P v_fun)
-       (l : (forall l : list Value, List.ForallT P l -> P (v_list l)))
-       (v : Value) : P v := 
-  let rec := Value_rec' P n m f l  
-  in
-  let fix rec_list (vs : list Value) : List.ForallT P vs :=
-    match vs with 
-    | nil => List.ForallT_nil _
-    | cons w ws => @List.ForallT_cons Value P w ws (rec w) (rec_list ws)
-    end
-  in 
-  let fix rec_list_list (vs : list (list Value)) : List.ForallT (List.ForallT P) vs :=
-    match vs with 
-    | nil => List.ForallT_nil _
-    | cons w ws => @List.ForallT_cons (list Value) (List.ForallT P) w ws (rec_list w) (rec_list_list ws)
-    end
-  in 
-
-  let rec_comp (c : Comp (list Value)) : Comp.ForallT (List.ForallT P) c :=
-    match c as c1 return Comp.ForallT (List.ForallT P) c1 with 
-    | c_wrong => I
-    | c_multi vs => rec_list_list _
-    end
-  in
-  match v with 
-  | v_nat k => n k
-  | v_map X v => 
-      m X v (rec_list X) (rec_comp v)
-  | v_fun => f
-  | v_list X => l X (rec_list X)
-  end.
-
-
-(* ----------------------------------------------- *)
-
-(* Two values cannot be both consistent and inconsistent. *)
-
-Lemma Consistent_not_Inconsistent : exclusive Consistent Inconsistent.
-Proof.
-  intros x.
-  eapply Value_ind' with (P := fun x => forall y : Value, Consistent x y -> Inconsistent x y -> False).
-  all: intros.
-  all: try solve [inversion H; inversion H0; subst; done].
-  + inversion H2; inversion H1; subst.
-    all: try simpl in H3; try done.
-(*
-    - inversion H9; subst. clear H9.
-      eapply exclusive_Comp. 
-      eapply exclusive_List2_any. 2: eauto. 2: eauto.
-      eapply H0; eauto.
-    - inversion H9; subst. clear H9.
-    destruct H11 as [x1 [x2 [I1 [I2 ii]]]].
-    specialize (H5 _ _ I1 I2).
-    rewrite Forall_forall in H.
-    eapply H; eauto.
-  + inversion H0; inversion H1; subst. simpl in H5; try done.
-    - inversion H7; subst. eauto using Forall2_length.
-    - inversion H7; subst; clear H7.
-      clear H1 H0. move: YS H3 H6.
-      induction H; intros YS h1 h2;
-        inversion h1; inversion h2; subst.  
-      inversion H7; subst. eauto.
-      inversion H7; subst. eauto.
-Qed. *)
-Admitted.
-
-(* ----------------------------------------------- *)
-
-(* Determining whether two values are consistent or inconsistent 
-   is decidable *)
-
-Lemma decidable_Consistent : decidable Consistent Inconsistent.
-Proof.
-intros v1. 
-eapply Value_rec' with 
-(P := fun v1 =>  forall v2 : Value, {Consistent v1 v2} + {Inconsistent v1 v2}).
-all: intros.
-all: destruct v2.
-all: try solve [right; eapply i_head; simpl; done].
-all: try solve [left; eauto].
-+ destruct (Nat.eq_dec n n0). subst.
-  left. eauto. right. eapply i_head; simpl. intro h.
-  inversion h. subst.  done.
-+ 
-Admitted.
-(*
-move: decidable_PointwiseList => h.  
-  destruct (H l0).
-  left. eapply c_map2; eauto.
-  destruct (dec_any l H l0).
-  right. eapply i_map; eauto.
-  left. eauto.
-+ destruct (dec_point l H l0).
-  left; eauto.
-  right. destruct i; eauto.
-Qed.
-*)
-
-(*
-
-Lemma DecSetList : forall XS, List.ForallT ConsistentDecidable XS.
-intros XS. induction XS. econstructor; eauto.
-econstructor; eauto. unfold ConsistentDecidable. eapply dec_con; eauto.
-Qed.
-*)
 
 (* ------------------------------------------------- *)
 (* Consistent is a reflexive relation *)
 
-(*
-Definition ConsistentReflexive (x : Value) := Consistent x x.
+Lemma Consistent_list_refl {A} `{Consistency A} {l : list A} :
+  Forall (fun x : A => Consistent x x) l ->
+  Consistent_list (f:= Consistent) l l.
+Proof. 
+  induction 1; econstructor; eauto.
+Qed.
 
-Lemma ConsistentPointwiseList_refl : forall XS, List.ForallT ConsistentReflexive XS -> ConsistentPointwiseList XS XS. 
+(* This is not necessarily true, if the fsets are not self consistent *)
+Lemma Consistent_fset_refl {A} `{Consistency A} {l : fset A} :
+ Forall_fset (fun x => Consistent x x) l ->
+ Consistent_fset (f:=Consistent) l l.
 Proof.
-  induction 1; unfold ConsistentPointwiseList; eauto.
-Qed. *)
+  destruct l.
+  unfold Forall_fset.
+  unfold Consistent_fset.
+  intro h.
+  rewrite Forall_forall in h.
+Abort.
 
-#[export] Instance Consistent_refl : Reflexive Consistent.
-intro x.
-Admitted.
-(*
-eapply Value_ind' with (P := ConsistentReflexive).
-all: unfold ConsistentReflexive; intros; eauto using ConsistentPointwiseList_refl.
-econstructor. rewrite <- List.Forall_Forall2. auto.
-Qed. *)
-
+(* This is not necessarily true, if the fsets are not self consistent *)
+#[export] Instance Consistent_Value_refl : Reflexive (@Consistent Value _).
+Proof.
+  intro x. cbn.
+  eapply Value_ind' with (P := fun x => ConsistentValue x x).
+  all: intros; eauto.
+  - eapply c_map1.
+    destruct l.
+    eapply c_fset.
+    admit.
+    admit.
+  - eapply c_list. eapply (@Consistent_list_refl _ Consistency_Value); eauto.
+Abort.
 
 (* ------------------------------------------------- *)
 (* Consistent sets *)
@@ -485,10 +107,13 @@ Qed.
 (* Not transitive. The middle set may be empty! *)
 (* Instance ConsistentSets_Transitive : Transitive ConsistentSets. *)
 
+(* 
 Lemma ConsistentSets_Singleton_refl {x} : ConsistentSets ⌈ x ⌉ ⌈ x ⌉.
 Proof. intros x1 x2 I1 I2. inversion I1. inversion I2. subst. reflexivity. Qed.
+*)
 
-Lemma ConsistentSets_mem : forall l1 l2, List.Forall2_any Consistent l1 l2 -> ConsistentSets (mem l1)(mem l2).
+Lemma ConsistentSets_mem : forall l1 l2, List.Forall2_any Consistent l1 l2 -> 
+                                    ConsistentSets (mem (FSet l1)) (mem (FSet l2)).
 Proof. intros l1 l2 h. unfold List.Forall2_any in h. intros x y I1 I2.
        eapply h; eauto using mem_In.
 Qed.
