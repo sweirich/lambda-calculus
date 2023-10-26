@@ -40,12 +40,20 @@ Local Open Scope tm.
 
 (* ---- -------------------------------------- *)
 
+(* RET is strict *)
 Lemma RET_strict {A} : RET (fun (x : A) => False) ≃ fun x => False.
-  move: (@definitions.RET_strict) => RS.
-  unfold strict in RS.
-  rewrite RS.
-  reflexivity.
+split.
+- unfold RET. intros x xIn.
+destruct x; try done.
+destruct l; try done.
+destruct l; try done.
+move: xIn => [h1 h2].
+destruct f; destruct l; try done.
+specialize (h1 a ltac:(left; auto)). done.
+- unfold RET.
+  intros x xIn. done.
 Qed.
+
 
 Lemma BIND_strict {A}{B} : forall (k : P A -> P (Comp B)), BIND (fun x => False) k ≃ fun x => False.
 Proof.

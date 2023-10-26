@@ -96,14 +96,13 @@ Import SetNotations.
 Local Open Scope set_scope.
 
 
-(* Sets of Values:   P Value === Value -> Prop *)
+(* 
+   Infinite sets of Values:   P Value      (i.e. Value -> Prop)
+   Finite sets of Values:     fset Value   (i.e. list Value)
 
-
-Definition strict {A B} (f : P A -> P B) := f (fun x => False) ≃ (fun x => False) . 
-
+*)
 
 (* ------------------------------------------------------- *)
-
 
 Definition RET {A} (x : P A) : P (Comp (fset A)) :=
   fun z => match z with 
@@ -115,20 +114,6 @@ Definition BIND {A B} (S : P (Comp (fset A))) (K : P A -> P (Comp B)) (t : Comp 
   exists (u : Comp (fset A)), exists (k : fset A -> Comp B), 
     (u ∈ S) /\ t = bind u k /\ forall a, Comp_In a u -> K (mem a) (k a).
 
-(* RET is strict *)
-Lemma RET_strict {A : Type} : strict (@RET A).
-unfold strict. split.
-- unfold RET. intros x xIn.
-destruct x; try done.
-destruct l; try done.
-destruct l; try done.
-move: xIn => [h1 h2].
-destruct f; destruct l; try done.
-specialize (h1 a ltac:(left; auto)). done.
-- unfold RET.
-  intros x xIn. done.
-Qed.
-
 
 (* ----------------------------------------------------------- *)
 
@@ -136,8 +121,7 @@ Inductive Value : Type :=
   (* natural number *)
   | v_nat : nat -> Value
 
-  (* one entry in a function's table: the list Value in the result Comp should be fset,
-     but this causes trouble with Coq's termination checker *)
+  (* one entry in a function's table *)
   | v_map : fset Value -> Comp (fset Value) -> Value
 
   (* trivial function value, evaluated to a value but never applied *)
@@ -153,7 +137,7 @@ Denotation of Identity function (\x.x):
   any subset of 
 
  { vfun } `union` 
- { v_map (v_nat vi :: nil) (c_multi (v_nat vi) :: nil)  | for any value vi } 
+ { v_map [v_nat vi] (c_multi ([v_nat vi] :: nil))  | for any value vi } 
 
  *)
 
@@ -168,15 +152,6 @@ Class Consistency (A : Type) : Type :=
     Inconsistent : A -> A -> Prop ;
   }.
 
-Class ConsistencyTheory (A : Type) `{Consistency A} := 
-  {  exclusive : forall x y, Consistent x y -> Inconsistent x y -> False ;
-     decidable : forall x y, {Consistent x y} + {Inconsistent x y}
-  }.
-
-
-Definition Exclusive {A} (f g : A -> A -> Prop) :=  forall x y, f x y -> g x y -> False .
-Definition Decidable {A} (f g : A -> A -> Prop) :=  forall x y, {f x y} + {g x y}.
-
 Section List.
 
 Context 
@@ -188,63 +163,11 @@ Definition Consistent_list := List.Forall2 f.
 Definition Inconsistent_list := fun XS YS => 
   length XS <> length YS \/ List.Exists2 g XS YS.
 
-Lemma exclusive_list :
-  Exclusive f g -> 
-  Exclusive Consistent_list Inconsistent_list.
-Proof.
-  intros efg. intros x y FF. 
-  induction FF; intros EG; inversion EG; eauto.
-  - inversion H.
-  - move: (Forall2_length _ _ FF) => eq. 
-    simpl in H0. rewrite eq in H0. done.
-  - inversion H0; subst. eauto.
-    eapply IHFF. right. eauto.
-Qed.
-
-Lemma exclusive_list2: forall l, 
-  List.Forall (fun x : A => forall y : A, f x y -> g x y -> False) l ->
-  forall YS, Consistent_list l YS -> Inconsistent_list l YS -> False.
-Proof.
-  induction l; intros h YS h1 h2.
-  - inversion h1. subst. inversion h2. done.
-    inversion H.
-  - inversion h1. subst. inversion h. subst.
-    specialize (IHl H4 l' H3).
-    destruct h2. unfold Consistent_list in h1. 
-    apply Forall2_length in h1. done.
-    inversion H; subst; eauto.
-    eapply IHl. right. auto.
-Qed.    
-
-Lemma decidable_list : 
-  Decidable f g ->
-  Decidable Consistent_list Inconsistent_list.
-Proof.
-  intros dfg. intros x.
-  induction x; intros y; destruct y.
-  - left; eauto. econstructor.
-  - right; eauto. left. done.
-  - right; eauto. left. done.
-  - destruct (IHx y). destruct (dfg a a0).
-    left. econstructor; eauto.
-    right. right. econstructor; eauto.
-    right. destruct i. left. eauto. right. eauto.
-Qed.
-
-
-(* Consistency Reflexivity for lists *)
-
 End List.
 
 #[export] Instance Consistency_list { A : Type } `{ Consistency A } : Consistency (list A) := 
   { Consistent := Consistent_list (f := Consistent) ;
     Inconsistent := Inconsistent_list (g := Inconsistent) ;
-  }.
-
-
-#[export] Instance Consistency_list_theory { A : Type } `{ ConsistencyTheory A } : ConsistencyTheory (list A) := 
-  { exclusive := exclusive_list (f := Consistent)(g := Inconsistent) exclusive ;
-    decidable := decidable_list (f := Consistent)(g := Inconsistent) decidable ;
   }.
 
 Section FSet.
@@ -258,100 +181,10 @@ Definition Consistent_fset := fun '(FSet XS) '(FSet YS) => List.Forall2_any f XS
 Definition Inconsistent_fset := fun '(FSet XS) '(FSet YS) => List.Exists2_any g XS YS.
 
 
-Lemma exclusive_fset :
-  Exclusive f g ->
-  Exclusive Consistent_fset Inconsistent_fset.
-Proof.
-  intros efg. intros x. destruct x as [x].
-  induction x; intros y FF EG; destruct y as [y]; destruct y; 
-    unfold Consistent_fset, List.Forall2_any in FF;
-    unfold Inconsistent_fset, List.Exists2_any in EG.
-  - destruct EG as [x0 [y0 [h1 [h2 _]]]]. inversion h1.
-  - destruct EG as [x0 [y0 [h1 [h2 _]]]]. inversion h1.
-  - destruct EG as [x0 [y0 [h1 [h2 _]]]]. inversion h2.
-  - destruct EG as [x0 [y0 [h1 [h2 gg]]]]. 
-    specialize (FF x0 y0 h1 h2).
-    eapply efg; eauto.
-Qed.
-
-Lemma decidable_fset :
-  Decidable f g ->
-  Decidable Consistent_fset Inconsistent_fset.
-Proof.
-  intros dfg. intros x. destruct x as [x].
-  induction x; intros y; destruct y as [y].
-     unfold Consistent_fset, List.Forall2_any;
-     unfold Inconsistent_fset, List.Exists2_any.
-  - left. done.
-  - destruct (IHx (FSet y)). 
-    + simpl in c. simpl.
-      induction y. unfold List.Forall2_any in c.
-      left. intros x0 y0 h1 h2. inversion h2. 
-      have CE: (List.Forall2_any f x y). { intros x0 y0 h1 h2. eapply c; eauto. simpl. eauto. }
-      specialize (IHy CE). destruct IHy.
-      ++ destruct (dfg a a0).
-         left.
-         { intros x0 y0 i1 i2.
-           destruct i1; destruct i2; subst. 
-           -- auto.
-           -- apply f0; eauto. simpl; auto.
-           -- apply c; eauto. simpl; auto.
-           -- apply CE; eauto.
-         }
-         right.
-         exists a. exists a0. simpl. split; auto.
-      ++ right. destruct e as [x0 [y0 [h1 [h2 h3]]]].
-         exists x0. exists y0. simpl. eauto.
-    + right. destruct i as [x0 [y0 [i1 [i2 h]]]]. 
-      exists x0. exists y0. 
-      repeat split; try right; auto. 
-Qed.
-
-Lemma exclusive_fset2: forall l, 
-  Forall_fset (fun x : A => forall y : A, f x y -> g x y -> False) l ->
-  forall YS, Consistent_fset l YS -> Inconsistent_fset l YS -> False.
-Proof.
-  intro l. destruct l. 
-  move=> h YS. destruct YS as [l']. simpl in *.
-  move: h l'.
-  induction l; intros h l' h1 h2;  unfold List.Forall2_any in h1; destruct h2 as [x0 [y0 [I0 [I1 IC]]]]. 
-  - inversion I0.
-  - inversion h. subst. 
-    specialize (IHl H2).
-    rewrite Forall_forall in H2.
-    destruct I0; subst.
-    -- specialize (h1 x0 y0 ltac:(left; auto) I1).
-       eauto.
-    -- eapply (IHl l').
-       intros x1 y1 I3 I4. eapply  h1. right; eauto. eauto.
-       exists x0. exists y0. repeat split; eauto.
-Qed. 
-
-(* Consistency is reflexive ?? *)
-
-End FSet.
-
 #[export] Instance Consistency_fset { A : Type}  `{ Consistency A } : Consistency (fset A) := 
   { Consistent := Consistent_fset (f := Consistent) ;
     Inconsistent := Inconsistent_fset (g := Inconsistent) ;
   }.
-
-#[export] Instance ConsistencyTheory_fset { A : Type}  `{ ConsistencyTheory A } : ConsistencyTheory (fset A) := 
-  { exclusive := exclusive_fset (f := Consistent)(g := Inconsistent) exclusive ;
-    decidable := decidable_fset (f := Consistent)(g := Inconsistent) decidable ;
-  }.
-
-
-(*
-Definition ConsistentPointwiseList {A} (f : A -> A -> Prop) (XS YS : seq A) :=  
-  List.Forall2 f XS YS.
-Definition InconsistentPointwiseList  {A} (g : A -> A -> Prop) (XS YS : seq A) := 
-  length XS <> length YS \/ List.Exists2 g XS YS.
-*)
-
-(* ------------------------------------------------- *)
-
-
 
 Section Computations.
 
@@ -373,49 +206,10 @@ Inductive InconsistentComp : Comp A -> Comp A -> Prop :=
       (length AS <> length BS \/ List.Exists2 g AS BS) -> 
       InconsistentComp (c_multi AS) (c_multi BS).
 
-Lemma exclusive_Comp : 
-  Exclusive f g ->
-  Exclusive ConsistentComp InconsistentComp.
-Proof.
-  intros efg x y CC IC.
-  induction CC; inversion IC.
-  eapply exclusive_list; eauto.
-Qed.
-
-
-Lemma exclusive_Comp2: forall l, 
-  Comp.Forall (fun x : A => forall y : A, f x y -> g x y -> False) l ->
-  forall YS, ConsistentComp l YS -> InconsistentComp l YS -> False.
-Proof.
-  destruct l. intros.
-Admitted.
-
-Lemma decidable_Comp : 
-  Decidable f g ->
-  Decidable ConsistentComp InconsistentComp.
-Proof.
-  intros dfg x y.
-  destruct x eqn:EX; destruct y eqn:EY.
-  - left; econstructor.
-  - right; econstructor.
-  - right; econstructor.
-  - destruct (decidable_list dfg l l0).
-    left; econstructor; eauto.
-    right; econstructor; eauto.
-Qed.
-
-
 End Computations.
 
 #[export] Instance Consistency_Comp {A:Type} `{Consistency A} : Consistency (Comp A) := 
   { Consistent := ConsistentComp (f:=Consistent) ; Inconsistent := InconsistentComp (g := Inconsistent) }.
-
-
-#[export] Instance ConsistencyTheory_Comp { A : Type}  `{ ConsistencyTheory A } : ConsistencyTheory (Comp A) := 
-  { exclusive := exclusive_Comp (f := Consistent)(g := Inconsistent) exclusive ;
-    decidable := decidable_Comp (f := Consistent)(g := Inconsistent) decidable ;
-  }.
-
 
 #[export] Hint Constructors ConsistentComp InconsistentComp : core.
 
@@ -429,7 +223,6 @@ End Computations.
    We can define this concept by first identifying the head of a value. 
    Two values will *definitely* be inconsistent if they have different heads.
 *)
-
 
 Inductive v_head := 
     h_nat  : nat -> v_head 
@@ -489,120 +282,6 @@ with Inconsistent_fset_Value : fset Value -> fset Value -> Prop :=
 Instance Consistency_Value : Consistency Value :=
   { Consistent := ConsistentValue ; Inconsistent := InconsistentValue }.
 
-Fixpoint Value_ind' (P : Value -> Prop)
-       (n : forall n : nat, P (v_nat n)) 
-       (m : forall (l : fset Value) (c : Comp (fset Value)), 
-           Forall_fset P l -> Comp.Forall (Forall_fset P) c -> P (v_map l c)) 
-       (f : P v_fun)
-       (l : (forall l : list Value, List.Forall P l -> P (v_list l)))
-       (v : Value) : P v := 
-  let rec := Value_ind' P n m f l  
-  in
-  let fix rec_list (vs : list Value) : List.Forall P vs :=
-    match vs with 
-    | nil => List.Forall_nil _
-    | cons w ws => @List.Forall_cons Value P w ws (rec w) (rec_list ws)
-    end
-  in 
-  let fix rec_fset (fs : fset Value) : Forall_fset P fs :=
-    match fs with 
-      | FSet xs => rec_list xs
-    end in
-  let fix rec_list_fset (vs : list (fset Value)) : List.Forall (Forall_fset P) vs :=
-    match vs with 
-    | nil => List.Forall_nil _
-    | cons w ws => @List.Forall_cons (fset Value) (Forall_fset P) w ws (rec_fset w) (rec_list_fset ws)
-    end
-  in 
-
-  let rec_comp (c : Comp (fset Value)) : Comp.Forall (Forall_fset P) c :=
-    match c as c1 return Comp.Forall (Forall_fset P) c1 with 
-    | c_wrong => I
-    | c_multi vs => rec_list_fset _
-    end
-  in
-  match v with 
-  | v_nat k => n k
-  | v_map X v => m X v (rec_fset X) (rec_comp v)
-  | v_fun => f
-  | v_list X => l X (rec_list X)
-  end.
-
-Lemma Consistent_not_Inconsistent : Exclusive ConsistentValue InconsistentValue.
-Proof.
-  intros x.
-  eapply Value_ind' with (P := fun x => forall y : Value, ConsistentValue x y -> InconsistentValue x y -> False).
-  all: intros.
-  all: try solve [inversion H; inversion H0; subst; done].
-  + inversion H2; inversion H1; subst; clear H2 H1.
-    all: try simpl in H3; try done.
-    - clear H0 H7.
-      inversion H9. subst. clear H9.
-      inversion H5. subst. clear H5.
-      inversion H11. subst. clear H11.
-      simpl in *.
-      rewrite Forall_forall in H.
-      have IH: (Forall_fset (fun x0 : Value => forall y : Value, ConsistentValue x0 y -> InconsistentValue x0 y -> False) (FSet X1)).
-      { unfold Forall_fset. rewrite Forall_forall. eapply H. }
-      eapply (exclusive_fset2 (FSet X1) IH (FSet X0)); simpl; auto.
-    - inversion H11. subst. clear H11.
-      move: (@exclusive_Comp2 (fset Value)) => h.
-      specialize h with (l := c) (YS:= r2).
-      eapply h; try eassumption.
-      destruct c; simpl in *; auto.
-      eapply Forall_impl; eauto.
-      intros.
-      inversion H2. inversion H3. subst. inversion H11. inversion H13. subst.
-      eapply exclusive_fset2; eauto.
-  + inversion H0; subst. clear H0.
-    inversion H1; subst. done.
-    eapply exclusive_list2; eauto.
-Qed.
-
-
-(* We do the same thing for Value_rect *)
-
-
-
-Fixpoint Value_rec' (P : Value -> Type)
-       (n : forall n : nat, P (v_nat n)) 
-       (m : forall (l : fset Value) (c : Comp (fset Value)), 
-           ForallT_fset P l -> Comp.ForallT (ForallT_fset P) c -> P (v_map l c)) 
-       (f : P v_fun)
-       (l : (forall l : list Value, List.ForallT P l -> P (v_list l)))
-       (v : Value) : P v := 
-  let rec := Value_rec' P n m f l  
-  in
-  let fix rec_list (vs : list Value) : List.ForallT P vs :=
-    match vs with 
-    | nil => List.ForallT_nil _
-    | cons w ws => @List.ForallT_cons Value P w ws (rec w) (rec_list ws)
-    end
-  in 
-  let fix rec_fset (fs : fset Value) : ForallT_fset P fs :=
-    match fs with 
-      | FSet xs => rec_list xs
-    end in
-  let fix rec_list_fset (vs : list (fset Value)) : List.ForallT (ForallT_fset P) vs :=
-    match vs with 
-    | nil => List.ForallT_nil _
-    | cons w ws => @List.ForallT_cons (fset Value) (ForallT_fset P) w ws (rec_fset w) (rec_list_fset ws)
-    end
-  in 
-
-  let rec_comp (c : Comp (fset Value)) : Comp.ForallT (ForallT_fset P) c :=
-    match c as c1 return Comp.ForallT (ForallT_fset P) c1 with 
-    | c_wrong => I
-    | c_multi vs => rec_list_fset _
-    end
-  in
-  match v with 
-  | v_nat k => n k
-  | v_map X v => m X v (rec_fset X) (rec_comp v)
-  | v_fun => f
-  | v_list X => l X (rec_list X)
-  end.
-
 (* Two sets are consistent if all of their elements 
    are consistent. *)
 Definition ConsistentSets {A:Type} `{Consistency A} V1 V2 := 
@@ -617,17 +296,6 @@ Definition InconsistentSets {A:Type} `{Consistency A} V1 V2 :=
 
 Definition ConsistentSet {A:Type} `{Consistency A} (V : P A) := ConsistentSets V V.
 
-
-(* ------------ Valid values and computations ------------------ *)
-
-
-
-(* Produces at least one result *)
-
-(*
-Definition valid_Comp (C : P (Comp Value)) : Type :=
-  (nonemptyT C * not (c_wrong ∈ C) * not (c_multi nil ∈ C))%type.
-*)
 
 (* ------------ Semantic Operators ------------------ *)
 
