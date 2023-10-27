@@ -658,7 +658,7 @@ Qed.
 
 (* Examples *)
 
-(* Prove that 3 + 4 *)
+(* Prove that 3 + 4 is 7 *)
 Definition tm_Add : tm := 
   app add (tcons (lit 3) (tcons (lit 4) tnil)).
 
@@ -687,8 +687,13 @@ Qed.
    in the denotation of id. *)
 
 Definition tm_Id : tm := abs (var_b 0).
-Definition value_Id (w : Value) : Value := 
-  (singleton_fset w) ↦ c_multi (singleton_fset w :: nil).
+ 
+Definition value_Id (w : fset Value) : Value := 
+  w ↦ c_multi (w :: nil).
+
+Definition idv : Value -> Prop := 
+  fun (v : Value) => exists (w : fset Value), value_Id w = v.
+
 Definition comp_Id (w : Value) : Comp (fset Value) := 
   c_multi (singleton_fset (value_Id w) :: nil).
 
@@ -705,6 +710,16 @@ Proof.
   done.
   done.
 Qed. 
+
+(* exists X . X *)
+(* one (exists X . X)              should be wrong *)
+(* all (exists X . X)              should be wrong *)
+(* exists X . X = 3                should be 3     *)
+(* all (exists X . X = 3)          should be (3 :: nil)  *)
+(* all (exists X . X = 3 | X = 4)  should be (3 :: 4 :: nil) *)
+
+Definition tm_exx : tm := ex (var_b 0).
+
 
 (* 
 Definition ConsistentDenot : Comp (fset Value) -> Comp (fset Value) -> Prop :=
