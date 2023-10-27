@@ -133,12 +133,11 @@ Proof.
   split.
   rewrite <- NAT_den. done.
   destruct l. destruct l. done.
-  have vIn: v ∈ NAT k. eauto.
-Admitted.
-(*
+  have vIn: v ∈ NAT k. specialize (h1 v ltac:(left; auto)). done.
   apply v_in_den_k_inv in vIn. subst.
-  eauto.
-Qed. *)
+  intros v0 v0In. inversion v0In. subst.
+  left; eauto.
+Qed. 
 
 Lemma l_equiv_den_k {l k} : (mem l ⊆ NAT k) /\ nonempty_fset l <-> mem l ≃ ⌈ v_nat k ⌉.
 Proof. split. eapply l_equiv_den_k2; eauto. eapply l_equiv_den_k1; eauto. Qed.
@@ -152,15 +151,15 @@ Proof.
     all: cbn in H.
     all: try done.
     destruct w; try done.
-    - destruct H as [NI VM].
+    - (* contradiction *) 
+      destruct H as [NI VM].
       assert False. eapply NI. 
       unfold valid_mem in VM. destruct V. destruct l; try done.
       move: (den_list _ _ _ H0 v ltac:(econstructor; eauto)) => h1. 
       subst.
-Admitted. (*
-      exists i. exists j. eauto. done.
+      exists i. exists j. left; auto. done.
     - destruct l; try done.
-      destruct l0; try done.
+      destruct l; try done.
       destruct H as [i0 [j0 [k0 [h0 [h1 h2]]]]]. subst.
       cbn.
       apply l_equiv_den_k1 in h1. destruct h1. 
@@ -172,11 +171,11 @@ Admitted. (*
    + intros w wIn.
      destruct w; try done.
      destruct l; try done.
-     destruct l0; try done.
+     destruct l; try done.
      cbn in wIn.
      move: wIn => [wIn VL].
-     have EQ: mem l ≃ ⌈ v_nat (i + j) ⌉. eapply l_equiv_den_k2; eauto.
-     eapply BETA with (V := v_list (v_nat i :: v_nat j :: nil) :: nil).
+     have EQ: mem f ≃ ⌈ v_nat (i + j) ⌉. eapply l_equiv_den_k2; eauto.
+     eapply BETA with (V := singleton_fset (v_list (v_nat i :: v_nat j :: nil))).
      - cbn. exists i. exists j. exists (i+j).
        repeat split. eauto. eauto.
        rewrite EQ. eauto.
@@ -185,7 +184,7 @@ Admitted. (*
        cbn. eauto using k_in_den_k.
        inversion H.
      - unfold valid_mem. done. 
-Qed. *)
+Qed. 
 
 Lemma ADD_APPLY_CONS {k1 k2} : 
   (ADD ▩ CONS (NAT k1) (CONS (NAT k2) NIL)) ≃ RET (NAT (k1 + k2)).
@@ -295,11 +294,6 @@ Ltac invert_value :=
     | [ H : listvalue fail |- _ ] => inversion H; clear H; subst
   end.
 
-
-Definition valid_Comp (C : P (Comp (fset Value))) : Type :=
-  (nonemptyT C * not (c_wrong ∈ C) * not (c_multi nil ∈ C))%type.
-       
-
 Lemma denot_value_valid {t}{ρ} : 
   fv_tm t [<=] dom ρ -> valid_env ρ 
   -> (value t -> valid (denot_val t ρ)) * 
@@ -369,6 +363,10 @@ Proof.
   reflexivity.
 Qed.
 
+
+Definition valid_Comp (C : P (Comp (fset Value))) : Type :=
+  (nonemptyT C * not (c_wrong ∈ C) * not (c_multi nil ∈ C))%type.
+       
 Lemma value_nonempty {t}{ρ} : 
   fv_tm t [<=] dom ρ -> valid_env ρ -> value t -> valid_Comp (denot t ρ).
 Proof. 
@@ -658,7 +656,7 @@ Qed.
 
 (* --------------------------------------------------------------- *)
 
-(* Example semantics *)
+(* Examples *)
 
 (* Prove that 3 + 4 *)
 Definition tm_Add : tm := 
@@ -668,7 +666,6 @@ Lemma denot_tm : denot tm_Add nil ≃ RET (NAT 7).
 Proof.
   unfold tm_Add.
   autorewrite with denot.
-  
   rewrite BIND_RET; solve_continuous. eapply valid_ADD.
   rewrite BIND_RET; solve_continuous. eapply BIND_continuous; solve_continuous. 
   eapply valid_NAT.
@@ -681,15 +678,19 @@ Proof.
   eapply valid_CONS. eapply valid_NAT. eapply valid_NIL.
   instantiate (1:=nil). econstructor; eauto.
   instantiate (1:= (v_nat 4 :: nil)). repeat econstructor; eauto.
-
   rewrite ADD_APPLY_CONS.
   reflexivity.
 Qed.
 
 
+(* Denotation of the identity function: we can find any identity mapping we want 
+   in the denotation of id. *)
+
 Definition tm_Id : tm := abs (var_b 0).
-Definition value_Id (w : Value) : Value := (singleton_fset w) ↦ c_multi (singleton_fset w :: nil).
-Definition comp_Id (w : Value) : Comp (fset Value) := c_multi (singleton_fset (value_Id w) :: nil).
+Definition value_Id (w : Value) : Value := 
+  (singleton_fset w) ↦ c_multi (singleton_fset w :: nil).
+Definition comp_Id (w : Value) : Comp (fset Value) := 
+  c_multi (singleton_fset (value_Id w) :: nil).
 
 Lemma denot_Id {v} : comp_Id v ∈ denot tm_Id nil.
 Proof.
@@ -834,22 +835,6 @@ inversion h; subst; clear h.
   inversion C; subst.
 Abort.
 *)
-
-(* A term with an unbound variable has no value. *)
-
-Definition tm_Wrong : tm := app (var_b 1) (var_b 0).
-
-Lemma denot_Wrong : forall v, not (v ∈ denot tm_Wrong nil).
-Proof.
-  intro v.
-  unfold tm_Wrong.
-  rewrite denot_app.
-  repeat rewrite denot_var_b.
-  rewrite -> RET_strict.
-  rewrite -> BIND_strict.
-  intro h.
-  done.
-Qed.
 
 
 
