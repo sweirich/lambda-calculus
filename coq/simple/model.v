@@ -554,7 +554,10 @@ Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
 Definition Delta_set : P Value :=
   fun t => match t with 
           | v_fun => True
-          | v_map f y => valid_mem f /\ exists V, (v_map V y ∈ mem f) /\ (valid_mem V) /\ (mem V ⊆ mem f)
+          | v_map f y => 
+              valid_mem f /\ 
+                exists V, (v_map V y ∈ mem f) /\ 
+                       (valid_mem V) /\ (mem V ⊆ mem f)
         end.
 
 
@@ -593,7 +596,112 @@ Proof. split. eapply denot_Delta1. eapply denot_Delta2. Qed.
 
 (* Omega := (\x. x x)(\x. x x) *)
 
+(* For this part, we show that the denotation of an infinite looping 
+   term is the empty set. 
+   We do this through a proof of contradiction. An inhabitant of 
+   this denotation would mean that the Delta_set contains an 
+   infinite descending chain of values, each smaller than the 
+   previous. However, values are inductively defined, so that 
+   is impossible.
+*)
+
 Definition tm_Omega : tm := app tm_Delta tm_Delta.
+
+(* the "size" of a value that gets smaller --- the maximum depth
+   of the tree. This calculation is stable under fsets... no 
+   matter what list represents an fset, the maximum depth 
+   of any value in the fset will remain the same. *)
+
+Fixpoint max_list (xs : list nat) : nat := List.fold_right max 0 xs.
+
+Fixpoint depth (v : Value) : nat :=
+  match v with 
+  | v_fun => 0
+  | v_map (FSet VS) W => 1 + max (max_list (List.map depth VS)) (depth W)
+  end.
+
+Definition depth_fset (VS : fset Value) := 
+  match VS with 
+  | FSet l => max_list (List.map depth l)
+  end.
+
+Lemma depth_v_map VS w : depth (v_map VS w) =
+       1 + max (depth_fset VS) (depth w).
+Proof. cbn. destruct VS. done. Qed.
+
+Lemma mem_In {A} {x:A}{XS : fset A}: x ∈ mem XS -> In_fset x XS.
+Proof.
+  destruct XS.
+  induction l; cbn.
+  - auto.
+  - auto.
+Qed.
+
+Lemma In_smaller {x:Value}{XS} :
+  In_fset x XS -> depth x <= depth_fset XS.
+Proof.
+  destruct XS.
+  induction l.
+  intros h. done.
+  intros h. cbn.
+  destruct h.
+  subst. lia. 
+  cbn in IHl.
+  specialize (IHl H).
+  lia. 
+Qed.
+
+Lemma depth_mem V1 V2 : 
+  mem V1 ⊆ mem V2 -> 
+  depth_fset V1 <= depth_fset V2.
+Proof.
+  intros.
+  unfold depth_fset.
+  destruct V1. destruct V2.
+  induction l.
+  - cbn. lia.
+  - cbn.
+    have n: mem (FSet l) ⊆ mem (FSet l0).
+    { intros x xIn. eapply H; eauto. right. auto. }
+    specialize (IHl n).
+    specialize (H a ltac:(left; auto)).
+    move: ( In_smaller (mem_In H)) => h.
+    cbn in h.
+    lia.
+Qed.
+
+(* description of an infinite descending chain, indexed by 
+   the first number in the chain. *)
+CoInductive descending_chain : nat -> Prop := 
+  | dcons : 
+      forall n m, m < n -> descending_chain m -> descending_chain n.
+
+(* we can't have such a thing. *)
+Lemma impossible : forall n, descending_chain n -> False.
+Proof.
+  induction n.
+  intros h. inversion h. lia.
+  intros h. inversion h. subst.
+  apply IHn. destruct m. inversion H0. lia.
+  inversion H0. subst.
+  have LT : m0 < n. lia.
+  eapply dcons with (m := m0); auto.
+Qed.
+
+CoFixpoint Delta_chain { V1 w V } : 
+  v_map V1 w ∈ mem V -> 
+  mem V1 ⊆ mem V ->
+  mem V ⊆ Delta_set -> 
+  descending_chain (depth_fset V).
+Proof.  
+  intros h1 h2 h3.
+  move: (h3 (v_map V1 w) h1) => [_ [V2 [I2 [K2 M2]]]]. 
+  apply dcons with (m := (depth_fset V1)).
+  move: (In_smaller (mem_In h1)) => h4.
+  rewrite depth_v_map in h4. lia.
+  eapply (Delta_chain V2 w V1 I2 M2).
+  transitivity (mem V); auto.
+Qed.
 
 Lemma denot_Omega : denot tm_Omega nil ⊆ (fun x => False).
 Proof. intros x xIn.
@@ -602,10 +710,7 @@ Proof. intros x xIn.
        rewrite denot_Delta in xIn.
        inversion xIn. subst. clear xIn.
        cbv.
-       destruct V.
-       destruct l; try done.
-       clear H1.
-       destruct H as [_ [l1 [H1 [VV1 M1]]]].       
-       destruct l1 as [[ | w l2]]; try done. clear VV1.
-       destruct H1. subst.
-Admitted.
+       destruct H as [_ [V1 [H [h1 M1]]]].       
+       move: (Delta_chain H M1 H0) => chain.
+       eapply impossible; eauto.
+Qed.
