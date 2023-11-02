@@ -1,9 +1,8 @@
+%% CBV untyped lambda calculus
+
 embed {{ coq-preamble
 Require Export Metalib.LibLNgen. 
 }}
-
-%% call-by-value untyped lambda calculus
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

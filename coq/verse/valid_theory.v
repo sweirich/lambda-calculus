@@ -6,7 +6,8 @@ Require Import Lia.
 Require Export lc.tactics.
 Require Import lc.scoped.
 Require Import structures.Structures.
-Require Import denot.definitions.
+
+Require Import verse.definitions.
 
 Import SetNotations.
 Local Open Scope set_scope.
@@ -20,23 +21,6 @@ Import LCNotations.
 Ltac forall_success := 
   let x:= fresh in 
   intros x ?; destruct x; try done.
-
-
-#[export] Hint Resolve Forall_mem : core.
-
-(* valid sets are inhabited *)
-Definition valid_is_nonempty {A} (V : P A) : valid V -> nonemptyT V := id.
-
-#[export] Hint Immediate valid_is_nonempty : core.
-
-Lemma valid_join : forall {A} ( v1 v2 : P A), 
-    valid v1 -> 
-    valid v2 ->
-    valid (v1 ∪ v2).
-Proof.
-  intros A v1 v2 [x1 h1] [x2 h2].
-  exists x1. eapply Union_introl; eauto.
-Qed.
 
 
 (* valid operators *)
@@ -87,17 +71,3 @@ destruct xs; try done.
 exists (v_list (y :: l0)). econstructor; eauto.
 Qed.
 
-(* Valid environments *)
-
-Lemma valid_nil : valid_env nil.
-Proof. unfold valid_env. eauto. Qed.
-
-#[export] Hint Resolve valid_nil : core.
-
-Lemma extend_valid_env {ρ x X} : 
-  x `notin` dom ρ ->
-  valid X -> 
-  valid_env ρ -> valid_env (x ~ X ++ ρ).
-Proof. intros Fr NEP NEX.  eapply ForallT_cons; eauto. Qed.
-
-#[export] Hint Resolve extend_valid_env : core.

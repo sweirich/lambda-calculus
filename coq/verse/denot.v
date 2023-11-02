@@ -1,15 +1,18 @@
-(* 
+(*
 
-This module provides rewriting rules for the denotation function, so that users need never look 
-at the fuel-based definition. These can be accessed by the "denot" Hint database for 
-all syntactic forms except for abs.
+This module provides rewriting rules for the denotation function, so that
+users need never look at the fuel-based definition. These can be accessed by
+the "denot" Hint database for all syntactic forms except for abs.
 
-Rewriting abstractions is not automatic because the new variable name must be provided.
+Rewriting for abstractions is not part of the hint data base because the new
+variable name must be provided.
   
 Lemma denot_abs : forall x t ρ,
     x `notin` dom ρ \u fv_tm t ->
     denot (abs t) ρ = 
-      RET2 (Λ (fun D => denot (t ^ x) (x ~ D ++ ρ))).
+      RET (Λ (fun D => denot (t ^ x) (x ~ D ++ ρ))).
+
+The proofs is this module are not very interesting and rather slow. 
 
  *)
 
@@ -22,7 +25,7 @@ Require Export lc.tactics.
 Require Import lc.scoped.
 
 Require Import structures.Structures.
-Require Import denot.definitions.
+Require Import verse.definitions.
 
 Import SetNotations.
 Local Open Scope set_scope.
@@ -173,7 +176,8 @@ Ltac name_binder x0 Frx0 :=
 
 Definition access_app_P := @access_app (P Value) (fun x => False).
 
-(* Renaming property for denotations. *)
+(* Renaming property for denotations. This proof is *very* slow so 
+   it is admitted here.  *)
 
 Lemma rename_denot_n : forall n t y w ρ1 ρ2 D, 
   w `notin` dom ρ1 -> 
@@ -181,6 +185,8 @@ Lemma rename_denot_n : forall n t y w ρ1 ρ2 D,
   denot_comp_n n t (ρ1 ++ w ~ D ++ ρ2) = 
   denot_comp_n n (t [w ~> var_f y]) (ρ1 ++ y ~ D ++ ρ2).
 Proof. 
+Admitted. 
+(*
   induction n;
   intros t y w ρ1 ρ2 D Frw Fry; simpl. auto.
   destruct t; simpl; auto.
@@ -336,8 +342,8 @@ Proof.
   + f_equal. 
     f_equal.
     apply IHn; simpl_env; auto.    
-
 Qed.
+*)
 
 
 Lemma rename_open_denot : forall w y n t  ρ D, 
@@ -388,8 +394,6 @@ Proof.
   rewrite -> (rename_open_denot x0 x); eauto.
 Qed.
 
-
-
 Lemma denot_choice : forall t u ρ, 
     denot (choice t u) ρ = CHOICE (denot t ρ) (denot u ρ).
 Proof.
@@ -435,15 +439,6 @@ Proof.
   f_equal.
 Qed.
 
-Create HintDb denot.
-#[export] Hint Opaque denot : denot.
-#[export] Hint Rewrite denot_var_b denot_var denot_app denot_lit 
-  denot_add denot_tnil denot_tcons denot_choice denot_seq denot_unify denot_one denot_all : denot.
-(* no hint for abs, ex must pick fresh first *)
-
-
-
-
 Lemma denot_val_lit : forall k ρ,  denot_val (lit k) ρ = (NAT k).
 Proof. intros. reflexivity. Qed. 
 
@@ -452,7 +447,6 @@ Proof. intros. reflexivity. Qed.
 
 Lemma denot_val_tnil : forall ρ,  denot_val tnil ρ = NIL.
 Proof.  intros. reflexivity. Qed. 
-
 
 Lemma denot_val_abs : forall x t ρ,
     x `notin` dom ρ \u fv_tm t ->
@@ -479,6 +473,10 @@ Proof.
   rewrite size_is_enough_val. lia. auto.
 Qed.
 
+Create HintDb denot.
+#[export] Hint Opaque denot : denot.
+#[export] Hint Rewrite denot_var_b denot_var denot_app denot_lit 
+  denot_add denot_tnil denot_tcons denot_choice denot_seq denot_unify denot_one denot_all : denot.
 
 #[export] Hint Rewrite denot_val_var denot_val_lit 
   denot_val_add denot_val_tnil denot_val_tcons : denot.

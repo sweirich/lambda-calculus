@@ -95,6 +95,8 @@ Require Export lc.tactics.
 Require Import structures.Structures.
 Require Export structures.consistency.
 
+Require Export denot.properties.
+
 Import MonadNotation.
 Open Scope monad_scope.
 Import SetNotations.
@@ -379,6 +381,7 @@ Definition RET {A} (x : P A) : P (Comp (fset A)) :=
           |  _ => False
         end.
 
+
 (* NOTE: this is an alternative definition of RET, in terms of ret,
    for the Comp type, and is more similar to the definition of 
    BIND below. 
@@ -405,6 +408,7 @@ Definition SEQ (C1 : P (Comp (fset Value))) (C2 : P (Comp (fset Value))) :
 
 Definition Rho := Env (P Value).
 
+(*
 Definition Bottom : P Value := fun x => False.
 
 Ltac gather_atoms ::=
@@ -420,10 +424,13 @@ Notation "ρ ⋅ x" := (Env.access Bottom ρ x) (at level 50).
 Infix "⊔e" := (Env.map2 Union) (at level 60).
 Infix "⊆e" := (Env.Forall2 Included) (at level 50).
 End EnvNotations.
+ *)
+
 Import EnvNotations.
 
 (* ------------------------------------------------------- *)
 
+(*
 
 Definition monotone {A}{B} (F : P A -> P B) : Set := 
   forall D1 D2, (D1 ⊆ D2) -> F D1 ⊆ F D2.
@@ -450,8 +457,11 @@ Definition sub_env : Rho -> Rho -> Prop := Env.Forall2 Included.
 
 Definition same_env : Rho -> Rho -> Prop := Env.Forall2 Same_set.
 
+*)
+
 (* ------------------------------------------------------- *)
 
+Import EnvNotations.
 Import LCNotations.
 Open Scope tm.
 

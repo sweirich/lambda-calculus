@@ -1,8 +1,6 @@
-This repository contains a formalization of part of Chapter 3 of 
-H.P. Barendregt, "The Lambda Calculus, Its Syntax and Semantics".
+This repository contains a formalization of a graph model for the 
+untyped lambda calculus plus extensions for the verse programming language. 
 
-The main result shown here is a proof of the Church-Rosser theorem for the
-untyped lambda calculus, that Barendregt attributes to Tait and Martin-Lof.
 
 The goal of this formalization is an advanced tutorial on the use of Ott/LNgen
 for working with the locally nameless representation of variable binding.  It

@@ -10,9 +10,9 @@ Require Export lc.tactics.
 Require Import lc.scoped.
 
 (* Definitions *)
-Require Import denot.definitions.
-Require Import denot.denot.
-Require Import denot.valid_theory.  
+Require Import verse.definitions.
+Require Import verse.denot.
+Require Import verse.valid_theory.  
 
 Import SetNotations.
 Local Open Scope set_scope.
@@ -291,6 +291,7 @@ Qed.
 
 (* Sub environments ⊆e *)
 
+(*
 Lemma Reflexive_sub_env {ρ:Env (P Value)} : uniq ρ -> ρ ⊆e ρ.
 Proof.
   intros. eapply Env.Forall2_refl; eauto.
@@ -309,19 +310,23 @@ Lemma extend_sub_env {ρ ρ': Env (P Value)}{y X} :
 Proof. intros; econstructor; eauto. reflexivity. Qed.
 
 #[export] Hint Resolve extend_sub_env : core.
+*)
 
 (* ---------------------------------------------------- *)
 
+
 (* Why can we not get rid of this???? *)
+
 Ltac gather_atoms ::=
   let A := gather_atoms_with (fun x : vars => x) in
   let B := gather_atoms_with (fun x : var => {{ x }}) in
   let C := gather_atoms_with (fun x => fv_tm x) in
   let D := gather_atoms_with (fun x : list (atom * P Value) => dom x) in
-  let E := gather_atoms_with (fun x : Rho => dom x) in
+  let E := gather_atoms_with (fun x : Env (P Value) => dom x) in
   constr:(A \u B \u C \u D \u E).
 
 
+(*
 Lemma access_mono_sub : forall (ρ1 ρ2 : Env (P Value)) (x : atom),
    ρ1 ⊆e ρ2 ->
    ρ1 ⋅ x ⊆ ρ2 ⋅ x.
@@ -332,6 +337,7 @@ destruct (FSetDecideAuxiliary.dec_In  x (dom ρ1)).
       rewrite access_fresh. erewrite Forall2_dom in H0; eauto.
       reflexivity.
 Qed. 
+*)
 
 (* The denotation respects ⊆ *)
 #[export] Instance Proper_sub_denot : Proper (eq ==> Env.Forall2 Included ==> Included) denot.
@@ -397,6 +403,7 @@ Proof.
     auto.
 Admitted.
 
+(*
 (* TODO: move???*)
 Lemma same_env_sub_env : forall x y, same_env x y <-> (x ⊆e y) /\ (y ⊆e x).
 Proof. 
@@ -412,13 +419,15 @@ induction h1. eauto.
 inversion h2. subst.
 econstructor; eauto.
 split; auto.
-Qed. 
+Qed. *)
+
 
 (* The denotation respects ≃ *)
 #[export] Instance Proper_denot : Proper (eq ==> same_env ==> Same_set) denot.
 Proof.
   intros t1 t ->.
   intros x y E.
+  unfold same_env in E.
   rewrite same_env_sub_env in E. destruct E. 
   split. eapply Proper_sub_denot; auto. 
   eapply Proper_sub_denot; auto.
@@ -426,7 +435,7 @@ Qed.
 
 
 
-Lemma monotone_env_denot_val {t} : monotone_env (denot_val t).
+Lemma monotone_env_denot_val {t} : forall scope, monotone_env scope (denot_val t).
   eapply tm_induction with (t := t);
   [move=>i|move=>x|move=>t1 t2 IH1 IH2|move=> t' IH|move=>k| | | move=> t1 t2 IH1 IH2 
   | 
@@ -435,7 +444,7 @@ Lemma monotone_env_denot_val {t} : monotone_env (denot_val t).
   | move=> t1 t2 IH1 IH2 |  move=> t1 t2 IH1 IH2 
   | move=> t1 IH1 
   | move=> t1 IH1 ].
-  all: move => ρ1 ρ2 SUB.
+  all: move => SCOPE ρ1 ρ2 EQ SUB.
   all: autorewrite with denot.
   all: try solve  [ simpl; reflexivity].
   + eapply access_mono_sub; eauto.
@@ -447,7 +456,11 @@ Lemma monotone_env_denot_val {t} : monotone_env (denot_val t).
     econstructor; eauto. reflexivity.
     eapply Proper_sub_denot; eauto. 
   + eapply CONS_mono_sub; eauto.
-Qed. 
+    eapply IH1; eauto.
+    eapply IH2; eauto.
+Qed.
+
+(*  
 
 #[export] Instance Proper_sub_denot_val : Proper (eq ==> Env.Forall2 Included ==> Included) denot_val.
 Proof.
@@ -455,3 +468,4 @@ Proof.
   eapply monotone_env_denot_val.
 Qed.
 
+*)

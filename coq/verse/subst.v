@@ -25,8 +25,8 @@ Require Export lc.tactics.
 Require Import lc.scoped.
 
 Require Import structures.Structures.
-Require Import denot.definitions.
-Require Import denot.denot.
+Require Import verse.definitions.
+Require Import verse.denot.
 
 Import SetNotations.
 Local Open Scope set_scope.
@@ -38,7 +38,7 @@ Import LCNotations.
 
 Import Wf_nat.
 
-Lemma weaken_access {x}{ρ1 ρ ρ2}:
+Lemma weaken_access {x}{ρ1 ρ ρ2 : Env (P Value)}:
   singleton x [<=] union (dom ρ1) (dom ρ2) ->
   uniq (ρ1 ++ ρ ++ ρ2) ->
   (ρ1 ++ ρ2) ⋅ x = (ρ1 ++ ρ ++ ρ2) ⋅ x.
@@ -56,7 +56,7 @@ Proof.
   solve_uniq.
 Qed.
 
-Lemma weaken_denot1 : forall t ρ ρ1 ρ2, 
+Lemma weaken_denot1 : forall t (ρ ρ1 ρ2 : Env (P Value)), 
     fv_tm t [<=] dom (ρ1 ++ ρ2) ->
     uniq (ρ1 ++ ρ ++ ρ2) ->
     denot t (ρ1 ++ ρ2) = denot t (ρ1 ++ ρ ++ ρ2). 

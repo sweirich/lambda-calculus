@@ -140,6 +140,14 @@ Qed.
 #[export] Hint Resolve union_idem : core.
 
 
+Lemma union_left_inv1 {A}{X Y Z: P A} : X ∪ Y ⊆ Z -> X ⊆ Z.
+Admitted.
+
+Lemma union_left_inv2 {A}{X Y Z: P A} : X ∪ Y ⊆ Z -> Y ⊆ Z.
+Admitted.
+
+#[export] Hint Resolve union_left_inv1 union_left_inv2 : core.
+
 
 (* Finite lists `mem` as sets *)
 

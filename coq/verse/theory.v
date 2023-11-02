@@ -14,25 +14,25 @@ Import MonadNotation.
 Open Scope monad_scope.
 
 (* Definitions *)
-Require Import denot.definitions.
+Require Import verse.definitions.
 
 (* Rewrite rules for the definition of the denotation *)
-Require Import denot.denot.
+Require Import verse.denot.
 
 (* Weakening *)
-Require Import denot.subst.
+Require Import verse.subst.
 
 (* Operators preserve validity *)
-Require Import denot.valid_theory. 
+Require Import verse.valid_theory. 
 
 (* Congruence: operators respect set equality *)
-Require Import denot.congruence_theory.
+Require Import verse.congruence_theory.
 
 (* Denotation function is continuous. *)
-Require Import denot.continuity.
+Require Import verse.continuity.
 
 (* Denotation produces a consistent set *)
-(* Require Import denot.consistency. *)
+(* Require Import verse.consistency. *)
 
 Import EnvNotations.
 Import LCNotations.
@@ -267,15 +267,6 @@ Qed.
 
 (* ---------------------------------------------------- *)
 
-(* Nonempty environments *)
-
-Lemma extend_nonempty_env {ρ x X} : 
-  x `notin` dom ρ ->
-  nonemptyT X -> 
-  nonempty_env ρ -> nonempty_env (x ~ X ++ ρ).
-Proof. intros Fr NEP NEX. eapply ForallT_cons; eauto. Qed.
-
-#[export] Hint Resolve extend_nonempty_env : core.
 
 (* ---------------------------------------------------------- *)
 
@@ -295,7 +286,7 @@ Ltac invert_value :=
   end.
 
 Lemma denot_value_valid {t}{ρ} : 
-  fv_tm t [<=] dom ρ -> valid_env ρ 
+  fv_tm t [<=] dom ρ -> nonempty_env ρ 
   -> (value t -> valid (denot_val t ρ)) * 
       (listvalue t -> forall (x : Value), x ∈ (denot_val t ρ) -> { l & v_list l = x }).
 Proof.
@@ -306,7 +297,7 @@ Proof.
   all: intros h.
   all: autorewrite with denot.
   all: try solve [ assert False; invert_value; done].  
-  + unfold valid_env in NEρ.
+  + unfold nonempty_env in NEρ.
     eapply (@ForallT_access _ Bottom _ _) in NEρ.
     2: instantiate (1:= x); auto.
     destruct NEρ.
@@ -341,7 +332,7 @@ Proof.
     exists l. reflexivity.
 Qed.
 
-Lemma denot_val_RET {ρ}{NE: valid_env ρ} {v} : 
+Lemma denot_val_RET {ρ}{NE: nonempty_env ρ} {v} : 
   fv_tm v [<=] dom ρ -> value v -> denot v ρ ≃ RET (denot_val v ρ).
 Proof.
   induction v.
@@ -368,7 +359,7 @@ Definition valid_Comp (C : P (Comp (fset Value))) : Type :=
   (nonemptyT C * not (c_wrong ∈ C) * not (c_multi nil ∈ C))%type.
        
 Lemma value_nonempty {t}{ρ} : 
-  fv_tm t [<=] dom ρ -> valid_env ρ -> value t -> valid_Comp (denot t ρ).
+  fv_tm t [<=] dom ρ -> nonempty_env ρ -> value t -> valid_Comp (denot t ρ).
 Proof. 
   intros SC VE VT.
   move: (@denot_val_RET ρ VE t SC VT) => EQ.
@@ -392,7 +383,7 @@ Lemma subst_denot : forall t x u ρ1 ρ2,
     scoped t (ρ1 ++ x ~ (denot_val u ρ2) ++ ρ2) ->
     scoped u ρ2 ->
     value u ->
-    valid_env (ρ1 ++ ρ2) ->
+    nonempty_env (ρ1 ++ ρ2) ->
     denot t (ρ1 ++ x ~ (denot_val u ρ2) ++ ρ2) ≃
     denot (t [x ~> u]) (ρ1 ++ ρ2).
 Proof.
@@ -454,7 +445,7 @@ Proof.
     move: (scoped_abs_inv _ z t' D _ FZ ST) => h.
     rewrite <- app_assoc.
     rewrite IH; auto.
-    simpl_env. eapply extend_valid_env; eauto.
+    simpl_env. eapply extend_nonempty_env; eauto.
     rewrite subst_tm_open_tm_wrt_tm. eauto.
     rewrite subst_neq_var. auto.
     reflexivity.
@@ -480,23 +471,28 @@ Lemma subst_denot1 :
     scoped t (x ~ denot_val u ρ ++ ρ) 
     -> scoped u ρ 
     -> value u
-    -> valid_env ρ
+    -> nonempty_env ρ
     -> denot t (x ~ denot_val u ρ ++ ρ) ≃ denot (t [x ~> u]) ρ.
 Proof.
   intros. 
   eapply subst_denot with (ρ1 := nil); auto. 
 Qed.
 
+Definition semantic_equality t u := 
+    forall ρ, 
+    scoped t ρ ->
+    scoped u ρ ->
+    nonempty_env ρ ->
+    denot t ρ ≃ denot u ρ.
+
+Infix "≅" := semantic_equality (at level 85).
 
 
+(* The reduction rules are sound with respect to the denotational semantics *)
 Lemma soundness: 
   forall t u, 
     full_reduction t u ->
-    forall ρ,
-    scoped t ρ ->
-    scoped u ρ ->
-    valid_env ρ ->
-    denot t ρ ≃ denot u ρ.
+    t ≅ u.
 Proof.
   intros t u RED. 
   induction RED; intros ρ SCt SCu NE.
@@ -537,7 +533,7 @@ Proof.
     eapply (scoped_abs_inv _ x _ X _ F1 SCt).
     have F2 : x `notin` dom ρ \u fv_tm t'. fsetdec.
     eapply (scoped_abs_inv _ x _ X _ F2 SCu).
-    eapply extend_valid_env; eauto.
+    eapply extend_nonempty_env; eauto.
   - (* app1 *) 
     have SC1: scoped t ρ. eapply scoped_app_inv1; eauto.
     have SC2: scoped t' ρ. eapply scoped_app_inv1; eauto.
@@ -658,11 +654,18 @@ Qed.
 
 (* Examples *)
 
+(* The denotation of "3" is a set containing only the value 3 *)
+Lemma denot_three : denot_val (lit 3) nil ≃ ⌈ v_nat 3 ⌉.
+Proof.
+  autorewrite with denot.
+  eapply NAT_den.
+Qed.
+
 (* Prove that 3 + 4 is 7 *)
 Definition tm_Add : tm := 
   app add (tcons (lit 3) (tcons (lit 4) tnil)).
 
-Lemma denot_tm : denot tm_Add nil ≃ RET (NAT 7).
+Lemma denot_tm_Add : denot tm_Add nil ≃ RET (NAT 7).
 Proof.
   unfold tm_Add.
   autorewrite with denot.
@@ -682,43 +685,193 @@ Proof.
   reflexivity.
 Qed.
 
+(* The denotation of an ill-typed term is c_wrong. *)
 
-(* Denotation of the identity function: we can find any identity mapping we want 
-   in the denotation of id. *)
+Definition tm_ill_typed := app (lit 3) (lit 4).
+
+Lemma denot_tm_ill_typed : denot tm_ill_typed nil ≃ ⌈ c_wrong ⌉.
+Proof.
+  unfold tm_ill_typed.
+  autorewrite with denot.
+  rewrite BIND_RET; solve_continuous. eapply valid_NAT.
+  rewrite BIND_RET; solve_continuous. eapply valid_NAT.
+  split; eauto.
+  + intros x xIn.
+    destruct x; try done.
+    inversion xIn; subst.
+    ++ rewrite NAT_den in H H0.
+       inversion H.
+    ++ inversion H0.
+  + intros x xIn. inversion xIn.
+    eapply APPWRONG with (x:= v_nat 3).
+    eapply k_in_den_k.
+    intro h. inversion h.
+Qed.
+
+(* Denotation of the identity function: v_fun plus
+   all mappings  *)
 
 Definition tm_Id : tm := abs (var_b 0).
  
-Definition value_Id (w : fset Value) : Value := 
-  w ↦ c_multi (w :: nil).
+Definition idset : P Value := 
+  fun t => match t with 
+          | v_fun => True 
+          | v_map IN (c_multi (OUT :: nil)) => (Included_fset OUT IN) /\ (nonempty_fset IN) /\ nonempty_fset OUT
+          | _ => False
+        end.
 
-Definition idv : Value -> Prop := 
-  fun (v : Value) => exists (w : fset Value), value_Id w = v.
-
-Definition comp_Id (w : Value) : Comp (fset Value) := 
-  c_multi (singleton_fset (value_Id w) :: nil).
-
-Lemma denot_Id {v} : comp_Id v ∈ denot tm_Id nil.
+Lemma denot_Id1 : denot_val tm_Id nil ⊆ idset.
 Proof.
   pick fresh x.
-  rewrite (denot_abs x); simpl; auto.
-  cbn.
-  rewrite eq_dec_refl.
-  split. 2: done.
-  intros y yIn. cbv in yIn. destruct yIn; try done. subst.
-  cbn. 
-  repeat split. reflexivity.
-  done.
-  done.
-Qed. 
+  rewrite (denot_val_abs x); simpl; auto.
+  cbn. rewrite eq_dec_refl. clear x Fr.
+  + intros x xIn.
+    destruct x; try done.
+    destruct c; try done.
+    cbv in xIn. destruct xIn; try done.
+    destruct l.
+    cbv in xIn. destruct xIn; try done.
+    destruct l.
+    2: { cbv in xIn. destruct xIn; try done. }
+    cbn in xIn.
+    destruct xIn as [[h1 h2] h3].
+    cbn. split; eauto.
+Qed.
+
+Lemma denot_Id2 : idset  ⊆  denot_val tm_Id nil.
+Proof. 
+  pick fresh x.
+  rewrite (denot_val_abs x); simpl; auto.
+  cbn. rewrite eq_dec_refl. clear x Fr.
+  move=> x xIn.
+  destruct x; try done.
+  + destruct c; try done. destruct l; try done. destruct l; try done.
+    cbn in xIn.
+    destruct xIn as [h1 [h2 h3]].
+    unfold Included_fset in h1. 
+    repeat split; auto. 
+Qed.
+
+
+Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
+Definition tm_Omega : tm := app tm_Delta tm_Delta.
+
+Lemma mem_empty {A} : mem (empty_fset) = (fun (x:A) => False).
+cbv. auto. Qed.
+
+Lemma is_empty_fset {A} (f : fset A) : f = empty_fset \/ nonempty_fset f.
+destruct f.
+destruct l.
+left. cbv. auto.
+right. cbv. done.
+Qed.
+
+Definition SelfConsistent_fset {A} `{Consistency A} (f : fset A)  :  Prop := 
+  forall x, In_fset x f -> forall y, In_fset y f -> Consistent x y.
+
+(*
+Inductive valid : Value -> Prop :=
+  | valid_nat  : forall k, valid (v_nat k)
+  | valid_fun  : valid v_fun
+  | valid_list : forall l, List.Forall valid l -> valid (v_list l)
+  | valid_map  : forall f c, valid_fset f -> Comp.Forall (Forall_fset valid) c -> valid (v_map f c)
+with 
+  valid_comp : Comp Value -> Prop := 
+  | valid_wrong : valid_comp c_wrong
+with
+  valid_fset  : fset Value -> Prop :=
+  | valid_fs : forall f, SelfConsistent_fset f -> valid_fset f.
+
+Lemma denot_Delta_inv :
+  forall x, x ∈ denot_val tm_Delta nil -> 
+       exists v w, Consistent x (FSet ((FSet v ↦ w) :: v) ↦ w).
+Proof.
+  intro x. unfold tm_Delta.
+  pick fresh y.
+  rewrite (denot_val_abs y); auto.
+  cbn. rewrite eq_dec_refl.
+  destruct x; try done.
+  - move=> h. 
+    destruct (is_empty_fset f) as [->| NE].
+    -- cbn in h. 
+       repeat rewrite -> mem_empty in h.
+       rewrite -> RET_strict in h.
+       rewrite -> BIND_strict in h. 
+       destruct h. done.
+    -- cbn in h. 
+       rewrite BIND_RET in h; solve_continuous.
+       rewrite BIND_RET in h; solve_continuous.
+       move: h => [h vf].
+       inversion h; subst; clear h.
+       + destruct V.
+         exists l.
+         exists c.
+         eapply c_map1.
+         destruct f.
+         econstructor.
+         unfold Consistent_fset.
+         unfold List.Forall2_any.
+         intros x0 y0 Inx0 Iny0.
+         inversion Iny0. subst.
+                
+    inversion h0; subst; try done.
+    + exfalso. eapply wrong_not_successful; eauto.
+    + exfalso. eapply wrong_not_successful; eauto.
+    + exists (l ↦ x). exists x.
+      eapply c_map2. reflexivity.
+    + exists (l ↦ x). exists x.
+      eapply c_map2. reflexivity.
+    + exists (v_nat 0). exists v_wrong. eauto.
+    + exists (v_nat 0). exists v_wrong. eauto.
+  - cbn. intros.
+      exists v_fun. exists v_fun. eauto.
+Qed.
+
+*)
+
+#[global] Hint Rewrite access_eq_var : lngen.
+
+
 
 (* exists X . X *)
+
+Definition tm_exx : tm := ex (var_b 0).
+
+(* Any terminating value is in the denotation of exists X. X *)
+Lemma denot_ex_x1 : forall V, nonempty_fset V ->  ⌈ c_multi (ret V) ⌉ ⊆ denot (ex (var_b 0)) nil.
+Proof.
+  intros.
+  pick fresh x.
+  rewrite (denot_ex x); simpl; auto.
+  cbn. rewrite eq_dec_refl. clear x Fr.
+  intros x h. inversion h. subst.
+  exists V.
+    cbn.
+    split. reflexivity.
+    auto.
+Qed.
+
+(* Everything in the denotation of exists X. X looks like a return "V" *)
+Lemma denot_ex_x2 : forall C, denot (ex (var_b 0)) nil C -> exists V, C ∈ ⌈ c_multi (ret V) ⌉.
+Proof.
+  pick fresh x.
+  rewrite (denot_ex x); simpl; auto.
+  cbn. rewrite eq_dec_refl. clear x Fr.
+  intros C h.
+  destruct C; cbn in h; destruct h; try done.
+  destruct l; cbn in H; try destruct H; try done.
+  destruct l; try done.
+  destruct H.
+  exists f.
+  eauto.
+Qed.
+
 (* one (exists X . X)              should be wrong *)
 (* all (exists X . X)              should be wrong *)
 (* exists X . X = 3                should be 3     *)
 (* all (exists X . X = 3)          should be (3 :: nil)  *)
 (* all (exists X . X = 3 | X = 4)  should be (3 :: 4 :: nil) *)
 
-Definition tm_exx : tm := ex (var_b 0).
 
 
 (* 
@@ -782,10 +935,6 @@ Proof.
   done.
 Qed.  
 
-Definition tm_Delta : tm := abs (app (var_b 0) (var_b 0)).
-
-
-#[global] Hint Rewrite access_eq_var : lngen.
 
 (*
 Lemma denot_Delta_inv :

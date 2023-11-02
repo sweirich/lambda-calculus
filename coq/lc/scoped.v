@@ -107,6 +107,21 @@ Proof.
   simpl. fsetdec.
 Qed.
 
+(*
+Lemma scoped_open_var : forall {x t ρ D},
+   scoped t ρ ->
+   x `notin` dom ρ ->
+   scoped (t ^ x) (x ~ D ++ ρ).
+Proof.
+  intros.
+  inversion H.
+  econstructor.
+  rewrite fv_tm_open_tm_wrt_tm_upper.
+  simpl.
+  fsetdec.
+  solve_uniq.
+*)
+
 End Scoped.
 
 Arguments scoped {_}.

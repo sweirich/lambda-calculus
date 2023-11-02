@@ -65,10 +65,10 @@ Require Import Lia.
 Require Export lc.tactics.
 Require Import structures.Structures.
 
-Require Import denot.definitions.
-Require Import denot.denot.
-Require Import denot.congruence_theory.
-Require Import denot.valid_theory.
+Require Import verse.definitions.
+Require Import verse.denot.
+Require Import verse.congruence_theory.
+Require Import verse.valid_theory.
 
 Import MonadNotation.
 Open Scope monad_scope.
@@ -100,6 +100,7 @@ Ltac gather_atoms ::=
 
 *)
 
+(*
 Definition continuous {A} (F : P Value -> P A) : Set :=
   forall X E, mem E ⊆ F X -> valid X 
          -> exists D, (mem D ⊆ X) /\ ((mem E) ⊆ F (mem D)) /\ valid_mem D.
@@ -117,14 +118,15 @@ Definition continuous_Sub {A} (D:Rho -> P A) (ρ:Rho) (V:fset A) : Prop :=
   exists ρ', exists (pf : finite_env ρ'),
     ρ' ⊆e ρ  /\ (mem V ⊆ D ρ').
 
+*)
 
 (* ----------------------------------------------------- *)
 
 (* -- monotonicity WRT environments -- *)
 
 (*  forall ρ ρ', ρ ⊆e ρ' -> denot t ρ ⊆ denot t ρ'. *)
-Lemma denot_monotone {t}: 
-  monotone_env (denot t).
+Lemma denot_monotone {t}: forall scope, 
+  monotone_env scope (denot t).
 Proof.
   unfold monotone_env.
   intros. 
@@ -141,49 +143,50 @@ Proof.
   intros.
   unfold monotone. 
   intros D1 D2 sub.
-  eapply denot_monotone; simpl; auto.
+  eapply denot_monotone; simpl; eauto.
+  econstructor; eauto.
   econstructor; eauto.
 Qed.
   
 
-Lemma RET_monotone_env {D: Rho -> (P Value)} : 
-  monotone_env D -> 
-  monotone_env (fun ρ => RET (D ρ)).
+Lemma RET_monotone_env {D: Rho -> (P Value)} {sc} : 
+  monotone_env sc D -> 
+  monotone_env sc (fun ρ => RET (D ρ)).
 Proof.
   intros.
-  intros ρ1 ρ2 S.
-  specialize (H ρ1 ρ2 S).
+  intros ρ1 ρ2 EQ S.
+  specialize (H ρ1 ρ2 EQ S).
   eapply RET_mono; auto.
 Qed.
 
-Lemma BIND_monotone_env {A B} 
+Lemma BIND_monotone_env {A B} {sc} 
   {D : Rho -> P (Comp (fset A))} 
   {K : Rho -> P A -> P (Comp B)} : 
-  monotone_env D ->
-  (forall v, monotone_env (fun ρ => K ρ v)) ->
-  monotone_env (fun ρ => (BIND (D ρ) (K ρ))). 
+  monotone_env sc D ->
+  (forall v, monotone_env sc (fun ρ => K ρ v)) ->
+  monotone_env sc (fun ρ => (BIND (D ρ) (K ρ))). 
 Proof.
   intros mE mK. 
-  intros ρ1 ρ2 S1.
+  intros ρ1 ρ2 EQ S1.
   eapply BIND_mono. eapply mE; eauto.
-  intros x. eapply mK. auto.
+  intros x. eapply mK; auto.
 Qed.
 
-Lemma CONS_monotone_env {D E} :
-    monotone_env D 
-  -> monotone_env E
-  -> monotone_env (fun ρ => (CONS (D ρ) (E ρ))).
-Proof. intros. intros ρ1 ρ2 S. eapply CONS_mono_sub; eauto. Qed.
+Lemma CONS_monotone_env {D E : Rho -> P Value} {sc} :
+    monotone_env sc D 
+  -> monotone_env sc E
+  -> monotone_env sc (fun ρ => (CONS (D ρ) (E ρ))).
+Proof. intros. intros ρ1 ρ2 EQ S. eapply CONS_mono_sub; eauto. Qed.
 
-Lemma CONST_monotone_env {A}{v : P A}: monotone_env (fun _ : Rho => v).
-Proof. intros ρ1 ρ2 SUB. reflexivity. Qed.
+Lemma CONST_monotone_env {A}{v : P A}{sc}: monotone_env sc (fun _ : Rho => v).
+Proof. intros ρ1 ρ2 EQ SUB. reflexivity. Qed.
 
 
 (* ----------------------------------------------------- *)
 
 
 (* Join environments *)
-
+(*
 Lemma join_finite_env {ρ1 ρ2} : 
   same_scope ρ1 ρ2 
   -> finite_env ρ1
@@ -390,13 +393,6 @@ Qed.
 (* --------------------------------------- *)
 (* continuous-∈⇒⊆ *)
 
-Lemma union_left_inv1 {A}{X Y Z: P A} : X ∪ Y ⊆ Z -> X ⊆ Z.
-Admitted.
-
-Lemma union_left_inv2 {A}{X Y Z: P A} : X ∪ Y ⊆ Z -> Y ⊆ Z.
-Admitted.
-
-#[export] Hint Resolve union_left_inv1 union_left_inv2 : core.
 
 Lemma continuous_In_sub {A} (E : Rho -> (P A)) ρ (NE : valid_env ρ) :
    monotone_env E
@@ -437,14 +433,14 @@ Proof.
       eapply me. eapply join_sub_left; eauto. auto.
 Qed.
 
-
+*)
 
 (* --------------------------------------- *)
 
 (* Operations are continuous in the environment *)
 
 Lemma const_continuous_env {A} {v:P A}{ρ} : 
-  valid_env ρ 
+  nonempty_env ρ 
   -> continuous_env (fun _ : Rho => v) ρ.
 Proof.
    intros NE.  unfold continuous_env, continuous_In.
@@ -452,8 +448,9 @@ Proof.
    exists (initial_finite_env ρ NE); eexists; eauto.
 Qed.
 
+(* 
 Lemma access_continuous_env { ρ x } : 
-  valid_env ρ -> continuous_env (fun ρ0 : Rho => ρ0 ⋅ x) ρ.
+  nonempty_env ρ -> continuous_env (fun ρ0 : Rho => ρ0 ⋅ x) ρ.
 Proof. 
   move=> NE v vIn.
   cbn in vIn.
@@ -466,15 +463,15 @@ Proof.
   exists (initial_finite_env ρ NE).
   rewrite access_fresh in vIn. auto. done.
 Qed.
+*)
 
 
-
-Lemma APPLY_continuous_env {D E ρ} :
-  (valid_env ρ)
+Lemma APPLY_continuous_env {D E : Rho -> P Value}{ρ} :
+  (nonempty_env ρ)
   -> continuous_env D ρ 
   -> continuous_env E ρ
-  -> monotone_env D 
-  -> monotone_env E
+  -> monotone_env (dom ρ) D 
+  -> monotone_env (dom ρ) E
   -> continuous_env (fun ρ => (D ρ ▩ E ρ)) ρ.
 Proof.  
   intros NE IHD IHE mD mE.
@@ -493,10 +490,10 @@ Proof.
     -- eapply join_finite_env; eauto.
     -- eapply join_lub; eauto.
     -- have VwDp3 : ⌈ V ↦ w ⌉ ⊆ D (ρ1 ⊔e ρ2).
-    { transitivity (D ρ1); auto. eapply mD. 
+    { transitivity (D ρ1); auto. eapply mD. admit.
       eapply join_sub_left. auto. }
     have VEρ3 : mem V ⊆ E (ρ1 ⊔e ρ2).
-    { transitivity (E ρ2); auto. eapply mE.
+    { transitivity (E ρ2); auto. eapply mE. admit.
       eapply join_sub_right.  auto. }
     eapply BETA with (V:=V); auto.
   - destruct (IHD (v_list VS) ) as [ρ1 [F1 [h1 h2]]]; auto.
@@ -509,8 +506,8 @@ Proof.
     -- eapply join_finite_env; eauto.    
     -- eapply join_lub; eauto.
     -- eapply PROJ with (VS := VS) (k:=k); eauto.
-       eapply mD. eapply join_sub_left; auto. auto.
-       eapply mE. eapply join_sub_right; auto. auto.
+       eapply mD. admit. eapply join_sub_left; auto. auto.
+       eapply mE. admit. eapply join_sub_right; auto. auto.
   - destruct (IHD x) as [ρ1 [F1 [h1 h2]]]; auto.
     eexists.
     eexists.
@@ -527,18 +524,18 @@ Proof.
     -- eapply join_finite_env; eauto.    
     -- eapply join_lub; eauto.
     -- eapply PROJWRONG with (VS := VS); eauto.
-    eapply mD. eapply join_sub_left; auto. auto.
-    eapply mE. eapply join_sub_right; auto. auto.
-Qed.
+    eapply mD. admit. eapply join_sub_left; auto. auto.
+    eapply mE. admit. eapply join_sub_right; auto. auto.
+Admitted.
 
 (* Algebraicity.  
    Only need finite information from the environment.
 *)
 
-Lemma LAMBDA_continuous_env {E ρ x} {NE : valid_env ρ} :
+Lemma LAMBDA_continuous_env {E ρ x} {NE : nonempty_env ρ} :
     x `notin` dom ρ
   -> (forall V, valid_mem V -> continuous_env E (x ~ mem V ++ ρ))
-  -> monotone_env E
+  -> monotone_env ({{x}} \u dom ρ) E
   -> continuous_env (fun ρ => Λ (fun D => E (x ~ D ++ ρ))) ρ.
 Proof.
   intros Fr IH mE.
@@ -546,15 +543,16 @@ Proof.
   destruct v; try done.
   - (* v is l ↦ c *)
     move: vIn => [ wEVρ NW ]. 
-    have VV: valid_mem f. unfold valid_mem. eauto.
-    have NEx: valid_env (x ~ mem f ++ ρ). econstructor; eauto.
+    have VV: valid_mem f.  eauto.
+    have NEx: nonempty_env (x ~ mem f ++ ρ). econstructor; eauto.
 
     specialize (IH f ltac:(eauto) c wEVρ).
     destruct IH as [ρ' [F' [S' h']]].
     inversion S'. subst. inversion F'. subst.
     exists E1. eexists. eauto.
     repeat split; auto.
-    eapply mE. 2 : eapply h'.
+    eapply mE with (ρ := x ~ a1 ++ E1); simpl_env; eauto. 
+    move: (Env.Forall2_dom _ H3) => EQ. rewrite EQ. reflexivity.
     econstructor; eauto. eapply Reflexive_sub_env. eapply Forall2_uniq1; eauto.
   - exists (initial_finite_env ρ NE).
     repeat split; eauto.
@@ -562,11 +560,11 @@ Qed.
 
 
 
-Lemma CONS_continuous_env {D E ρ} :
+Lemma CONS_continuous_env {D E: Rho -> P Value}{ρ} :
     continuous_env D ρ 
   -> continuous_env E ρ
-  -> monotone_env D 
-  -> monotone_env E
+  -> monotone_env (dom ρ) D 
+  -> monotone_env (dom ρ) E
   -> continuous_env (fun ρ => (CONS (D ρ) (E ρ))) ρ.
 Proof.  
   intros IHD IHE mD mE.
@@ -586,14 +584,16 @@ Proof.
   - eapply join_finite_env; eauto.
   - eapply join_lub; eauto.
   - eapply mD. instantiate (1:= ρ1). 
+    move: (Env.Forall2_dom _ S1) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_left; eauto. auto.
   - eapply mE. instantiate (1:= ρ2).
+    move: (Env.Forall2_dom _ S2) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_right; eauto. auto.
 Qed. 
 
-Lemma ONE_continuous_env {D ρ} : 
+Lemma ONE_continuous_env {D : Rho -> P (Comp (fset Value))}{ρ} : 
   continuous_env D ρ ->
-  monotone_env D ->
+  monotone_env (dom ρ) D ->
   continuous_env (fun ρ => ONE (D ρ)) ρ.
 Proof.
   intros IHD mD.
@@ -605,9 +605,9 @@ Proof.
   exists l. auto.
 Qed.
 
-Lemma ALL_continuous_env {D ρ} : 
+Lemma ALL_continuous_env {D: Rho -> P (Comp (fset Value))}{ρ} : 
   continuous_env D ρ ->
-  monotone_env D ->
+  monotone_env (dom ρ) D ->
   continuous_env (fun ρ => ALL (D ρ)) ρ.
 Proof.
   intros IHD mD.
@@ -619,11 +619,11 @@ Proof.
   unfold ALL. cbn. auto.
 Qed.
 
-Lemma CHOICE_continuous_env {D E ρ} : 
+Lemma CHOICE_continuous_env {D E: Rho -> P (Comp (fset Value))}{ρ} : 
   continuous_env D ρ 
   -> continuous_env E ρ
-  -> monotone_env D 
-  -> monotone_env E
+  -> monotone_env (dom ρ) D 
+  -> monotone_env (dom ρ) E
   -> continuous_env (fun ρ => (CHOICE (D ρ) (E ρ))) ρ.
 Proof.  
   intros IHD IHE mD mE.
@@ -646,18 +646,20 @@ Proof.
   - exists l1. exists l2. 
     repeat split; eauto.
     eapply mD. instantiate (1:= ρ1). 
+    move: (Env.Forall2_dom _ S1) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_left; eauto. auto.
     eapply mE. instantiate (1:= ρ2). 
+    move: (Env.Forall2_dom _ S2) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_right; eauto. auto.
 Qed. 
 
 
-Lemma UNIFY_continuous_env {D E ρ} : 
-  valid_env ρ
+Lemma UNIFY_continuous_env {D E : Rho -> P Value}{ρ} : 
+  nonempty_env ρ
   -> continuous_env D ρ 
   -> continuous_env E ρ
-  -> monotone_env D 
-  -> monotone_env E
+  -> monotone_env (dom ρ) D 
+  -> monotone_env (dom ρ) E
   -> continuous_env (fun ρ => (UNIFY (D ρ) (E ρ))) ρ.
 Proof.  
   intros VE IHD IHE mD mE.
@@ -683,8 +685,10 @@ Proof.
     exists x. exists y.
     repeat split; eauto.
     eapply mD. instantiate (1:= ρ1). 
+    move: (Env.Forall2_dom _ S1) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_left; eauto. auto.
     eapply mE. instantiate (1:= ρ2). 
+    move: (Env.Forall2_dom _ S2) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_right; eauto. auto.
   +
   destruct l; try done.
@@ -712,9 +716,11 @@ Proof.
     repeat split; eauto.
     move: (mD ρ1 (ρ1 ⊔e ρ2)) => SS1.
     rewrite <- SS1. auto.
+    move: (Env.Forall2_dom _ S1) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_left; eauto. auto.
     move: (mE ρ2 (ρ1 ⊔e ρ2)) => SS2.
     rewrite <- SS2. auto.
+    move: (Env.Forall2_dom _ S2) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_right; eauto. 
 Qed. 
 
@@ -723,9 +729,9 @@ Qed.
 (* ------------------------------------------------------- *)
 
 Lemma RET_continuous_env {D: Rho -> (P Value)}{ρ} : 
-  valid_env ρ ->
+  nonempty_env ρ ->
   continuous_env D ρ ->
-  monotone_env D ->
+  monotone_env (dom ρ) D ->
   continuous_env (fun ρ => RET (D ρ)) ρ.
 Proof.
   intros VE IHD mD.
@@ -747,11 +753,11 @@ Qed.
 Lemma BIND_continuous_env {A B} 
   {D : Rho -> P (Comp (fset A))} 
   {K : Rho -> P A -> P (Comp B)} {ρ}: 
-  valid_env ρ -> 
+  nonempty_env ρ -> 
   continuous_env D ρ ->
-  monotone_env D ->
+  monotone_env (dom ρ) D ->
   (forall v, continuous_env (fun ρ => K ρ v) ρ) ->
-  (forall v, monotone_env (fun ρ => K ρ v)) ->
+  (forall v, monotone_env (dom ρ) (fun ρ => K ρ v)) ->
   continuous_env (fun ρ => (BIND (D ρ) (K ρ))) ρ. 
 Proof.
   intros NE IHD mD IHK mK.
@@ -790,8 +796,12 @@ Proof.
           - eapply join_finite_env; eauto.    
           - eapply join_lub; eauto.
           - intros x xIn. simpl in xIn. destruct xIn. 
-            subst. eapply (mK (mem x)); try eassumption. eapply join_sub_left; auto.
-            eapply (mK (mem x)). 2: { eapply uIn2; eauto. }
+            subst. eapply (mK (mem x)); try eassumption. 
+            move: (Env.Forall2_dom _ S1) => EQ. rewrite EQ. reflexivity.    
+            eapply join_sub_left; auto.
+            eapply (mK (mem x)).
+            3: { eapply uIn2; eauto. }
+            move: (Env.Forall2_dom _ S2) => EQ. rewrite EQ. reflexivity.    
             eapply join_sub_right; eauto.
     }
     destruct (lemma l h2) as 
@@ -805,9 +815,12 @@ Proof.
     - eapply join_lub; eauto.
     - exists (c_multi l). exists k.
     repeat split; eauto.
-    eapply mD; try eassumption. eapply join_sub_left; auto.
+    eapply mD; try eassumption. 
+    move: (Env.Forall2_dom _ S1) => EQ. rewrite EQ. reflexivity.    
+    eapply join_sub_left; auto.
     intros a aIn.
-    eapply (mK (mem a)). 2: { eapply In2; eauto. }
+    eapply (mK (mem a)). 3: { eapply In2; eauto. }
+    move: (Env.Forall2_dom _ S2) => EQ. rewrite EQ. reflexivity.    
     eapply join_sub_right; eauto.
 Qed.                 
 
@@ -817,7 +830,7 @@ Qed.
 
 (* ⟦⟧-continuous *)
 Lemma denot_continuous_env {t} : forall ρ,
-    valid_env ρ
+    nonempty_env ρ
   -> continuous_env (denot t) ρ.
 Proof.
   eapply tm_induction with (t := t);
@@ -870,77 +883,39 @@ Proof.
    exists ρ'. exists F'. repeat split. auto.
    autorewrite with denot.
    auto.
-  + pick fresh x.
+  + (* abstraction case *)
+    pick fresh x.
     rewrite (denot_abs x) in cIn. fsetdec.
-
-    remember (fun ρ => 
-                Λ (fun D : P Value => denot (t' ^ x) (x ~ D ++ ρ))) 
-              as D.
-    have CE: (continuous_env D ρ). 
-    {
-      subst D. eapply LAMBDA_continuous_env; eauto.
-      Unshelve. 2: { eauto.  }
-      eapply denot_monotone.
-    }
     destruct c; try done.
+    destruct l ; try done.
     destruct l; try done.
-    destruct l; try done.
-    cbn in cIn.
-    destruct cIn as [cIn LV].
-    (* This replicates part of continuous-∈-sub, but is necessary
-       because we cannot show that D is monotonic in the environment.
-       It is only monotonic in environments that don't mention x.
-     *)
-    have lemma: (exists ρ', exists _ : finite_env ρ', ρ' ⊆e ρ /\ ((mem f) ⊆ D ρ')).
-    { 
-      clear LV. move: cIn.
-      eapply fset_induction with (f := f). Unshelve. 3: exact f. 
-      - move=> cIn. exists (initial_finite_env ρ NE).
-        repeat split.
-        eapply (initial_fin ρ NE).
-        eapply initial_fin_sub; eauto. 
-        done.
-      - move=> a f0 IHf cIn.
-        rewrite union_mem in cIn.
-        rewrite mem_singleton_eq in cIn.
-        destruct (CE a) as [ρ1 [F1 [S1 h1]]].
-        specialize (cIn a  ltac:(econstructor; eauto)).  subst D. auto.
-        destruct IHf as [ρ2 [F2 [S2 h2]]].
-        intros y yIn. eapply cIn; eauto. right. auto.
-        have SS1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto. 
-        have SS2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
-        have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
-        exists (ρ1 ⊔e ρ2).
-        repeat split.
-        eapply join_finite_env; eauto.    
-        eapply join_lub; eauto.
-        subst D.
-        intros y yIn.
-        rewrite union_mem in yIn.
-        rewrite mem_singleton_eq in yIn.
-        destruct yIn. inversion H. subst.
-        + eapply Λ_ext_sub. 2: eapply h1.
-        intros X VX. simpl.
-        eapply denot_monotone.
-        constructor; eauto.
-        eapply join_sub_left; eauto.
-        erewrite -> Forall2_dom. 2: eapply SS1. fsetdec.
-        reflexivity.
-        + specialize (h2 x0 H).
-        eapply Λ_ext_sub. 2: eapply h2.
-        intros X VX. simpl.
-        eapply denot_monotone.
-        constructor; eauto.
-        eapply join_sub_right; eauto.
-        erewrite -> Forall2_dom. 2: eapply SS2. fsetdec.
-        reflexivity.
+    destruct cIn as [fIn NV].
+    specialize (IH x ltac:(auto)).
+
+    remember (fun ρ => Λ (fun D : P Value => denot (t' ^ x) (x ~ D ++ ρ))) as E.
+    have mE: (monotone_env (dom ρ) E).
+    { subst E. 
+      intros r1 r2 EQ S.
+      eapply Λ_ext_sub.
+      intros X VX.
+      eapply denot_monotone. eauto.
+      econstructor; eauto. rewrite EQ. fsetdec. reflexivity.
     }
-    destruct lemma as [ρ' [F' [S' h']]].
-    exists ρ'. exists F'. split; auto.
-    rewrite (denot_abs x); auto. 
-    rewrite (@Forall2_dom _ Included ρ' ρ); auto.
-    cbn. subst D. 
-    split; auto. 
+    edestruct (continuous_In_sub E ρ NE mE f ltac:(subst E; auto))
+      as [ρ' [F' [S' I']]].
+    { intros v vIn.
+      subst E.
+      eapply LAMBDA_continuous_env.
+      fsetdec.
+      eauto.
+      eauto using denot_monotone.
+    }
+    exists ρ'. exists F'. 
+    rewrite (denot_abs x). 
+    erewrite -> Forall2_dom with (r2 := ρ). fsetdec. eauto.
+    split. auto.
+    cbn.
+    split.  subst E. auto. auto.
   + (* CONS *)
     specialize (IH1 _ NE).
     specialize (IH2 _ NE).
@@ -964,9 +939,9 @@ Proof.
    edestruct (BIND_continuous_env NE IH1 ltac:(eapply denot_monotone; eauto) C2) as 
      [ ρ' [F' [S' In']]].
    2: eapply cIn.
-   intros v ρ1 ρ2 S.    
+   intros v ρ1 ρ2 EQ S.    
    eapply BIND_mono. 
-   eapply denot_monotone; auto.
+   eapply denot_monotone; auto. reflexivity.
    intros x. reflexivity.
    exists ρ'. exists F'. repeat split. auto.
    autorewrite with denot.
@@ -1000,11 +975,12 @@ Proof.
     admit.
 Admitted.
 
+(*
 (* ⟦⟧-continuous-⊆ *) 
 Lemma generic_continuous_sub {A}{ρ}{F : Rho -> P A} : 
     continuous_env F ρ 
   -> monotone_env F
-  -> valid_env ρ
+  -> nonempty_env ρ
   -> forall V, mem V ⊆ F ρ
   -> exists ρ', exists (pf : finite_env ρ'),
         ρ' ⊆e ρ  /\  (mem V ⊆ F ρ').
@@ -1013,10 +989,11 @@ Proof.
   eapply continuous_In_sub; eauto.
 Qed.
 
+*)
 
 (* ⟦⟧-continuous-⊆ *) 
 Lemma denot_continuous_sub {ρ t} : 
-  valid_env ρ
+  nonempty_env ρ
   -> forall V, mem V ⊆ denot t ρ
   -> exists ρ', exists (pf : finite_env ρ'),
         ρ' ⊆e ρ  /\  (mem V ⊆ denot t ρ').
@@ -1029,7 +1006,7 @@ Qed.
 
 (* ⟦⟧-continuous-one *)
 Lemma denot_continuous_one { t ρ x } :
-  valid_env ρ 
+  nonempty_env ρ 
   -> x `notin` dom ρ 
   -> continuous (fun D => denot (t ^ x) (x ~ D ++ ρ)).
 Proof.
@@ -1037,10 +1014,10 @@ Proof.
   intros X E E_sub_denot NE_X.
   edestruct (@denot_continuous_sub (x ~ X ++ ρ)) as 
     [ρ' [pf [h1 h2]]]. 3: eauto.
-  + eapply extend_valid_env; eauto.
+  + eapply extend_nonempty_env; eauto.
   + eauto.
   + inversion h1. subst. inversion pf. subst.
-    move: H6 => [D [S NN]].
+    match goal with [H6 : finite a1 |- _ ] => move: H6 => [D [S NN]] end.
     exists D. split.
     rewrite <- S. auto.
     split. 
@@ -1085,7 +1062,7 @@ Qed.
 Lemma Λ_denot_APPLY_id :
   forall t ρ x X,
     valid X
-    -> valid_env ρ
+    -> nonempty_env ρ
     -> x `notin` dom ρ 
     -> ((Λ (fun D => denot (t ^ x) (x ~ D ++ ρ))) ▩ X) ≃
       denot (t ^ x) (x ~ X ++ ρ).
@@ -1429,7 +1406,7 @@ Lemma CONS_monotone {A}{D E: P A -> P Value} :
 Proof. intros mD mE x y S. eapply CONS_mono_sub; eauto. Qed.
   
 
-Lemma CONS_continuous {D E} :
+Lemma CONS_continuous {A}{D E : P A -> P Value} :
     continuous D 
   -> continuous E
   -> monotone D 
