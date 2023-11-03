@@ -1,0 +1,181 @@
+\documentclass{article}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{ottalt}
+\usepackage{mathpartir}
+\usepackage{supertabular}
+\usepackage{url}
+% \usepackage[utf8x]{inputenc}
+
+\usepackage{newunicodechar}
+\usepackage{mathrsfs}
+
+\usepackage{listings}
+\usepackage{listingsutf8}
+
+\usepackage{fancyvrb}
+\usepackage[usenames,dvipsnames,svgnames,x11names]{xcolor}
+%\usepackage{color}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{lemma}{Lemma}[section]
+
+% for PDF latex, all unicode chars in this buffer must be first declared here
+\DeclareUnicodeCharacter{2208}{\ensuremath{\in}}
+
+% \inputott{lc-rules}
+
+\title{Graph Model for the untyped lambda calculus and for 
+Verse}
+
+% lstlistings options
+\usepackage{lstcoq}
+\usepackage{lstparams}
+
+% this pulls a listing from a Coq file.
+\newcommand{\codeplus}[3]{%
+  \lstinputlisting[%
+        #3,
+        linerange={#2},
+        rangebeginprefix=(*\ begin\ ,%
+        rangebeginsuffix=\ *),%
+        rangeendprefix=(*\ end\ ,%
+        rangeendsuffix=\ *),
+        includerangemarker=false]{#1}}
+\newcommand{\code}[2]{\codeplus{#1}{#2}{}}
+
+%\newunicodechar{∈}{\ensuremath{\in}}
+
+
+\begin{document}
+\maketitle
+
+This document describes a denotational semantics for a
+based on a ``graph'' model. 
+
+\section{Part one: untyped lambda calculus}
+
+
+The file \texttt{simple/model.v} contains a sketch of this semantics for the
+call-by-value untyped lambda calculus.
+
+This semantics interprets lambda calculus terms as a graph: a set of
+input-output pairs, each pair written $w \mapsto v$, where $w$ and $v$
+are elements of some domain $\mathcal{W}$. 
+
+The graph semantics also includes a special term $\circ$ as part of this set,
+to signal function values. See below.
+
+\subsection{Examples}
+
+Here are some examples.
+
+\begin{itemize}
+\item The graph of the identity function $\lambda x.x$ looks like this:
+
+\[ \{ w \mapsto w\ |\ w \in \mathcal{W} \} \cup \{ \circ \} \]
+
+This graph maps all inputs $w$ to $w$. 
+
+\item If we have a nonterminating expression, like $\omega$, i.e. 
+  $(\lambda x.x)(\lambda x.x)$,
+  then its denotation is the emptyset.  It is not
+  a value and we cannot apply it to any arguments to get a results.
+
+   \[ \{\} \]
+
+\item The denotation of a function that takes an argument and then diverges
+  i.e. $\lambda x. \omega$ is the special term only.
+
+  \[ \{ \circ \} \]
+
+  The term $\circ$ marks that this is a value, but there are still no mappings
+  in the graph. This term lets us distinguish the denotation of a diverging
+  expression from that of a value, even if we cannot use the value.
+
+\item The denotation of $K$, i.e. $\lambda x.\lambda y.x$ is  
+
+  \[ \{ w_1 \mapsto \{ w_2 \mapsto w_1\ |\ w_2 \in \mathcal{W} \}\ \cup \{\circ\}\ |\ w_1 \in \mathcal{W} \} \cup \{ \circ \} \]
+
+\noindent but we will see below that this definition could also be 
+
+  \[ \{ w_1 \mapsto (w_2 \mapsto w_1)\ |\ w_1, w_2 \in \mathcal{W} \} \cup \{ \circ \} \]
+
+because this set is extensionally equivalent. (SCW: need to define this equivalence).
+
+\end{itemize}
+
+\subsection{Representing the domain}
+
+What is this domain $\mathcal{W}$? Informally, we would like it to be the
+powerset of all mappings (plus the trivial term $\circ$):
+
+\[ \mathcal{W} = \mathscr{P}( 
+  \{ w_1 \mapsto w_2\ |\ w_1, w_2 \in \mathcal{W} \} \cup \circ )  \] 
+
+\noindent But that is not a well founded definition. 
+
+And how do we represent this set in a proof assistant?
+
+
+We can represent the powerset of some type by its characteristic function,
+i.e. a proposition that tells us whether the value is in the set.
+
+\begin{lstlisting}{language=Coq}
+Definition P (A : Type) := A -> Prop.
+\end{lstlisting}
+
+However, this definition does not give us an \emph{inductive} or finite
+representation of values. For that we need to consider only finite sets of
+values. (We'll use the type constructor \texttt{fset A} to refer to a finite
+set containing elements of type \texttt{A}). This type can be inductively
+defined and injected into the non-inductive variant \texttt{P A}. Using this
+finite set type, we can build up our representation out of an inductive
+representation of a mapping (\texttt{v\_map}) and trivial term (\texttt{v\_fun}): 
+
+\codeplus{../coq/simple/model.v}{Value}{language=Coq}
+
+And then represent lambda calculus expressions to a potentially infinite set
+of these terms.
+
+\begin{lstlisting}{mathescape,language=Coq}
+Definition W := P Value.
+\end{lstlisting}
+
+As an example, let's consider the identity function. The 
+semantics of this function is:
+
+\codeplus{../coq/simple/model.v}{idset}{} 
+
+
+Consider how this definition reacts with the semantic function for application:
+
+\begin{lstlisting}[language=Coq,mathescape]
+Definition APPLY (D1 : P Value) (D2 : P Value) : P Value :=
+  fun w $\Rightarrow$ exists V, (v_map V w $\in$ D1) $\wedge$ (mem V $\subseteq$ D2) $\wedge$ (valid_mem V).
+\end{lstlisting}
+
+Or, equally expressed as an inductive:
+
+\codeplus{../coq/simple/model.v}{APPLY}{} 
+
+
+
+
+\section{Part two: Extending the model to verse}
+
+The files in the  \texttt{verse/} subdirectory contain the semantics of a much richer language.
+
+\begin{itemize}
+\item Verse contains multiple types of values: not only functions, but also integers and finite lists of values.
+\item Because of the multiple types, there is the possibility
+that the meaning of a term might be a \emph{run-time error}. For
+example, if we try to apply the number 3 to itself.
+\item Verse terms, if they don't produce an error, may also 
+  produce multiple results, using choice.
+\end{itemize}
+
+
+
+\end{document}

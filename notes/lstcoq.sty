@@ -1,0 +1,80 @@
+% lstlisting coq style (partly inspired from a file of Assia Mahboubi)
+
+\newcommand*\colorPessim{\color{magenta}}
+\newcommand*\colorOptim{\color{blue}}
+
+\lstdefinelanguage{Coq}{
+literate=
+  {\{\{}{{\colorPessim\{\{}}2
+  {\}\}}{{\colorPessim\}\}}}2
+  {[[}{{\colorOptim{[[}}}2
+  {]]}{{\colorOptim{]]}}}2,
+%
+  morekeywords=[1]{
+Section, Module, End, Require, Import, Export,
+Variable, Variables, Parameter, Parameters, Axiom, Hypothesis, Hypotheses,
+Notation, Local, Tactic, Reserved, Scope, Open, Close, Delimit,
+Definition, Ltac, Fixpoint, CoFixpoint, Morphism, Relation,
+Implicit, Arguments, Unset, Contextual, Strict, Prenex, Implicits,
+Variant, Inductive, CoInductive, Record, Structure, Canonical,
+Theorem, Lemma, Corollary, Proposition, Fact, Remark, Example,
+Proof, Goal, Save, Qed, Defined, Equations, Hint, Resolve, Rewrite, View,
+Search, Print, Printing, All, Graph, Projections, inside, outside,
+Existing, Instance, Parametric, Class, Context, Global, Local, Eval,
+Program, Declare, Infix},
+%
+% Gallina
+% Note: exists is also a tactic
+morekeywords=[2]{forall, exists, fun, fix, cofix, struct,
+      match, with, end, as, at, in, return, let, if, is, then, else,
+      for, of, nosimpl, where, and},
+%
+% Sorts
+morekeywords=[3]{Type, Prop, Set},
+%
+% Various tactics, some are std Coq subsumed by ssr, for the manual purpose
+% NO TACTICS IN THIS PAPER
+% morekeywords=[4]{
+%          pose, move, case, elim, apply, clear,
+%             hnf, intro, intros, generalize, rename, pattern, after,
+% 	    destruct, induction, using, refine, inversion, injection,
+%          rewrite, congr, unlock, compute, ring, non_commutative_ring, field, fourier,
+%             replace, fold, unfold, change, cutrewrite, simpl,
+%          have, suff, wlog, suffices, without, loss, nat_norm,
+%             assert, cut, trivial, revert, bool_congr, nat_congr, native_compute,
+% 	 symmetry, transitivity, auto, split, left, right, autorewrite},
+%
+% Terminators
+% morekeywords=[5]{
+%          by, now, done, exact, reflexivity, tauto, romega, omega,
+%          assumption, solve, contradiction, discriminate},
+% Control
+% morekeywords=[6]{do, last, first, try, idtac, repeat},
+%
+comment=[s]{(*}{*)},
+%
+% String delimiters
+morestring=[b]",
+% Case sensitivity
+sensitive=true,
+%
+% Style for declaration keywords
+keywordstyle=[1]{\bfseries\codestyle\color{Keyword1Color}},
+%
+% Style for Gallina keywords
+keywordstyle=[2]{\codestyle\color{Keyword2Color}},
+%
+% Style for sorts keywords
+keywordstyle=[3]{\codestyle\color{Keyword2Color}},
+%
+% Style for tactics keywords
+keywordstyle=[4]{\codestyle\color{TacticColor}},
+%
+% Style for terminators keywords
+keywordstyle=[5]{\codestyle\color{TerminatorTacticColor}},
+%
+%Style for iterators
+keywordstyle=[6]{\bfseries\codestyle\color{IteratorTacticColor}}
+}
+
+\lstnewenvironment{coq}{\lstset{language=Haskell}}{}

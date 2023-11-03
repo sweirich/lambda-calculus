@@ -10,7 +10,7 @@ OTTOFLAGS  = -o $(COQ_LOC)/$(OTT_NAME)_ott.v
 OTTFILES   = $(foreach i, $(OTT_SOURCE) $(AUX_OTT), $(OTT_LOC)/$(i).ott)
 OTTIFLAGS  = $(foreach i, $(OTT_SOURCE) $(AUX_OTT), -i $(OTT_LOC)/$(i).ott) -merge true
 
-all: coq spec
+all: coq notes
 
 ################ latex ####################
 
@@ -19,6 +19,9 @@ SPECFILE = $(SPEC_LOC)/$(OTT_NAME).tex
 
 
 RULESFILE = $(SPEC_LOC)/$(OTT_NAME)-rules.tex 
+
+notes: 
+	(cd $(SPEC_LOC); make)
 
 spec: $(SPEC_LOC)/$(OTT_NAME).pdf
 
