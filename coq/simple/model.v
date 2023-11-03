@@ -38,13 +38,11 @@ Local Open Scope set_scope.
 
  *)
 
+(* begin Value *)
 Inductive Value : Type :=
-
-  (* one entry in a function's table. The first argument is the input. The second in the output. *)
   | v_map : fset Value -> Value -> Value
-
-  (* trivial function value, evaluated to a value but never applied *)
   | v_fun : Value.
+(* end Value *)
 
 #[export] Hint Constructors Value : core.
 
@@ -57,11 +55,14 @@ Definition LAMBDA : (P Value -> P Value) -> P Value :=
           | v_fun => True
           end.
 
-Inductive APPLY : P Value -> P Value -> Value -> Prop :=
+
+(* begin APPLY *)
+Inductive APPLY : P Value -> P Value -> (Value -> Prop) :=
   | BETA : forall D1 D2 w V,
      (v_map V w) ∈ D1 ->
      (mem V ⊆ D2) -> valid_mem V ->
      APPLY D1 D2 w.
+(* end APPLY *)
 
 (* Denotation function *)
 
@@ -459,11 +460,13 @@ Qed.
 
 Definition tm_Id : tm := abs (var_b 0).
  
+(* begin idset *)
 Definition idset : P Value := 
   fun t => match t with 
           | v_fun => True 
-          | v_map IN OUT => OUT ∈ mem IN 
+          | v_map INPUT OUT => OUT ∈ mem INPUT 
         end.
+(* end idset *)
 
 Definition id0 := v_fun.
 Example example0 : id0 ∈ idset. done. Qed.

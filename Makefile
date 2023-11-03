@@ -1,5 +1,5 @@
 OTT_NAME   = lc
-SPEC_LOC   = spec
+SPEC_LOC   = notes
 OTT_LOC    = .
 COQ_LOC    = coq/lc
 AUX_OTT    = 
@@ -20,12 +20,12 @@ SPECFILE = $(SPEC_LOC)/$(OTT_NAME).tex
 
 RULESFILE = $(SPEC_LOC)/$(OTT_NAME)-rules.tex 
 
-spec: spec/$(OTT_NAME).pdf
+spec: $(SPEC_LOC)/$(OTT_NAME).pdf
 
 $(SPEC_LOC)/$(OTT_NAME).pdf: $(SPEC) $(SPECFILE)
 	ott $(OTTIFLAGS) \
 	    -tex_wrap false -tex_show_meta false -tex_filter $(SPEC) $(SPECFILE)
-	(cd $(SPEC_LOC); pdflatex -interaction nonstopmode $(OTT_NAME).tex)
+	(cd $(SPEC_LOC); xelatex -interaction nonstopmode $(OTT_NAME).tex)
 
 
 $(RULESFILE) : $(OTTFILES)
