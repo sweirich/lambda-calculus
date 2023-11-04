@@ -10,21 +10,27 @@ Require Export lc.scoped.
 Require Import structures.Structures.
 Require Export structures.consistency.
 
-Require Export denot.properties.
+Require Export denot.list_properties.
 
 Import MonadNotation.
 Open Scope monad_scope.
 Import SetNotations.
 Local Open Scope set_scope.
 
-(* This is an  example of the graph model for the pure 
-   untyped lambda calculus. 
+Import EnvNotations.
 
-   In this model, everything is a function.
+(* This is an  example of the graph model for the pure 
+   untyped lambda calculus plus natural numbers. 
    
 *)
 
-
+Lemma In_mem_fset {A}{v : A} : v ∈ mem (singleton_fset v).
+Proof. cbn. left. auto. Qed.
+#[export] Hint Resolve In_mem_fset : core.
+Lemma  valid_mem_singleton_fset {A}{v:A} :
+  valid_mem (singleton_fset v).
+Proof. cbn. done. Qed.
+#[export] Hint Resolve valid_mem_singleton_fset : core.
 (* ----------------------------------------------------------- *)
 
 
@@ -34,12 +40,11 @@ Local Open Scope set_scope.
    Each pair in the set (i.e. v_map VS W) declares that if this value is
    applied to any value in VS, the result is W.
    
-   
-
  *)
 
 (* begin Value *)
 Inductive Value : Type :=
+  | v_nat : nat -> Value
   | v_map : fset Value -> Value -> Value
   | v_fun : Value.
 (* end Value *)
@@ -47,14 +52,14 @@ Inductive Value : Type :=
 #[export] Hint Constructors Value : core.
 
 
-(* semantic operators *)
+(* --- semantic operators -------  *)
 
-Definition LAMBDA : (P Value -> P Value) -> P Value :=
-  fun f => fun v => match v with 
-          | v_map V w => (w ∈ (f (mem V))) /\ valid_mem V  (* CBV *)
-          | v_fun => True
-          end.
-
+Inductive LAMBDA (f : P Value -> P Value) : P Value :=
+  | s_map : forall V w, 
+      w ∈ f (mem V) ->
+      valid_mem V ->
+      LAMBDA f (v_map V w)
+  | s_fun : LAMBDA f v_fun. 
 
 (* begin APPLY *)
 Inductive APPLY : P Value -> P Value -> (Value -> Prop) :=
@@ -64,68 +69,49 @@ Inductive APPLY : P Value -> P Value -> (Value -> Prop) :=
      APPLY D1 D2 w.
 (* end APPLY *)
 
+Inductive NAT (k : nat) : P Value :=
+  | s_Nat : NAT k (v_nat k).
+
+Inductive ADD : P Value :=
+  | s_ADD : forall i j k V1 V2,
+      v_nat i ∈ mem V1 ->
+      v_nat j ∈ mem V2 -> 
+      k = i + j ->
+      ADD (v_map V1 (v_map V2 (v_nat k))).
+
+#[export] Hint Constructors Value LAMBDA APPLY NAT ADD : core.
+
+Ltac invert_sem := 
+  lazymatch goal with 
+  | [ H : ?x ∈ LAMBDA ?f |- _ ] => inversion H; subst; clear H
+  | [ H : ?x ∈ APPLY ?v1 ?v2 |- _ ] => inversion H; subst; clear H
+  | [ H : ?x ∈ NAT ?k |- _ ] => inversion H; subst; clear H
+  | [ H : ?x ∈ ADD |- _ ] => inversion H; subst; clear H
+  end.
+
 (* Denotation function *)
 
-Import EnvNotations.
 Import LCNotations.
 
 Open Scope tm.
 
-Definition Rho := Env (P Value).
-
-Ltac gather_atoms ::=
-  let A := gather_atoms_with (fun x : vars => x) in
-  let B := gather_atoms_with (fun x : var => {{ x }}) in
-  let C := gather_atoms_with (fun x => fv_tm x) in
-  let D := gather_atoms_with (fun x : list (atom * P Value) => dom x) in
-  let E := gather_atoms_with (fun x : Env (P Value) => dom x) in
-  constr:(A \u B \u C \u D \u E).
+Definition Rho := list (P Value).
 
 (* Denotation function *)
-(* `n` is is a termination metric. *)
-Fixpoint denot_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
-  match n with
-  | O => Bottom
-  | S m => 
+Fixpoint denot (a : tm) (ρ : Rho) : P Value :=
      match a with 
-     | var_b _ => Bottom
+     | var_b n => ρ ⋅ n 
 
-     | var_f x => ρ ⋅ x 
+     | abs t => LAMBDA (fun D => denot t (D :: ρ))
 
-     | abs t => 
-        let x := fresh_for (dom ρ \u fv_tm t) in 
-        (LAMBDA (fun D => (denot_n m (t ^ x) (x ~ D ++ ρ))))
+     | app t u   =>  APPLY (denot t ρ) (denot u ρ)
 
-     | app t u   => 
-          APPLY (denot_n m t ρ) (denot_n m u ρ)
+     | lit i => NAT i
+
+     | add   => ADD
 
      | _ => Bottom
-     end
-end.
-
-Definition denot a := denot_n (size_tm a) a.
-
-
-Lemma denot_var_b : forall x ρ, denot (var_b x) ρ = Bottom.
-Admitted.
-
-Lemma denot_var : forall x ρ, denot (var_f x) ρ = (ρ ⋅ x).
-Admitted.
-
-Lemma denot_app : forall t u ρ, 
-    denot (app t u) ρ = APPLY (denot t ρ) (denot u ρ).
-Admitted.
-
-
-Lemma denot_abs : forall x t ρ,
-    x `notin` dom ρ \u fv_tm t ->
-    denot (abs t) ρ = LAMBDA (fun D => denot (t ^ x) (x ~ D ++ ρ)).
-Admitted.
-
-Create HintDb denot.
-#[export] Hint Opaque denot : denot.
-#[export] Hint Rewrite denot_var_b denot_var denot_app : denot.
-
+     end.
 
 (* --------------- monotonicity ------------------------------ *)
 
@@ -137,9 +123,8 @@ Create HintDb denot.
 Lemma LAMBDA_ext_sub {F1 F2} :
   (forall {X : P Value}, valid X -> F1 X ⊆ F2 X) -> LAMBDA F1 ⊆ LAMBDA F2.
 Proof.
-  intros F1F2 v Iv. destruct v eqn:E; inversion Iv; auto.
-  - split; auto. 
-    eapply F1F2; eauto. 
+  intros F1F2 v Iv.
+  invert_sem; econstructor; try eapply F1F2; eauto.
 Qed.
 
 Lemma LAMBDA_ext {F1 F2} :
@@ -153,9 +138,9 @@ Lemma APPLY_mono_sub { D1 D2 D3 D4 } :
     D1 ⊆ D3 -> D2 ⊆ D4 -> ((APPLY D1 D2) ⊆ (APPLY D3 D4)).
 Proof.  
   intros D13 D24 w APP. 
-  inversion APP; subst; unfold Included in *.
+  invert_sem.
   apply BETA with (V:=V); eauto.
-    intros d z. eauto.
+  intros d z. eauto.
 Qed.
 
 Lemma APPLY_cong { D1 D2 D3 D4 } :
@@ -173,25 +158,22 @@ unfold Proper. intros x1 y1 E1 x2 y2 E2. eapply APPLY_cong; eauto. Qed.
 
 (* denot *)
 
-#[export] Instance Proper_sub_denot : Proper (eq ==> Env.Forall2 Included ==> Included) denot.
+#[export] Instance Proper_sub_denot : Proper (eq ==> List.Forall2 Included ==> Included) denot.
 Proof.
   intros t1 t ->.
-  eapply tm_induction with (t := t).
+  induction t.
   1: move=>i.
-  2: move=>x.
+  2: move=>y.
   3: move=>t1 t2 IH1 IH2.
   4: move=> t' IH.
   all: intros.
   all: try move=> ρ1 ρ2 SUB.
-  all: autorewrite with denot.
   all: try reflexivity.
   - eapply access_mono_sub; eauto.
-  - eapply APPLY_mono_sub; eauto.
-  - pick fresh x.
-    repeat rewrite(denot_abs x); try fsetdec.
-    eapply LAMBDA_ext_sub; eauto.
+  - eapply LAMBDA_ext_sub; eauto.
     move=> X neX.
-    eapply IH; eauto.
+    eapply IHt; eauto.
+  - eapply APPLY_mono_sub; eauto.
 Qed.
 
 (* The denotation respects ≃ *)
@@ -203,9 +185,10 @@ Proof.
   split; eapply Proper_sub_denot; auto. 
 Qed. 
 
+
 (*  forall ρ ρ', ρ ⊆e ρ' -> denot t ρ ⊆ denot t ρ'. *)
-Lemma denot_monotone {t}: forall (scope : atoms), 
-  monotone_env scope (denot t).
+Lemma denot_monotone {t}: forall (sc : atoms), 
+  monotone_env sc (denot t).
 Proof.
   unfold monotone_env.
   intros. 
@@ -215,30 +198,30 @@ Qed.
 (* -- monotonicity WRT argument -- *)
 
 (* denot-monotone-one *)
-Lemma denot_monotone_one : forall ρ t x, 
-    uniq ρ -> x `notin` dom ρ ->
-    monotone (fun D => denot (t ^ x) (x ~ D ++ ρ)).
+Lemma denot_monotone_one : forall ρ t, 
+    monotone (fun D => denot t (D :: ρ)).
 Proof. 
   intros.
   unfold monotone. 
   intros D1 D2 sub.
-  eapply denot_monotone with (scope := {{x}} \u dom ρ); simpl; auto.
-  fsetdec.
-  econstructor; eauto.
+  eapply denot_monotone with (sc := S (dom ρ)); simpl; auto.
 Qed.
 
 
 (* ------------------ valid ---------------------- *)
 
 Lemma valid_LAMBDA : forall F, valid (LAMBDA F).
-Proof. 
-  intros F. 
-  cbv.
-  exists v_fun. auto. 
+Proof. intros F. cbv. exists v_fun. auto. Qed.
+
+Lemma valid_NAT : forall k, valid (NAT k).
+Proof. intros k. cbv. exists (v_nat k). econstructor; eauto. Qed.
+
+Lemma valid_ADD : valid ADD.
+Proof. cbv. exists (v_map (singleton_fset (v_nat 0)) (v_map (singleton_fset (v_nat 0)) (v_nat 0))).
+       econstructor; cbv; eauto. 
 Qed.
 
 (* ------------------ continuity ---------------------- *)
-
 
 Lemma APPLY_continuous_env {D E : Rho -> P Value}{ρ} :
   (nonempty_env ρ)
@@ -250,26 +233,27 @@ Lemma APPLY_continuous_env {D E : Rho -> P Value}{ρ} :
 Proof.  
   intros NE IHD IHE mD mE.
   intros w APP.
-  inversion APP; subst.
+  invert_sem.
   destruct (IHD (v_map V  w ) ltac:(auto)) as 
       [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
   destruct 
       (continuous_In_sub E ρ NE mE V)
       as [ ρ2 [ fρ2 [ ρ2ρ VEp2 ]]]; eauto.
-  have S1: same_scope ρ1 ρ. eapply Forall2_same_scope; eauto.
-  have S2: same_scope ρ2 ρ. eapply Forall2_same_scope; eauto.
-  have SS: same_scope ρ1 ρ2. { transitivity ρ; auto. symmetry; auto. }
+  have S1: same_scope ρ1 ρ2.
+  { unfold same_scope. rewrite -> ρ1ρ. rewrite -> ρ2ρ. done. }
+  have S2: same_scope ρ1 ρ.
+  { unfold same_scope. rewrite -> ρ1ρ. done. }
+  have S3: same_scope ρ2 ρ.
+  { unfold same_scope. rewrite -> ρ2ρ. done. }
   exists (ρ1 ⊔e ρ2).
   repeat split.
-    -- eapply join_finite_env; eauto.
+    -- eapply join_finite_env; eauto.     
     -- eapply join_lub; eauto.
     -- have VwDp3 : ⌈ v_map V w ⌉ ⊆ D (ρ1 ⊔e ρ2).
-    { transitivity (D ρ1); auto. eapply mD. 
-      erewrite -> Env.Forall2_dom with (r2 := ρ); eauto. reflexivity.
+    { transitivity (D ρ1); auto. eapply mD; auto.
       eapply join_sub_left. auto. }
     have VEρ3 : mem V ⊆ E (ρ1 ⊔e ρ2).
-    { transitivity (E ρ2); auto. eapply mE.
-      erewrite -> Env.Forall2_dom with (r2 := ρ); eauto. reflexivity.
+    { transitivity (E ρ2); auto. eapply mE; auto.
       eapply join_sub_right.  auto. }
     eapply BETA with (V:=V); auto.
 Qed.
@@ -278,69 +262,73 @@ Qed.
    Only need finite information from the environment.
 *)
 
-Lemma LAMBDA_continuous_env {E ρ x} {NE : nonempty_env ρ} :
-    x `notin` dom ρ
-  -> (forall V, valid_mem V -> continuous_env E (x ~ mem V ++ ρ))
-  -> monotone_env ({{x}} \u (dom ρ)) E
-  -> continuous_env (fun ρ => LAMBDA (fun D => E (x ~ D ++ ρ))) ρ.
+Lemma LAMBDA_continuous_env {E ρ} {NE : nonempty_env ρ} :
+    (forall V, valid_mem V -> continuous_env E (mem V :: ρ))
+  -> monotone_env (S (dom ρ)) E
+  -> continuous_env (fun ρ => LAMBDA (fun D => E (D :: ρ))) ρ.
 Proof.
-  intros Fr IH mE.
+  intros IH mE.
   intros v vIn.
-  destruct v; try done.
-  - (* v is l ↦ c *)
-    move: vIn => [ wEVρ NW ]. 
-    have VV: valid_mem f. unfold valid_mem. eauto.
-    have NEx: nonempty_env (x ~ mem f ++ ρ). econstructor; eauto.
-    specialize (IH f ltac:(eauto) v wEVρ).
+  inversion vIn as [ f w wEVρ VV EQ | ]. subst; clear vIn.
+  - (* v is V ↦ w *)
+    have NEx: nonempty_env (mem f :: ρ). econstructor; eauto.
+    specialize (IH f ltac:(eauto) w wEVρ).
     destruct IH as [ρ' [F' [S' h']]].
     inversion S'. subst. inversion F'. subst.
-    exists E1. eexists. eauto.
+    exists l. eexists. eauto.
     repeat split; auto.
-    eapply mE with (ρ := x ~ a1 ++ E1); simpl_env; eauto. 
-    move: (Env.Forall2_dom _ H3) => EQ. rewrite EQ. reflexivity.
-    econstructor; eauto. eapply Reflexive_sub_env. eapply Forall2_uniq1; eauto.
+    eapply s_map; eauto.
+    eapply mE with (ρ := x :: l); simpl_env; eauto. 
+    simpl. f_equal. rewrite -> H3. auto.
+    econstructor; eauto. 
   - exists (initial_finite_env ρ NE).
-    repeat split; eauto.
+    repeat split; eauto. 
+    econstructor.
 Qed.
 
+(*
+Lemma access_continuous_env {A} : 
+forall (ρ : list (P A)) (x : nat),
+       nonempty_env ρ ->
+       continuous_env (fun ρ0  => access (fun _ : A => False) ρ0 x) ρ.
+Admitted.
+
+
+
+Lemma extend_valid_env {A} {ρ : list (P A)}{X} : 
+  valid X -> 
+  nonempty_env ρ -> nonempty_env (X :: ρ).
+Proof. intros NEP NEX.  eapply List.ForallT_cons; eauto. Qed.
+#[export] Hint Resolve extend_valid_env : core.
+*)
 
 (* ⟦⟧-continuous *)
 Lemma denot_continuous_env {t} : forall ρ,
     nonempty_env ρ
   -> continuous_env (denot t) ρ.
 Proof.
-  eapply tm_induction with (t := t).
-  1: move=>i ρ NE.
-  2: move=>x ρ NE.
-  3: move=>t1 t2 IH1 IH2 ρ NE.
-  4: move=> t' IH ρ NE.
-  all: intros.
+  induction t.
+  all: intros ρ NE.
   all: intros c cIn.
-  all: autorewrite with denot in cIn.
   all: try solve [destruct c; try done].  
+  all: simpl in cIn.
+  all: simpl.
   - (* var case *)
     eapply access_continuous_env; eauto.
-  - (* app *)
-    specialize (IH1 _ NE).
-    specialize (IH2 _ NE).
-    move: (APPLY_continuous_env NE IH1 IH2 (denot_monotone (dom ρ)) (denot_monotone (dom ρ)) c cIn) => [r1 [f1 h]].
-    exists r1. exists f1. autorewrite with denot.
-    eauto.
   - (* abs *)
-    pick fresh x.
-    rewrite (denot_abs x) in cIn; auto. 
-    specialize (IH x ltac:(auto)).
-    destruct (@LAMBDA_continuous_env (denot (t' ^ x)) ρ x NE ltac:(auto) ltac:(eauto)
-          ltac:(eauto using denot_monotone) _ cIn) as [ρ' [F' [S' I']]].
-    exists ρ'. exists F'. 
-    rewrite (denot_abs x). 
-    erewrite -> Forall2_dom with (r2 := ρ). fsetdec. eauto.
-    eauto.    
+    eapply LAMBDA_continuous_env; eauto using denot_monotone.
+    Unshelve. eauto.
+  - (* app *)
+    eapply APPLY_continuous_env; eauto using denot_monotone.
+  - (* lit *)
+    inversion cIn; subst;
+    exists (initial_finite_env ρ NE); repeat split; eauto. 
+  - (* add *)
+    inversion cIn; subst;
+    exists (initial_finite_env ρ NE); repeat split; eauto. 
 Qed.
 
 (* --------------------------------------------------- *)
-
-
 
 (* ⟦⟧-continuous-⊆ *) 
 Lemma denot_continuous_sub {ρ t} : 
@@ -356,24 +344,23 @@ Qed.
 
 
 (* ⟦⟧-continuous-one *)
-Lemma denot_continuous_one { t ρ x } :
+Lemma denot_continuous_one { t ρ } :
   nonempty_env ρ 
-  -> x `notin` dom ρ 
-  -> continuous (fun D => denot (t ^ x) (x ~ D ++ ρ)).
+  -> continuous (fun D => denot t (D :: ρ)).
 Proof.
-  intros NE_ρ Fr.
+  intros NE_ρ .
   intros X E E_sub_denot NE_X.
-  edestruct (@denot_continuous_sub (x ~ X ++ ρ)) as 
-    [ρ' [pf [h1 h2]]]. 3: eauto.
+  edestruct (@denot_continuous_sub (X :: ρ)) as 
+    [ρ' [pf [h1 h2]]].
   + eapply extend_nonempty_env; eauto.
   + eauto.
   + inversion h1. subst. inversion pf. subst.
-    match goal with [H6 : finite a1 |- _ ] => move: H6 => [D [S NN]] end.
+    match goal with [H6 : finite x |- _ ] => move: H6 => [D [S NN]] end.
     exists D. split.
     rewrite <- S. auto.
     split. 
-    have SUB: Env.Forall2 Included 
-                (x ~ a1 ++ E1) (x ~ mem D ++ ρ).
+    have SUB: List.Forall2 Included 
+                (x :: l) (mem D :: ρ).
     econstructor; eauto. 
     rewrite <- S. reflexivity.
     rewrite <- SUB. eapply h2. 
@@ -390,7 +377,7 @@ Proof.
   intros Fcont Fmono NEX.
   split.
   + intros w APP. inversion APP; subst.
-    - cbn in H. destruct H as [h1 h2].
+    - invert_sem. 
       specialize (Fmono (mem V) X ltac:(auto)).
       eauto.
   + intros w wInFX.
@@ -399,38 +386,61 @@ Proof.
     move: (Fcont X (singleton_fset w) M NEX) => 
     [ D [ DltX [ wInFD NED ]]].
     eapply BETA with (V:=D); eauto.
-    repeat split; eauto.
+    eapply s_map; eauto.
 Qed.
 
 
 (* Λ⟦⟧-▪-id *)
 Lemma LAMBDA_denot_APPLY_id :
-  forall t ρ x X,
+  forall t ρ X,
     valid X
     -> nonempty_env ρ
-    -> x `notin` dom ρ 
-    -> (APPLY (LAMBDA (fun D => denot (t ^ x) (x ~ D ++ ρ))) X) ≃
-      denot (t ^ x) (x ~ X ++ ρ).
+    -> (APPLY (LAMBDA (fun D => denot t  (D :: ρ))) X) ≃
+      denot t (X  ::  ρ).
 Proof.
   intros.
-  move: (@LAMBDA_APPLY_id (fun D => denot (t ^ x) (x ~ D ++ ρ)) X) => h.
-  eapply h; auto.
-  +  (* continuity *)
-    eapply denot_continuous_one; auto.
-  + eapply denot_monotone_one; auto.
-    eapply ForallT_uniq; eauto.
+  eapply @LAMBDA_APPLY_id with (F := (fun D => denot t (D :: ρ))); eauto.
+  eapply denot_continuous_one; auto.
+  eapply denot_monotone_one; auto.
 Qed.
+
+(* ------------------- addition works -------------------------- *)
+
+Ltac invert_sub := 
+  let h := fresh in
+  match goal with 
+  | [ H : mem ?V ⊆ ?X , I : ?v ∈ mem ?V |- _ ] => 
+      move: (H _ I) => h ; invert_sem ; clear I
+  end.
+  
+
+Lemma APPLY_ADD i j : APPLY (APPLY ADD (NAT i)) (NAT j) ≃ (NAT (i+j)).
+Proof.
+split.
+- intros x xIn.
+  repeat invert_sem.
+  repeat invert_sub.
+  econstructor; eauto.
+- intros x xIn.
+  inversion xIn; subst; clear xIn.
+  eapply BETA with (V := singleton_fset (v_nat j)); eauto.
+  eapply BETA with (V := singleton_fset (v_nat i)); eauto.
+  eapply s_ADD; eauto.
+  eapply In_mem_Included. cbv; eauto.
+  eapply In_mem_Included. cbv; eauto.
+Qed.
+
 
 (* ------------------- beta reduction is sound ----------------- *)
 
-
+(*
 Lemma subst_denot1 :
-  forall (t : tm) (x : atom) (u : tm) (ρ : Env (P Value)),
-    scoped t (x ~ denot u ρ ++ ρ) 
+  forall (t : tm) (u : tm) (ρ : list (P Value)),
+    scoped t (denot u ρ :: ρ) 
     -> scoped u ρ 
     -> valid (denot u ρ)
     -> nonempty_env ρ
-    -> denot t (x ~ denot u ρ ++ ρ) ≃ denot (t [x ~> u]) ρ.
+    -> denot t (denot u ρ :: ρ) ≃ denot (t [x ~> u]) ρ.
 Proof.
 Admitted.
 
@@ -452,9 +462,27 @@ Proof.
   rewrite (subst_tm_intro x t u); auto.
   reflexivity.
 Qed.
+*)
 
 (* ------------------------ examples --------------------------- *)
 
+Lemma In_valid_mem {A} {x : A}{f}: x ∈ mem f -> valid_mem f.
+Proof. intro xIn.  destruct f.
+       intro h. subst. done.
+Qed.
+
+#[export] Hint Resolve In_valid_mem : core.
+
+(* 3 + 4 is 7 *)
+
+Definition tm_add_example := app (app add (lit 3)) (lit 4).
+
+Lemma denot_add_example : denot tm_add_example nil ≃ (NAT 7).
+Proof.
+  unfold tm_add_example. simpl.
+  rewrite APPLY_ADD.
+  reflexivity.
+Qed.
 
 (* Identity function *)
 
@@ -465,6 +493,7 @@ Definition idset : P Value :=
   fun t => match t with 
           | v_fun => True 
           | v_map INPUT OUT => OUT ∈ mem INPUT 
+          | _ => False
         end.
 (* end idset *)
 
@@ -480,27 +509,18 @@ Example example3 : id2 ∈ idset. cbn. right. left. done. Qed.
 
 Lemma denot_Id1 : denot tm_Id nil ⊆ idset.
 Proof.
-  pick fresh x.
-  rewrite (denot_abs x); simpl; auto.
-  cbn. rewrite eq_dec_refl. clear x Fr.
-  + intros x xIn.
-    destruct x; try done.
-    destruct xIn as [h1 h2].
-    cbn. auto.
+  simpl.
+  intros x xIn.
+  invert_sem; cbn; auto.
 Qed.
 
 Lemma denot_Id2 : idset  ⊆  denot tm_Id nil.
 Proof. 
-  pick fresh x.
-  rewrite (denot_abs x); simpl; auto.
-  cbn. rewrite eq_dec_refl. clear x Fr.
+  simpl.
   move=> x xIn.
   destruct x; try done.
   + cbn in xIn.
-    repeat split; auto. 
-    destruct f. cbn in xIn.
-    intro h. subst.
-    done.
+    eapply s_map; eauto.
 Qed.
 
 (* Example: constant function K -- \x. \y. x n *)
@@ -513,42 +533,44 @@ Definition K_set : P Value :=
               match w with 
                 | v_map V2 v => (valid_mem V2) /\ (v ∈ mem V1)
                 | v_fun => True
+                | _ => False
               end
           | v_fun => True
+          | _ => False
         end.
 
 Lemma denot_K2 : K_set ⊆ denot tm_K nil.
 Proof.
   intros v vIn.
   unfold tm_K.
-  pick fresh x. 
-  rewrite (denot_abs x); auto.
+  simpl.
   destruct v; try done.
   destruct v; cbn in vIn; try done.
-  2: { cbn. intuition. }
-  cbn.
-  rewrite eq_dec_refl.
-  remember (fresh_for (union (Metatheory.add x empty) (singleton x))) as y.
-  destruct (x == y). subst. admit. (* variable fussiness. *)
-  intuition.
-Admitted.
+  all: try solve [cbn; intuition].
+Qed.
 
 Lemma denot_K1 : denot tm_K nil ⊆ K_set.
 Proof.
   unfold tm_K.
-  pick fresh x. 
-  rewrite (denot_abs x); auto.
-  replace ((abs (var_b 1)) ^ x) with (abs (var_f x)). 2: { reflexivity. }
-    
+  simpl.
   intros v vIn.
-  destruct v; try done.
-  destruct v; try done. 2: { cbn in *. intuition. }
-  cbn in *.
-  rewrite eq_dec_refl in vIn.
-  remember (fresh_for (union (Metatheory.add x empty) (singleton x))) as z.
-  destruct (x == z). subst. admit.
-  intuition.
-Admitted.
+  inversion vIn as [V w wIn h1 h2|]. subst. clear vIn.
+  inversion wIn as [V2 w2 w2In h3 h4|]. subst.
+  all: try solve [cbn in *; intuition].
+Qed.
+
+
+(* --------------- CBV Y-combinator: Z ---------------------- *)
+(* \lambda f.(\lambda x.f(\lambda v.xxv))\ (\lambda x.f(\lambda v.xxv)) *)
+
+Definition xxv : tm := (abs (app (app (var_b 1) (var_b 0)) (var_b 0))).
+
+Definition tm_Z : tm := 
+   abs (app (abs  (app (var_b 1) xxv))
+            (abs  (app (var_b 1) xxv))).
+
+
+(* --------------------------------------------------------- *)
 
 (* Delta := \x. x x *)
 
@@ -561,37 +583,30 @@ Definition Delta_set : P Value :=
               valid_mem f /\ 
                 exists V, (v_map V y ∈ mem f) /\ 
                        (valid_mem V) /\ (mem V ⊆ mem f)
+          | _ => False
         end.
 
 
 Lemma denot_Delta2 : Delta_set ⊆ denot tm_Delta nil.
 Proof.
   unfold tm_Delta.
-  pick fresh x.
-  rewrite (denot_abs x). eauto.
+  simpl.
   intros y yIn.
-  cbn. rewrite eq_dec_refl.
   destruct y; try done.
   cbn in yIn. 
   move: yIn => [VF [V [SF [VV SV]]]]. 
   cbn.
-  split; eauto.
+  eapply s_map; eauto.
   eapply BETA;  eauto.
 Qed.
 
 Lemma denot_Delta1 : denot tm_Delta nil ⊆ Delta_set.
 Proof.
   unfold tm_Delta.
-  pick fresh x.
-  rewrite (denot_abs x). eauto.
+  simpl.
   intros y yIn.
-  cbn in yIn. rewrite eq_dec_refl in yIn.
-  destruct y; try done.
-  cbn in yIn. destruct yIn as [AP VM].
-  inversion AP. subst.
-  cbn.
-  repeat split. auto.
-  exists V. repeat split; auto.
+  inversion yIn as [V w wIn h1 h2|]; subst; clear yIn; cbn; eauto. 
+  invert_sem; cbn; eauto.
 Qed.
 
 Lemma denot_Delta : denot tm_Delta nil ≃ Delta_set.
@@ -615,12 +630,13 @@ Definition tm_Omega : tm := app tm_Delta tm_Delta.
    matter what list represents an fset, the maximum depth 
    of any value in the fset will remain the same. *)
 
-Fixpoint max_list (xs : list nat) : nat := List.fold_right max 0 xs.
+Definition max_list := List.fold_right max 0.
 
 Fixpoint depth (v : Value) : nat :=
   match v with 
   | v_fun => 0
   | v_map (FSet VS) W => 1 + max (max_list (List.map depth VS)) (depth W)
+  | _ => 0
   end.
 
 Definition depth_fset (VS : fset Value) := 
@@ -646,7 +662,7 @@ Proof.
   destruct XS.
   induction l.
   intros h. done.
-  intros h. cbn.
+  intros h. cbn. fold max_list.
   destruct h.
   subst. lia. 
   cbn in IHl.
@@ -709,7 +725,8 @@ Qed.
 Lemma denot_Omega : denot tm_Omega nil ⊆ (fun x => False).
 Proof. intros x xIn.
        unfold tm_Omega in xIn.
-       rewrite denot_app in xIn.
+       replace (denot (app tm_Delta tm_Delta) nil) with 
+         (APPLY (denot tm_Delta nil) (denot tm_Delta nil)) in xIn. 2: auto.
        rewrite denot_Delta in xIn.
        inversion xIn. subst. clear xIn.
        cbv.
