@@ -5,14 +5,15 @@ Require Import Lia.
 
 Require Export lc.tactics.
 Require Import structures.Structures.
-Require Import structures.FSet.
+Require Import structures.NFSet.
 Require Export structures.consistency.
-
 
 Import MonadNotation.
 Open Scope monad_scope.
 Import SetNotations.
 Local Open Scope set_scope.
+
+(* ------ library functions ----- *)
 
 Fixpoint map2 {A B C} (f : A -> B -> C) (xs : list A) (ys : list B) : list C := 
   match xs , ys with 
@@ -21,9 +22,11 @@ Fixpoint map2 {A B C} (f : A -> B -> C) (xs : list A) (ys : list B) : list C :=
   end.
 #[export] Hint Constructors List.Forall2 : core.
 
-
 Lemma Forall2_length {A} : forall f (l1 l2 : list A), List.Forall2 f l1 l2 -> length l1 = length l2.
 Proof.  induction 1; eauto. simpl. f_equal. auto. Qed.
+
+
+(* ------------------------ *)
 
 
 Definition monotone {A}{B} (F : P A -> P B) : Set := 
@@ -34,13 +37,7 @@ Definition sub_reflecting {A}{B} (F : P A -> P B) : Set :=
   forall D1 D2, F D1 ⊆ F D2 -> (D1 ⊆ D2).
 
 Definition finite {B} (X : P B) : Prop := 
-  exists E, (X ≃ mem E) /\ nonempty_fset E.
-
-
-Definition continuous {V}{A} (F : P V -> P A) : Set :=
-  forall X E, mem E ⊆ F X -> valid X 
-         -> exists D, (mem D ⊆ X) /\ ((mem E) ⊆ F (mem D)) /\ valid_mem D.
-
+  exists E, (X ≃ mem E).
 
 
 (* ------------ environments ---------------------- *)
@@ -109,24 +106,9 @@ Definition Bottom : P Value := fun x => False.
 Definition monotone_env {A} (XS: atoms) (D : Rho Value -> P A) := 
   forall ρ ρ' , dom ρ = XS -> ρ ⊆e ρ' -> (D ρ) ⊆ D ρ'.
 
-Definition finite_env : Rho Value -> Prop := List.Forall finite.
-  
-Definition nonempty_env : Rho Value -> Type := List.ForallT nonemptyT.
-
 Definition sub_env : Rho Value -> Rho Value -> Prop := List.Forall2 Included.
 
 Definition same_env : Rho Value -> Rho Value -> Prop := List.Forall2 Same_set.
-
-Definition continuous_In {A} (D:Rho Value -> P A) (ρ:Rho Value) (v:A) : Prop :=
-  v ∈ D ρ -> exists ρ' , exists (pf : finite_env ρ'),  ρ' ⊆e ρ /\ (v ∈ D ρ').
-
-Definition continuous_env {A} (D:Rho Value -> P A) (ρ:Rho Value) : Prop :=
-  forall (v : A), continuous_In D ρ v.
-
-Definition continuous_Sub {A} (D:Rho Value -> P A) (ρ:Rho Value) (V:fset A) : Prop :=
-  mem V ⊆ D ρ -> 
-  exists ρ', exists (pf : finite_env ρ'),
-    ρ' ⊆e ρ  /\ (mem V ⊆ D ρ').
 
 End EnvProperties.
 
@@ -147,15 +129,69 @@ Proof.
   intros x1 y1 S1 x2 y2 S2. unfold same_scope in *. rewrite -> S1. rewrite -> S2. done. Qed.
 
 
+(* Continuity: 
+   
+   Parameterized by a notion of validity for sets and their finite approximations. 
+
+   Valid sets should be nonempty.
+
+   Validity should also be closed under set union
+
+   For every valid set, we can pick out a finite, inhabited subset of it.
+
+ *)
+
+
+Class Validity (V : Type) := 
+  MkValid { validT_set : P V -> Type ; 
+            pick : forall (X: P V), validT_set X -> 
+               { V : nfset V & (validT_set (mem V) * (mem V ⊆ X))%type} ; 
+            valid_nonempty : forall X , validT_set X -> nonemptyT X ;
+            valid_union : forall X Y, validT_set X -> validT_set Y -> validT_set (X ∪ Y)
+    }.
+
+Section Continuity.
+
+Context {Value : Type}
+        `{Validity Value}.
+
+Definition continuous {V}`{Validity V}{A} (F : P V -> P A) : Set :=
+  forall X E, mem E ⊆ F X -> validT_set X 
+         -> exists D, exists _:validT_set (mem D), (mem D ⊆ X) /\ ((mem E) ⊆ F (mem D)).
+
+Definition validT_env : Rho Value -> Type := List.ForallT validT_set.
+
+Definition finite_env : Rho Value -> Prop := List.Forall finite.
+  
+Definition continuous_In {A} (D:Rho Value -> P A) (ρ:Rho Value) (v:A) : Prop :=
+  v ∈ D ρ -> validT_env ρ -> 
+  exists ρ' , exists _:validT_env ρ' ,  (finite_env ρ') /\ ρ' ⊆e ρ /\ (v ∈ D ρ').
+
+Definition continuous_Sub {A} (D:Rho Value -> P A) (ρ:Rho Value) (V:nfset A) : Prop :=
+  mem V ⊆ D ρ -> validT_env ρ ->
+  exists ρ', exists _: validT_env ρ' , finite_env ρ' /\ ρ' ⊆e ρ  /\ (mem V ⊆ D ρ').
+
+(*
+Definition continuous_env {A} (D:Rho Value -> P A) (ρ:Rho Value) : Prop :=
+  forall (v : A), continuous_In D ρ v.
+*)
+
+Definition continuous_env {A} `{Validity A} (D:Rho Value -> P A) (ρ:Rho Value) : Prop :=
+  forall (V :nfset A), validT_set (mem V) -> continuous_Sub D ρ V.
+
+
+End Continuity.
+
+
 Section EnvResults.
 
-Context {Value : Type}.
+Context {Value : Type} {VV : Validity Value}.
 
 (* Nonempty environments *)
 
 Lemma extend_nonempty_env {ρ : Rho Value}{X} : 
-  nonemptyT X -> 
-  nonempty_env ρ -> nonempty_env (X :: ρ).
+  validT_set X -> 
+  validT_env ρ -> validT_env (X :: ρ).
 Proof. intros NEP NEX. eapply List.ForallT_cons; eauto. Qed.
 
 
@@ -178,13 +214,33 @@ Proof.
   | [ H4 : finite v1 |- _ ] =>  destruct H4 as [E1 [s1 u1 ]] end.
   match goal with 
   | [ H4 : finite v2 |- _ ] =>  destruct H4 as [E2 [s2 u2 ]] end.
-  exists (union_fset E1 E2).
+  exists (union_nfset E1 E2).
   split.
   rewrite -> s1.
-    rewrite -> s2.
-    rewrite union_mem. reflexivity.
-    eauto.
+  rewrite -> s2.
+  rewrite mem_union. reflexivity.
+  eapply mem_union_Included; eauto.
+  transitivity v1; eauto using sub_union_left.
+  transitivity v2; eauto using sub_union_right.
 Qed.
+
+Lemma valid_join {ρ1 ρ2} :
+    same_scope ρ1 ρ2
+    -> validT_env ρ1  
+    -> validT_env ρ2 
+    -> validT_env (ρ1 ⊔e ρ2).
+Proof.
+  move: ρ2.
+  induction ρ1 as [| v1 r1].
+  all: intros ρ2 sc h1; destruct ρ2 as [| v2 r2]; intros h2; simpl; eauto.
+  inversion h1; subst; clear h1.
+  inversion h2; subst; clear h2.
+  inversion sc; subst; clear sc.
+  econstructor; eauto. 
+  eapply valid_union; eauto.
+  eapply IHr1; eauto.
+Qed.
+
 
 Lemma join_lub {ρ ρ1 : Rho Value} :
   ρ1 ⊆e ρ -> forall ρ2, ρ2 ⊆e ρ -> (ρ1 ⊔e ρ2) ⊆e ρ.
@@ -194,8 +250,8 @@ Proof.
   simpl. auto.
   simpl.
   eapply List.Forall2_cons; eauto.
-  rewrite -> H3.
-  rewrite -> H.
+  match goal with [ H4 : ?x ⊆ _ |- (_ ∪ ?x) ⊆ _ ] => rewrite -> H4 end.
+  match goal with [ H : ?x ⊆ _ |- (?x ∪ _) ⊆ _ ] => rewrite -> H end.
   rewrite union_idem.
   reflexivity.
 Qed.
@@ -224,72 +280,96 @@ Proof.
     eapply IHρ1. eauto.
 Qed.
 
-Definition initial_finite_env (ρ : Rho Value) (NE : nonempty_env ρ) : Rho Value.
-  induction NE. exact nil.
-  destruct p as [V _].
-  exact (cons ⌈ V ⌉ IHNE).
+Definition initial_finite_env (ρ : Rho Value) (NE : validT_env ρ) : Rho Value.
+  induction NE.
+  - exact nil.
+  - move: (@pick _ _ x p) => [V [h1 h2]].
+    exact (cons (mem V) IHNE).
 Defined.
 
 Lemma initial_finite_dom : forall E NE, dom (initial_finite_env E NE) = dom E.
 Proof.
   induction NE; simpl. auto.
-  destruct p as [v w].  simpl. congruence.
+  destruct (pick x p) as [v [w1 w2]].  simpl. congruence.
 Qed. 
 
 Lemma finite_singleton : forall {B} (v : B), finite ⌈ v ⌉.
-Proof. intros B v. exists (singleton_fset v).
-       repeat split; eauto. done. 
+Proof. intros B v. exists (singleton_nfset v).
+       repeat split; eauto. 
+       intros x xIn. inversion xIn; subst; done.
 Qed.
 
 
 
-Lemma initial_fin (ρ : Rho Value) (NE : nonempty_env ρ) :
+Lemma initial_fin (ρ : Rho Value) (NE : validT_env ρ) :
   finite_env (initial_finite_env ρ NE).
 Proof.
   induction NE.
   simpl. econstructor.
-  simpl. destruct p as [v w1 ].
+  simpl. destruct (pick x p) as [v [w1 w2]].
   econstructor; eauto.
-  eapply finite_singleton.
+  exists v; reflexivity.
 Qed.
 
-Lemma initial_fin_sub (ρ : Rho Value) (NE : nonempty_env ρ) :
+Lemma initial_valid (ρ : Rho Value) (NE : validT_env ρ) :
+  validT_env (initial_finite_env ρ NE).
+Proof. 
+  induction NE.
+  simpl. econstructor.
+  simpl. destruct (pick x p) as [v [w1 w2]].
+  econstructor; eauto.  
+Qed.
+
+Lemma initial_fin_sub (ρ : Rho Value) (NE : validT_env ρ) :
   initial_finite_env ρ NE ⊆e ρ.
 Proof.
   induction NE; simpl. econstructor.
-  destruct p as [v fx].
+  destruct (pick x p) as [v [fx ?]].
   econstructor; auto.
 Qed.
 
 
 (* single-env maps x to D and any other variable y to something in ρ y. *)
 Definition single_env (x : nat) (D : P Value) (ρ : Rho Value) 
-  (NE : nonempty_env ρ) : Rho Value :=
+  (NE : validT_env ρ) : Rho Value :=
   update x D (initial_finite_env ρ NE).
 
-  
 Lemma single_fin { X x ρ NE } : 
   finite X ->
   finite_env (single_env x X ρ NE).
 Proof.
   move: x. induction NE; intro FIN; unfold finite_env; eauto.
   unfold single_env. cbn. econstructor.
-  unfold single_env. simpl. destruct p as [v1 v2].
+  unfold single_env. simpl. destruct (pick x p) as [v1 [v2 v3]].
   destruct FIN eqn:EQ.
   + subst. simpl.
     econstructor; eauto.
     eapply initial_fin. 
   + simpl in *.
     econstructor; eauto.
-    eapply finite_singleton.
+    exists v1; reflexivity.
     eapply IHNE; eauto.
 Qed.
 
 
-
+Lemma single_valid { X x ρ NE } : 
+  validT_set X ->
+  validT_env (single_env x X ρ NE).
+Proof.
+  move: x. induction NE; intros y VAL; unfold finite_env; eauto.
+  unfold single_env. cbn. econstructor.
+  unfold single_env. simpl. destruct (pick x p) as [v1 [v2 v3]].
+  destruct y eqn:EQ.
+  + subst. simpl.
+    econstructor; eauto.
+    eapply initial_valid. 
+  + simpl in *.
+    econstructor; eauto.
+    eapply IHNE; eauto.
+Qed.
 
 Lemma single_sub { ρ x V } :
-  forall (NE : nonempty_env ρ),
+  forall (NE : validT_env ρ),
     V ⊆ ρ ⋅ x 
   -> (single_env x V ρ NE) ⊆e ρ.
 Proof.
@@ -301,13 +381,12 @@ Proof.
     
   + (* cons case *)
     unfold single_env in *.
-    destruct p as [w h2]. simpl.
+    simpl in *.
+    destruct (pick x p) as [w [h1 h2]]. simpl.
     destruct vpe.
-    ++ simpl in *.
-       econstructor; eauto.
+    ++ econstructor; eauto.
        eapply initial_fin_sub. 
-    ++ simpl in *.
-       econstructor; eauto.
+    ++ econstructor; eauto.
 Qed.
 
 
@@ -320,13 +399,28 @@ Proof.
   unfold single_env.
   move: NE x H.
   induction NE. intros x H. simpl in H. lia.
-  simpl. destruct p as [w h2]. simpl.
+  simpl. destruct (pick x p) as [w [h1 h2]]. simpl.
   intros y H. destruct y eqn:EQ. subst. reflexivity.
   specialize (IHNE n ltac:(lia)).
   simpl.
   auto.
 Qed.  
 
+
+
+
+(* v∈single[xv]x  *)
+Lemma single_access {X x ρ NE} : 
+  x < dom ρ ->
+  (single_env x X ρ NE ⋅ x) = X.
+Proof.
+  unfold single_env.
+  move: NE x.
+  induction NE; intros y h. simpl in h. lia.
+  simpl. destruct (pick x p) as [w [h1 h2]]. simpl.
+  destruct y. simpl. auto.
+  simpl in *. eapply IHNE. lia.
+Qed.  
 
 
 (* v∈single[xv]x  *)
@@ -337,79 +431,79 @@ Proof.
   unfold single_env.
   move: NE x.
   induction NE; intros y h. simpl in h. lia.
-  simpl. destruct p as [w h2]. simpl.
+  simpl. destruct (pick x p) as [w [h1 h2]]. simpl.
   destruct y. simpl. eauto.
   simpl in *. eapply IHNE. lia.
 Qed.  
 
 (* continuous-∈⇒⊆ *)
-Lemma continuous_In_sub {A} (E : Rho Value -> (P A)) ρ (NE : nonempty_env ρ) :
+Lemma continuous_In_sub {A} (E : Rho Value -> (P A)) ρ (NE : validT_env ρ) :
    monotone_env (dom ρ) E
    -> forall V, mem V ⊆ E ρ
    -> (forall v, v ∈ mem V -> continuous_In E ρ v)
-   -> exists ρ', exists (pf : finite_env ρ') ,  ρ' ⊆e ρ /\ (mem V ⊆ E ρ').
+   -> exists ρ', exists _: validT_env ρ',  finite_env ρ' /\  ρ' ⊆e ρ /\ (mem V ⊆ E ρ').
 Proof.
-  intros me VS.
-  eapply fset_induction with (f := VS).
-  Unshelve. 3: exact VS.
+  intros me [a l].
+  induction l.
   - move=> VE vcont.
-    exists (initial_finite_env ρ NE).
-    repeat split.
-    eapply (initial_fin ρ NE).
-    eapply initial_fin_sub; eauto. 
-    done.
-  - move=> a f IHVS VE vcont.
-    rewrite union_mem in VE.
-    destruct IHVS as [ ρ1 [ fρ1 [ ρ1ρ VEρ1 ]]]; eauto.
-    move=> v vIn. eapply vcont. rewrite union_mem. eapply Union_intror. auto.
-    destruct (vcont a) as [ρ2 [fρ2 [ρ2ρ VEρ2]]].
-    rewrite union_mem. econstructor; eauto. rewrite mem_singleton_eq. eauto.
-    eapply VE. econstructor; eauto. 
-    rewrite mem_singleton_eq. eauto.
+    move: (VE a ltac:(left; auto)) => h. 
+    destruct (vcont a) as [ ρ1 [vρ1 [ fρ1  [ ρ1ρ VEρ1 ]]]]; try left; eauto.
+    exists ρ1. repeat split; auto. 
+    intros x xIn. inversion xIn; subst; try done.
+  - move=> VE vcont.
+    have X:  mem (NFSet a l) ⊆ mem (NFSet a (a0 :: l)).
+    { move=> v vIn. destruct vIn; subst. left; auto. right. right. auto. }
+    destruct IHl as [ ρ1 [ vρ1 [ fρ1  [ ρ1ρ VEρ1 ]]]]; eauto.
+    transitivity (mem (NFSet a (a0 :: l))); auto.
+    destruct (vcont a0 ltac:(right;left; auto)) as [ρ2 [vρ2 [fρ2  [ρ2ρ VEρ2]]]]; auto.
+    apply VE. right; left; auto.
     exists (ρ1 ⊔e ρ2).
     have S1: same_scope ρ1 ρ. admit.
     have S2: same_scope ρ2 ρ. admit.
     have SS: same_scope ρ1 ρ2. admit. 
-    eexists. eapply join_finite_env; eauto.
     repeat split.
+    + eapply valid_join; eauto. 
+    + eapply join_finite_env; eauto. 
     + eapply join_lub; eauto.
     + intros d dm.
-      rewrite union_mem in dm.
-      rewrite mem_singleton_eq in dm.
-      inversion dm; subst.
-      eapply me with (ρ := ρ2). rewrite -> ρ2ρ. auto. 
-      eapply join_sub_right; eauto. inversion H. subst. auto.
-      eapply me with (ρ := ρ1). rewrite -> ρ1ρ. auto. eapply join_sub_left; eauto. auto.
+      inversion dm; subst; try destruct H; subst.
+      ++ eapply me with (ρ := ρ1); eauto using join_sub_left.
+         eapply VEρ1. left; auto.
+      ++ eapply me with (ρ := ρ2); eauto using join_sub_right.
+      ++ eapply me with (ρ := ρ1); eauto using join_sub_left.
+         eapply VEρ1. right; auto.
 Admitted.
 
-
 Lemma access_continuous_env { ρ x } : 
-  nonempty_env ρ -> continuous_env (fun ρ0 : Rho Value => ρ0 ⋅ x) ρ.
+  continuous_env (fun ρ0 : Rho Value => ρ0 ⋅ x) ρ.
 Proof. 
-  move=> NE v vIn.
+  move=> V VAL vIn NE.
   cbn in vIn.
   destruct (Nat.lt_decidable x (dom ρ)).
-  exists (single_env x ⌈ v ⌉ ρ NE).
+  exists (single_env x (mem V) ρ NE).
   repeat split.
+  eapply single_valid; eauto. 
   eapply single_fin; eauto.
-  eapply finite_singleton; eauto.
+  exists V; reflexivity.
   eapply single_sub; auto.
-  eapply v_single_xvx; eauto.
+  erewrite -> (single_access H). reflexivity.
   exists (initial_finite_env ρ NE).
-  rewrite access_fresh in vIn. auto. done.
+  rewrite access_fresh in vIn. auto. 
+  apply valid_nonempty in VAL. destruct VAL.
+  specialize (vIn _ i).
+  done.
 Qed.
 
 (* ⟦⟧-continuous-⊆ *) 
-Lemma generic_continuous_sub {A}{ρ}{F : Rho Value -> P A} : 
+Lemma generic_continuous_sub {A}`{Validity A}{ρ}{F : Rho Value -> P A} : 
     continuous_env F ρ 
-  -> monotone_env (dom ρ) F
-  -> nonempty_env ρ
-  -> forall V, mem V ⊆ F ρ
-  -> exists ρ', exists (pf : finite_env ρ'),
+  -> validT_env ρ
+  -> forall V, validT_set (mem V) -> mem V ⊆ F ρ
+  -> exists ρ', exists _ : validT_env ρ' , finite_env ρ' /\
         ρ' ⊆e ρ  /\  (mem V ⊆ F ρ').
 Proof.
-  intros Fcont Fmono NE_ρ V VinEρ.
-  eapply continuous_In_sub; eauto.
+  intros Fcont NE_ρ V VAL VinEρ.
+  eapply Fcont; eauto.
 Qed.
 
 
@@ -418,12 +512,15 @@ End EnvResults.
 #[export] Hint Resolve extend_nonempty_env : core.
 #[export] Hint Resolve single_sub : core. 
 #[export] Hint Resolve single_fin : core. 
+#[export] Hint Resolve single_valid : core. 
+
 #[export] Hint Resolve initial_fin_sub : core. 
 #[export] Hint Resolve initial_fin : core. 
-#[export] Hint Resolve finite_singleton : core. 
-#[export] Hint Rewrite @initial_finite_dom : rewr_list.
-#[export] Hint Resolve v_single_xvx : core. 
+#[export] Hint Resolve initial_valid : core. 
 
+#[export] Hint Rewrite @initial_finite_dom : rewr_list.
+#[export] Hint Rewrite @single_access : core.
+#[export] Hint Resolve v_single_xvx : core. 
 
 (* Sub environments ⊆e *)
 
@@ -493,33 +590,21 @@ Proof. typeclasses eauto. Qed.
 #[export] Hint Resolve extend_sub_env : core.
 
 
-(* valid sets are inhabited *)
-Definition valid_is_nonempty {A} (V : P A) : valid V -> nonemptyT V := id.
-
-Lemma valid_join : forall {A} ( v1 v2 : P A), 
-    valid v1 -> 
-    valid v2 ->
-    valid (v1 ∪ v2).
-Proof.
-  intros A v1 v2 [x1 h1] [x2 h2].
-  exists x1. eapply Union_introl; eauto.
-Qed.
 
 Section ValidTheory.
 
-Context {Value : Type}.
+Context {Value : Type} `{Validity Value}.
 
-Lemma valid_nil : @nonempty_env Value nil.
-Proof. unfold nonempty_env. eauto. Qed.
+Lemma valid_nil : validT_env nil.
+Proof. econstructor; eauto. Qed.
 
 
 Lemma extend_valid_env {ρ : list (P Value)}{X} : 
-  valid X -> 
-  nonempty_env ρ -> nonempty_env (X :: ρ).
+  validT_set X -> 
+  validT_env ρ -> validT_env (X :: ρ).
 Proof. intros NEP NEX. eapply List.ForallT_cons; eauto. Qed.
 
 End ValidTheory.
 
 #[export] Hint Resolve valid_nil : core.
-#[export] Hint Immediate valid_is_nonempty : core.
 #[export] Hint Resolve extend_valid_env : core.

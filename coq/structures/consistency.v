@@ -5,6 +5,7 @@ Require Import Lia.
 
 Require Export lc.tactics.
 Require Import structures.Structures.
+Require Import structures.FSet.
 
 Class Consistency (A : Type) : Type := 
   { Consistent : A -> A -> Prop ;

@@ -20,6 +20,7 @@
 \theoremstyle{definition}
 \newtheorem{definition}{Definition}[section]
 \newtheorem{lemma}{Lemma}[section]
+\newtheorem{spec}{Specification}[section]
 
 % for PDF latex, all unicode chars in this buffer must be first declared here
 \DeclareUnicodeCharacter{2208}{\ensuremath{\in}}
@@ -54,27 +55,37 @@ Verse}
 This document describes a denotational semantics for a
 based on a ``graph'' model. 
 
+\newcommand\inhabited[1]{\ensuremath{\mathit{inhabited}}\ {#1}}
+\newcommand\apply[2]{\ensuremath{{#1}\ \blacksquare\ {#2}}}
+
 \section{Part one: untyped lambda calculus}
 
 
 The file \texttt{simple/model.v} contains a sketch of this semantics for the
 call-by-value untyped lambda calculus.
 
-This semantics interprets lambda calculus terms as a graph: a set of
+This semantics interprets lambda calculus functions as a graph: a set of
 input-output pairs, each pair written $w \mapsto v$, where $w$ and $v$
 are elements of some domain $\mathcal{W}$. 
 
 The graph semantics also includes a special term $\circ$ as part of this set,
-to signal function values. See below.
+to signal function values that cannot be applied. See below.
 
 \subsection{Examples}
 
 Here are some examples.
 
 \begin{itemize}
+
+\item The graph of the increment function $\lambda x. x+1$ looks like
+
+\[ \{ k \mapsto k+1\ |\ k \in \mathcal{N} \} \]
+
+This graph maps natural numbers $k$ to their sucessors.
+
 \item The graph of the identity function $\lambda x.x$ looks like this:
 
-\[ \{ w \mapsto w\ |\ w \in \mathcal{W} \} \cup \{ \circ \} \]
+\[ \{ w \mapsto w\ |\ w \in \mathcal{W} \} \]
 
 This graph maps all inputs $w$ to $w$. 
 
@@ -90,34 +101,79 @@ This graph maps all inputs $w$ to $w$.
 
   \[ \{ \circ \} \]
 
-  The term $\circ$ marks that this is a value, but there are still no mappings
+  The term $\circ$ marks that this term is a value, but there are still no mappings
   in the graph. This term lets us distinguish the denotation of a diverging
   expression from that of a value, even if we cannot use the value.
 
 \item The denotation of $K$, i.e. $\lambda x.\lambda y.x$ is  
 
-  \[ \{ w_1 \mapsto \{ w_2 \mapsto w_1\ |\ w_2 \in \mathcal{W} \}\ \cup \{\circ\}\ |\ w_1 \in \mathcal{W} \} \cup \{ \circ \} \]
+  \[ \{ w_1 \mapsto \{ w_2 \mapsto w_1\ |\ w_2 \in \mathcal{W} \}\ |\ w_1 \in \mathcal{W} \} \]
 
 \noindent but we will see below that this definition could also be 
 
-  \[ \{ w_1 \mapsto (w_2 \mapsto w_1)\ |\ w_1, w_2 \in \mathcal{W} \} \cup \{ \circ \} \]
+  \[ \{ w_1 \mapsto (w_2 \mapsto w_1)\ |\ w_1, w_2 \in \mathcal{W} \} \]
 
 because this set is extensionally equivalent. (SCW: need to define this equivalence).
 
 \end{itemize}
 
-\subsection{Representing the domain}
+
+\subsection{Semantic operations: specification}
+
 
 What is this domain $\mathcal{W}$? Informally, we would like it to be the
-powerset of all mappings (plus the trivial term $\circ$):
+powerset of all mappings (plus natural numbers and the trivial term $\circ$):
 
-\[ \mathcal{W} = \mathscr{P}( 
-  \{ w_1 \mapsto w_2\ |\ w_1, w_2 \in \mathcal{W} \} \cup \circ )  \] 
+\[ \mathcal{W} = \mathcal{N} \cup \circ \cup \mathscr{P}( 
+  \{ w_1 \mapsto w_2\ |\ w_1, w_2 \in \mathcal{W} \} )  \] 
 
 \noindent But that is not a well founded definition. 
+But, this is a specification of what we want the domain to look like.
 
-And how do we represent this set in a proof assistant?
+To define a semantics for the untyped lambda calculus, we need to say how domain 
+values can be constructed and used.
 
+For that, we will specify application and abstraction operators,
+$\blacksquare$ and $\Lambda$:
+
+\begin{spec}[APPLY] For $w_1, w_2 \in \mathcal{W}$, we want
+\[  \apply{w_1}{w_2}\ = \{ w\ |\ (w_2 \mapsto w) \in w_1 \} \]
+\end{spec}
+
+\begin{spec}[LAMBDA]
+  Given $F \in \mathcal{W} \rightarrow \mathcal{W}$ and
+  $w_1 \in \mathcal{W}$, we want
+\[ \Lambda\ F = \{ \circ \} \cup \{ (w_1 \mapsto w_2)\ |\ w_2 \in F(w_1) \} \]
+\end{spec}
+
+
+\begin{spec}
+Forall $F \in \mathcal{W} \rightarrow \mathcal{W}$, and 
+  $w\in\mathcal{W}$, we want
+  \[ \apply{\Lambda F}{w} = F\ w \]
+\end{spec}
+
+Now that we have apply, we can specify what it means for two elements of 
+our domain to be equal. We want a relation that allows us to approximate 
+the individual mappings. It shouldn't require that both sets have exactly 
+the same graph, just that the two graphs can be used in the same way. 
+\begin{spec}[Extensional Equality]
+\[ w_1 \equiv w_2 = \inhabited{w_1} \leftrightarrow \inhabited{w_2}\ \wedge
+  \forall w \in \mathcal{W}, \apply{w_1}{w} \equiv \apply{w_2}{w} \]
+\end{spec}
+  
+For example, the specification above allows us to consider these two graphs as 
+equivalent.
+
+\[
+\{ \{ 1 \mapsto (3 \mapsto 2), 1 \mapsto (4 \mapsto 5) \} \}
+\equiv
+\{ \{1 \mapsto \{ 3 \mapsto 2, 4 \mapsto 5 \} \}
+\]
+
+\subsection{Representing the domain}
+
+So how do we represent $\mathcal{W}$ in a proof assistant?
 
 We can represent the powerset of some type by its characteristic function,
 i.e. a proposition that tells us whether the value is in the set.
@@ -132,7 +188,8 @@ values. (We'll use the type constructor \texttt{fset A} to refer to a finite
 set containing elements of type \texttt{A}). This type can be inductively
 defined and injected into the non-inductive variant \texttt{P A}. Using this
 finite set type, we can build up our representation out of an inductive
-representation of a mapping (\texttt{v\_map}) and trivial term (\texttt{v\_fun}): 
+representation of a mapping (\texttt{v\_map}), numbers (\texttt{v_nat}) and
+trivial term (\texttt{v\_fun}):
 
 \codeplus{../coq/simple/model.v}{Value}{language=Coq}
 
@@ -148,7 +205,6 @@ semantics of this function is:
 
 \codeplus{../coq/simple/model.v}{idset}{} 
 
-
 Consider how this definition reacts with the semantic function for application:
 
 \begin{lstlisting}[language=Coq,mathescape]
@@ -159,9 +215,6 @@ Definition APPLY (D1 : P Value) (D2 : P Value) : P Value :=
 Or, equally expressed as an inductive:
 
 \codeplus{../coq/simple/model.v}{APPLY}{} 
-
-
-
 
 \section{Part two: Extending the model to verse}
 

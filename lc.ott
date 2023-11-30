@@ -23,6 +23,9 @@ j , k :: 'k_' ::= {{ coq nat }}
   | 1      ::  M :: one  {{ coq 1 }}
   | k + k' :: M  :: add  {{ coq ([[k]] + [[k']]) }}  
 
+primitive :: 'p_' ::= {{ primitives }}
+  | add 
+  | dec
 
 tm, t , u, v, w :: '' ::= {{ com terms }}
 
@@ -46,7 +49,7 @@ tm, t , u, v, w :: '' ::= {{ com terms }}
 
   | k                   ::   :: lit
 
-  | add                 ::   :: add
+  | primitive           ::   :: prim
 
   | nil                 ::   :: tnil
 
