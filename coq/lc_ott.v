@@ -4,8 +4,11 @@ Require Export Metalib.LibLNgen.
 
 (** syntax *)
 Definition tmvar : Set := var. (*r variables *)
+Definition const : Set := nat.
 
 Inductive tm : Set :=  (*r terms *)
+ | ext (a:const)
+ | let_ (t:tm) (u:tm) (*r let *)
  | var_b (_:nat) (*r variables *)
  | var_f (x:tmvar) (*r variables *)
  | abs (t:tm) (*r abstractions *)
@@ -19,6 +22,8 @@ Definition relation : Type := tm -> tm -> Prop.
 (** subrules *)
 Definition is_v_of_tm (t5:tm) : Prop :=
   match t5 with
+  | (ext a) => False
+  | (let_ t u) => False
   | (var_b nat) => False
   | (var_f x) => False
   | (abs t) => (True)
@@ -29,6 +34,8 @@ end.
 (** opening up abstractions *)
 Fixpoint open_tm_wrt_tm_rec (k:nat) (t5:tm) (t_6:tm) {struct t_6}: tm :=
   match t_6 with
+  | (ext a) => ext a
+  | (let_ t u) => let_ (open_tm_wrt_tm_rec k t5 t) (open_tm_wrt_tm_rec (S k) t5 u)
   | (var_b nat) => 
       match lt_eq_lt_dec nat k with
         | inleft (left _) => var_b nat
@@ -47,6 +54,12 @@ Definition open_tm_wrt_tm t5 t_6 := open_tm_wrt_tm_rec 0 t_6 t5.
 
 (* defns LC_tm *)
 Inductive lc_tm : tm -> Prop :=    (* defn lc_tm *)
+ | lc_ext : forall (a:const),
+     (lc_tm (ext a))
+ | lc_let_ : forall (t u:tm),
+     (lc_tm t) ->
+      ( forall x , lc_tm  ( open_tm_wrt_tm u (var_f x) )  )  ->
+     (lc_tm (let_ t u))
  | lc_var_f : forall (x:tmvar),
      (lc_tm (var_f x))
  | lc_abs : forall (t:tm),
@@ -59,6 +72,8 @@ Inductive lc_tm : tm -> Prop :=    (* defn lc_tm *)
 (** free variables *)
 Fixpoint fv_tm (t5:tm) : vars :=
   match t5 with
+  | (ext a) => {}
+  | (let_ t u) => (fv_tm t) \u (fv_tm u)
   | (var_b nat) => {}
   | (var_f x) => {{x}}
   | (abs t) => (fv_tm t)
@@ -68,6 +83,8 @@ end.
 (** substitutions *)
 Fixpoint subst_tm (t5:tm) (x5:tmvar) (t_6:tm) {struct t_6} : tm :=
   match t_6 with
+  | (ext a) => ext a
+  | (let_ t u) => let_ (subst_tm t5 x5 t) (subst_tm t5 x5 u)
   | (var_b nat) => var_b nat
   | (var_f x) => (if eq_var x x5 then t5 else (var_f x))
   | (abs t) => abs (subst_tm t5 x5 t)

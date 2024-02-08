@@ -11,12 +11,21 @@ metavar tmvar, x, y, z ::=
   {{ com variables }}
   {{ lex alphanum }}
 
+metavar const , a  ::= 
+  {{ coq nat }}
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% GRAMMAR
 
 grammar
 
 tm, t , u :: '' ::= {{ com terms }}
+
+  | a                  ::    :: ext
+
+  | let x = t in u     ::    :: let_ 
+    (+ bind x in u +)
+    {{ com let }} 
 
   | x                  ::    :: var 
     {{ com variables }}

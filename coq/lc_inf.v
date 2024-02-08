@@ -31,6 +31,8 @@ Combined Scheme tm_mutrec from tm_rec'.
 
 Fixpoint close_tm_wrt_tm_rec (n1 : nat) (x1 : tmvar) (t1 : tm) {struct t1} : tm :=
   match t1 with
+    | ext a1 => ext a1
+    | let_ t2 u1 => let_ (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec (S n1) x1 u1)
     | var_f x2 => if (x1 == x2) then (var_b n1) else (var_f x2)
     | var_b n2 => if (lt_ge_dec n2 n1) then (var_b n2) else (var_b (S n2))
     | abs t2 => abs (close_tm_wrt_tm_rec (S n1) x1 t2)
@@ -45,6 +47,8 @@ Definition close_tm_wrt_tm x1 t1 := close_tm_wrt_tm_rec 0 x1 t1.
 
 Fixpoint size_tm (t1 : tm) {struct t1} : nat :=
   match t1 with
+    | ext a1 => 1
+    | let_ t2 u1 => 1 + (size_tm t2) + (size_tm u1)
     | var_f x1 => 1
     | var_b n1 => 1
     | abs t2 => 1 + (size_tm t2)
@@ -58,6 +62,12 @@ Fixpoint size_tm (t1 : tm) {struct t1} : nat :=
 (** These define only an upper bound, not a strict upper bound. *)
 
 Inductive degree_tm_wrt_tm : nat -> tm -> Prop :=
+  | degree_wrt_tm_ext : forall n1 a1,
+    degree_tm_wrt_tm n1 (ext a1)
+  | degree_wrt_tm_let_ : forall n1 t1 u1,
+    degree_tm_wrt_tm n1 t1 ->
+    degree_tm_wrt_tm (S n1) u1 ->
+    degree_tm_wrt_tm n1 (let_ t1 u1)
   | degree_wrt_tm_var_f : forall n1 x1,
     degree_tm_wrt_tm n1 (var_f x1)
   | degree_wrt_tm_var_b : forall n1 n2,
@@ -82,6 +92,12 @@ Combined Scheme degree_tm_wrt_tm_mutind from degree_tm_wrt_tm_ind'.
 (** * Local closure (version in [Set], induction principles) *)
 
 Inductive lc_set_tm : tm -> Set :=
+  | lc_set_ext : forall a1,
+    lc_set_tm (ext a1)
+  | lc_set_let_ : forall t1 u1,
+    lc_set_tm t1 ->
+    (forall x1 : tmvar, lc_set_tm (open_tm_wrt_tm u1 (var_f x1))) ->
+    lc_set_tm (let_ t1 u1)
   | lc_set_var_f : forall x1,
     lc_set_tm (var_f x1)
   | lc_set_abs : forall t1,
@@ -580,11 +596,23 @@ Ltac tm_lc_exists_tac :=
               let J1 := fresh in pose proof H as J1; apply degree_tm_wrt_tm_of_lc_tm in J1; clear H
           end).
 
+Lemma lc_let__exists :
+forall x1 t1 u1,
+  lc_tm t1 ->
+  lc_tm (open_tm_wrt_tm u1 (var_f x1)) ->
+  lc_tm (let_ t1 u1).
+Proof. Admitted.
+
 Lemma lc_abs_exists :
 forall x1 t1,
   lc_tm (open_tm_wrt_tm t1 (var_f x1)) ->
   lc_tm (abs t1).
 Proof. Admitted.
+
+#[export] Hint Extern 1 (lc_tm (let_ _ _)) =>
+  let x1 := fresh in
+  pick_fresh x1;
+  apply (lc_let__exists x1) : core.
 
 #[export] Hint Extern 1 (lc_tm (abs _)) =>
   let x1 := fresh in
@@ -599,6 +627,14 @@ forall t1 t2,
 Proof. Admitted.
 
 #[export] Hint Resolve lc_body_tm_wrt_tm : lngen.
+
+Lemma lc_body_let__2 :
+forall t1 u1,
+  lc_tm (let_ t1 u1) ->
+  body_tm_wrt_tm u1.
+Proof. Admitted.
+
+#[export] Hint Resolve lc_body_let__2 : lngen.
 
 Lemma lc_body_abs_1 :
 forall t1,
@@ -1139,6 +1175,15 @@ forall t2 t1 x1 x2,
 Proof. Admitted.
 
 #[export] Hint Resolve subst_tm_close_tm_wrt_tm_open_tm_wrt_tm : lngen.
+
+Lemma subst_tm_let_ :
+forall x2 t2 u1 t1 x1,
+  lc_tm t1 ->
+  x2 `notin` fv_tm t1 `union` fv_tm u1 `union` singleton x1 ->
+  subst_tm t1 x1 (let_ t2 u1) = let_ (subst_tm t1 x1 t2) (close_tm_wrt_tm x2 (subst_tm t1 x1 (open_tm_wrt_tm u1 (var_f x2)))).
+Proof. Admitted.
+
+#[export] Hint Resolve subst_tm_let_ : lngen.
 
 Lemma subst_tm_abs :
 forall x2 t2 t1 x1,
