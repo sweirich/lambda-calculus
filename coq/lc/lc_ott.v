@@ -7,13 +7,17 @@ Definition tmvar : Set := var. (*r variables *)
 
 Definition j : Set := nat.
 
+Inductive primitive : Set :=  (*r primitives *)
+ | p_add : primitive
+ | p_dec : primitive.
+
 Inductive tm : Set :=  (*r terms *)
  | var_b (_:nat) (*r variables *)
  | var_f (x:tmvar) (*r variables *)
  | abs (t:tm) (*r abstractions *)
  | app (t:tm) (u:tm) (*r function application, list indexing *)
  | lit (k:j)
- | add : tm
+ | prim (primitive5:primitive)
  | tnil : tm
  | tcons (t:tm) (u:tm)
  | choice (t1:tm) (t2:tm)
@@ -44,7 +48,7 @@ Fixpoint open_tm_wrt_tm_rec (k:nat) (t_5:tm) (t__6:tm) {struct t__6}: tm :=
   | (abs t) => abs (open_tm_wrt_tm_rec (S k) t_5 t)
   | (app t u) => app (open_tm_wrt_tm_rec k t_5 t) (open_tm_wrt_tm_rec k t_5 u)
   | (lit k) => lit k
-  | add => add 
+  | (prim primitive5) => prim primitive5
   | tnil => tnil 
   | (tcons t u) => tcons (open_tm_wrt_tm_rec k t_5 t) (open_tm_wrt_tm_rec k t_5 u)
   | (choice t1 t2) => choice (open_tm_wrt_tm_rec k t_5 t1) (open_tm_wrt_tm_rec k t_5 t2)
@@ -74,8 +78,8 @@ Inductive lc_tm : tm -> Prop :=    (* defn lc_tm *)
      (lc_tm (app t u))
  | lc_lit : forall (k:j),
      (lc_tm (lit k))
- | lc_add : 
-     (lc_tm add)
+ | lc_prim : forall (primitive5:primitive),
+     (lc_tm (prim primitive5))
  | lc_tnil : 
      (lc_tm tnil)
  | lc_tcons : forall (t u:tm),
@@ -113,7 +117,7 @@ Fixpoint fv_tm (t_5:tm) : vars :=
   | (abs t) => (fv_tm t)
   | (app t u) => (fv_tm t) \u (fv_tm u)
   | (lit k) => {}
-  | add => {}
+  | (prim primitive5) => {}
   | tnil => {}
   | (tcons t u) => (fv_tm t) \u (fv_tm u)
   | (choice t1 t2) => (fv_tm t1) \u (fv_tm t2)
@@ -133,7 +137,7 @@ Fixpoint subst_tm (t_5:tm) (x5:tmvar) (t__6:tm) {struct t__6} : tm :=
   | (abs t) => abs (subst_tm t_5 x5 t)
   | (app t u) => app (subst_tm t_5 x5 t) (subst_tm t_5 x5 u)
   | (lit k) => lit k
-  | add => add 
+  | (prim primitive5) => prim primitive5
   | tnil => tnil 
   | (tcons t u) => tcons (subst_tm t_5 x5 t) (subst_tm t_5 x5 u)
   | (choice t1 t2) => choice (subst_tm t_5 x5 t1) (subst_tm t_5 x5 t2)
@@ -160,7 +164,7 @@ Fixpoint is_value (t_5:tm) : Prop :=
         | _ => False
       end
   | tnil => True
-  | add => True
+  | prim _ => True
   | fail => False
   | choice t1 t2 => False
   | (ex t) => False
@@ -205,7 +209,7 @@ with value : tm -> Prop :=    (* defn value *)
      listvalue v ->
      value v
  | sv_add : 
-     value add.
+     value (prim p_add).
 
 (* defns JBeta *)
 Inductive beta : tm -> tm -> Prop :=    (* defn beta *)
@@ -221,7 +225,7 @@ Inductive beta : tm -> tm -> Prop :=    (* defn beta *)
      value  ( (tcons v w) )  ->
      beta (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) )  ( (app w (lit k)) ) 
  | beta_plus : forall (j5 k:j),
-     beta (app add  ( (tcons (lit j5)  ( (tcons (lit k) tnil) ) ) ) )  ( (lit  ( j5  +  k ) ) ) .
+     beta (app (prim p_add)  ( (tcons (lit j5)  ( (tcons (lit k) tnil) ) ) ) )  ( (lit  ( j5  +  k ) ) ) .
 
 (* defns JEta *)
 Inductive eta : tm -> tm -> Prop :=    (* defn eta *)
@@ -323,7 +327,7 @@ Inductive parallel : tm -> tm -> Prop :=    (* defn parallel *)
      parallel (app t u) w
  | p_add_beta : forall (t:tm) (j5 k:j),
      parallel t (tcons (lit j5)  ( (tcons (lit k) tnil) ) ) ->
-     parallel (app add t)  ( (lit  ( j5  +  k ) ) ) 
+     parallel (app (prim p_add) t)  ( (lit  ( j5  +  k ) ) ) 
  | p_var : forall (x:tmvar),
      parallel (var_f x) (var_f x)
  | p_abs : forall (L:vars) (t t':tm),
@@ -339,8 +343,8 @@ Inductive parallel : tm -> tm -> Prop :=    (* defn parallel *)
      parallel (tcons t u) (tcons t' u')
  | p_nil : 
      parallel tnil tnil
- | p_add : 
-     parallel add add
+ | p_prim : forall (primitive5:primitive),
+     parallel (prim primitive5) (prim primitive5)
  | p_nat : forall (k:j),
      parallel (lit k) (lit k).
 
@@ -369,7 +373,7 @@ Inductive Step : tm -> tm -> Prop :=    (* defn Step *)
      value  ( (tcons v w) )  ->
      Step (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) ) (app  ( (tcons v w) )  (lit k))
  | S_add : forall (k1 k2:j),
-     Step (app add  ( (tcons (lit k1) (lit k2)) ) ) (lit  ( k1  +  k2 ) ).
+     Step (app (prim p_add)  ( (tcons (lit k1) (lit k2)) ) ) (lit  ( k1  +  k2 ) ).
 
 (* defns JOpV *)
 Inductive StepV : tm -> tm -> Prop :=    (* defn StepV *)
@@ -392,7 +396,7 @@ Inductive StepV : tm -> tm -> Prop :=    (* defn StepV *)
      value  ( (tcons v w) )  ->
      StepV (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) ) (app  ( (tcons v w) )  (lit k))
  | SV_add : forall (k1 k2:j),
-     StepV (app add  ( (tcons (lit k1) (lit k2)) ) ) (lit  ( k1  +  k2 ) ).
+     StepV (app (prim p_add)  ( (tcons (lit k1) (lit k2)) ) ) (lit  ( k1  +  k2 ) ).
 
 (* defns JEval *)
 Inductive Eval : tm -> tm -> Prop :=    (* defn Eval *)
@@ -471,7 +475,7 @@ Inductive full_reduction : tm -> tm -> Prop :=    (* defn full_reduction *)
      listvalue w ->
      full_reduction (app  ( (tcons v w) )   ( (lit  (  1   +  k ) ) ) ) (app w (lit k))
  | F_add : forall (k1 k2:j),
-     full_reduction (app add  ( (tcons (lit k1)  ( (tcons (lit k2) tnil) ) ) ) ) (lit  ( k1  +  k2 ) ).
+     full_reduction (app (prim p_add)  ( (tcons (lit k1)  ( (tcons (lit k2) tnil) ) ) ) ) (lit  ( k1  +  k2 ) ).
 
 (* defns Jredex *)
 Inductive redex : relation -> tm -> Prop :=    (* defn redex *)

@@ -218,7 +218,6 @@ Lemma single_fin { X x ρ NE } :
   finite_env (single_env x X ρ NE).
 Proof.
   induction NE; intro FIN; unfold finite_env; eauto.
-  unfold single_env; econstructor.
   unfold single_env. simpl. 
   destruct f as [v1 v2].
   destruct (x == x0) eqn:EQ.

@@ -23,9 +23,9 @@ j , k :: 'k_' ::= {{ coq nat }}
   | 1      ::  M :: one  {{ coq 1 }}
   | k + k' :: M  :: add  {{ coq ([[k]] + [[k']]) }}  
 
-primitive :: 'p_' ::= {{ primitives }}
-  | add 
-  | dec
+primitive :: 'p_' ::= {{ com primitives }}
+  | add    ::    :: add
+  | dec    ::    :: dec
 
 tm, t , u, v, w :: '' ::= {{ com terms }}
 
@@ -228,7 +228,7 @@ Fixpoint is_value (t_5:tm) : Prop :=
         | _ => False
       end
   | tnil => True
-  | add => True
+  | prim _ => True
   | fail => False
   | choice t1 t2 => False
   | (ex t) => False
@@ -516,8 +516,8 @@ t , u ==> t' , u'
 nil ==> nil
 
 
-------------- :: add
-add ==> add
+------------- :: prim
+primitive ==> primitive
 
 ------------- :: nat
 k ==> k

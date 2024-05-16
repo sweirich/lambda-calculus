@@ -41,7 +41,7 @@ Qed.
 Lemma valid_NAT : forall k, valid (NAT k).
 Proof.
   intros k. unfold NAT, valid. 
-  exists (v_nat k); eauto. cbn. auto.
+  exists (v_nat k); eauto. 
 Qed.
 
 Lemma valid_ADD : valid ADD.

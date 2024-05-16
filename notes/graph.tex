@@ -58,18 +58,28 @@ based on a ``graph'' model.
 \newcommand\inhabited[1]{\ensuremath{\mathit{inhabited}}\ {#1}}
 \newcommand\apply[2]{\ensuremath{{#1}\ \blacksquare\ {#2}}}
 
-\section{Part one: untyped lambda calculus}
-
+\section{Part one: graph model of the untyped lambda calculus with numbers}
 
 The file \texttt{simple/model.v} contains a sketch of this semantics for the
 call-by-value untyped lambda calculus.
 
-This semantics interprets lambda calculus functions as a graph: a set of
-input-output pairs, each pair written $w \mapsto v$, where $w$ and $v$
-are elements of some domain $\mathcal{W}$. 
+This semantics denotes lambda calculus functions by their \emph{graphs}: a
+set of input-output pairs, each pair written $w \mapsto v$, where $w$ and $v$
+are elements of some value domain $\mathcal{W}$. When applied to an argument
+that matches $w$, the function produces $v$.
 
-The graph semantics also includes a special term $\circ$ as part of this set,
-to signal function values that cannot be applied. See below.
+This is an \emph{extensional} semantics. The semantics of a function is
+defined in terms of what you can do with it. 
+
+This semantics also naturally supports \emph{approximation}. Infinite sets can
+be difficult to work with sometimes, so we might want to think about finite
+approximations. And, it is the case that in a terminating computation, any
+function will be called only a finite number of times, so we can denote a
+function by some finite subset without changing the meaning of a computation.
+
+We want the following to be true: if $w_1 \subseteq w_2$ then everything you can 
+do with $w_1$ you can also do with $w_2$. 
+
 
 \subsection{Examples}
 
@@ -77,11 +87,15 @@ Here are some examples.
 
 \begin{itemize}
 
-\item The graph of the increment function $\lambda x. x+1$ looks like
+\item The denotation of a number is a singleton set containing only that
+  number.
+
+  \[  \{ 3 \} \]
+
+\item The graph of the increment function, $\lambda x. x+1$, is an infinite set. It
+maps each natural number $k$ to its sucessor.
 
 \[ \{ k \mapsto k+1\ |\ k \in \mathcal{N} \} \]
-
-This graph maps natural numbers $k$ to their sucessors.
 
 \item The graph of the identity function $\lambda x.x$ looks like this:
 
@@ -89,21 +103,23 @@ This graph maps natural numbers $k$ to their sucessors.
 
 This graph maps all inputs $w$ to $w$. 
 
-\item If we have a nonterminating expression, like $\omega$, i.e. 
+\item If we have a nonterminating expression, such as  
   $(\lambda x.x)(\lambda x.x)$,
-  then its denotation is the emptyset.  It is not
+  then its denotation is the empty set.  It is not
   a value and we cannot apply it to any arguments to get a results.
 
    \[ \{\} \]
 
 \item The denotation of a function that takes an argument and then diverges
-  i.e. $\lambda x. \omega$ is the special term only.
+  i.e. $\lambda x. \omega$ is a singleton set that contains a special term,
+  signaling function values that cannot be applied.
 
   \[ \{ \circ \} \]
 
-  The term $\circ$ marks that this term is a value, but there are still no mappings
-  in the graph. This term lets us distinguish the denotation of a diverging
-  expression from that of a value, even if we cannot use the value.
+  The term $\circ$ marks that this term is a value but there are no
+  associations for this function in its graph. This term lets us distinguish
+  the denotation of a diverging expression from that of a value, even if we
+  cannot use the value.
 
 \item The denotation of $K$, i.e. $\lambda x.\lambda y.x$ is  
 
@@ -113,7 +129,7 @@ This graph maps all inputs $w$ to $w$.
 
   \[ \{ w_1 \mapsto (w_2 \mapsto w_1)\ |\ w_1, w_2 \in \mathcal{W} \} \]
 
-because this set is extensionally equivalent. (SCW: need to define this equivalence).
+because this set is extensionally equivalent. 
 
 \end{itemize}
 
@@ -127,18 +143,18 @@ powerset of all mappings (plus natural numbers and the trivial term $\circ$):
 \[ \mathcal{W} = \mathcal{N} \cup \circ \cup \mathscr{P}( 
   \{ w_1 \mapsto w_2\ |\ w_1, w_2 \in \mathcal{W} \} )  \] 
 
-\noindent But that is not a well founded definition. 
-But, this is a specification of what we want the domain to look like.
+\noindent But that is not a well-founded definition.  However, it is a
+\emph{specification} of what we want the domain $\mathcal{W}$ to look like, so 
+we can use it to specify operations that work with the domain. 
 
-To define a semantics for the untyped lambda calculus, we need to say how domain 
-values can be constructed and used.
-
-For that, we will specify application and abstraction operators,
-$\blacksquare$ and $\Lambda$:
+In particular, we specify the application and abstraction operators,
+$\blacksquare$ and $\Lambda$ as follows:
 
 \begin{spec}[APPLY] For $w_1, w_2 \in \mathcal{W}$, we want
-\[  \apply{w_1}{w_2}\ = \{ w\ |\ (w_2 \mapsto w) \in w_1 \} \]
+\[  \apply{w_1}{w_2}\ = \{ w\ |\ (w' \mapsto w) \in w_1 \wedge w' \subseteq w_2 \} \]
 \end{spec}
+In other words, the result of an application is the set of all results in the
+graph when provided a (potentially overapproximating) argument.
 
 \begin{spec}[LAMBDA]
   Given $F \in \mathcal{W} \rightarrow \mathcal{W}$ and
@@ -162,39 +178,52 @@ the same graph, just that the two graphs can be used in the same way.
   \forall w \in \mathcal{W}, \apply{w_1}{w} \equiv \apply{w_2}{w} \]
 \end{spec}
   
-For example, the specification above allows us to consider these two graphs as 
-equivalent.
-
+For example, the specification above allows us to consider these two graphs as
+equivalent. 
 \[
-\{ \{ 1 \mapsto (3 \mapsto 2), 1 \mapsto (4 \mapsto 5) \} \}
-\equiv
 \{ \{1 \mapsto \{ 3 \mapsto 2, 4 \mapsto 5 \} \}
+\equiv
+\{ \{ 1 \mapsto (3 \mapsto 2), 1 \mapsto (4 \mapsto 5) \} \}
 \]
+
+Both of these are for a function two arguments. If the first
+argument is anything but 1, then it diverges. If the second argument is 3 or
+4, then the function returns a result. Otherwise it diverges.
+
+\begin{verbatim}
+fun x => fun y => if x == 1 then if y == 3 then 2 else if y == 4 then 5 else diverge else diverge
+\end{verbatim}
+
+
+This identity simplifies the definition of our because it means that we don't
+need infinite sets in our codomain. We can just add more mappings to the
+toplevel infinite set.
 
 \subsection{Representing the domain}
 
 So how do we represent $\mathcal{W}$ in a proof assistant?
 
 We can represent the powerset of some type by its characteristic function,
-i.e. a proposition that tells us whether the value is in the set.
+i.e. a proposition that tells us whether a value is in the set.
 
 \begin{lstlisting}{language=Coq}
 Definition P (A : Type) := A -> Prop.
 \end{lstlisting}
 
 However, this definition does not give us an \emph{inductive} or finite
-representation of values. For that we need to consider only finite sets of
-values. (We'll use the type constructor \texttt{fset A} to refer to a finite
-set containing elements of type \texttt{A}). This type can be inductively
-defined and injected into the non-inductive variant \texttt{P A}. Using this
-finite set type, we can build up our representation out of an inductive
-representation of a mapping (\texttt{v\_map}), numbers (\texttt{v_nat}) and
+representation of values. For that we need a representation that uses only
+finite \emph{sets} of values. (In Coq, we'll use the type constructor
+\texttt{fset A} to refer to a finite set containing elements of type
+\texttt{A}). This type can be inductively defined and injected into the
+non-inductive variant \texttt{P A} using the operation \texttt{mem}.) Using
+this finite set type, we can build up our representation out of an inductive
+representation of a mapping (\texttt{v\_map}), numbers (\texttt{v\_nat}) and
 trivial term (\texttt{v\_fun}):
 
 \codeplus{../coq/simple/model.v}{Value}{language=Coq}
 
-And then represent lambda calculus expressions to a potentially infinite set
-of these terms.
+And then represent lambda calculus expressions using a potentially infinite
+set of these terms.
 
 \begin{lstlisting}{mathescape,language=Coq}
 Definition W := P Value.
@@ -211,10 +240,6 @@ Consider how this definition reacts with the semantic function for application:
 Definition APPLY (D1 : P Value) (D2 : P Value) : P Value :=
   fun w $\Rightarrow$ exists V, (v_map V w $\in$ D1) $\wedge$ (mem V $\subseteq$ D2) $\wedge$ (valid_mem V).
 \end{lstlisting}
-
-Or, equally expressed as an inductive:
-
-\codeplus{../coq/simple/model.v}{APPLY}{} 
 
 \section{Part two: Extending the model to verse}
 

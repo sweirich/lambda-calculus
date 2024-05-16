@@ -2,21 +2,19 @@
 
    This version separates the denotation of computations from that of values.
    
-   The semantic domain for values: `P Value` and for computations: `P (Comp
-   (list Value))`
+   The semantic domain for values: `P Value` and for computations: 
+   `P (Comp (fset Value))`
 
    The `Comp A` type is defined in `structures.Comp`. It is isomorphic to
-   `maybe (list A)`, where none is a runtime type error and the list includes
-   multiple results.  Fail is the empty list.
+   `maybe (list A)`, where none is a runtime type error and the list allows 
+   computations to return multiple results.  Fail is the empty list.
 
    The type `P A` is a (potentially) infinite set, represented by its
    characteristic function `(A -> Prop)`. The union of all of the elements of
    the set is the complete denotation of the value/computation. (These
    elements should be consistent with eachother.)
 
-   We can approximate infinite sets by the finite type `fset A`. 
-   Right now, this type is isomorphic to list, and we need to modify the 
-   definitions so that they respect set equality.
+   We approximate infinite sets by the finite type `fset A`. 
 
    The denotation of both values and computations includes bottom: the
    denotation of an infinite loop. Therefore, some definitions include
@@ -40,8 +38,6 @@
       RET : P A -> P (Comp (fset A))
 
       BIND : (P (Comp (fset A))) -> (P A -> P (Comp B)) -> P (Comp B)
-
-   I don't know which of the analogous monad laws these operators satisfy.
 
    Other semantic operators:
 
@@ -94,8 +90,10 @@ Require Import Lia.
 Require Export lc.tactics.
 Require Import structures.Structures.
 Require Export structures.consistency.
+Require Export structures.FSet.
 
 Require Export denot.properties.
+
 
 Import MonadNotation.
 Open Scope monad_scope.
@@ -212,11 +210,7 @@ Definition ConsistentSet {A:Type} `{Consistency A} (V : P A) := Consistent V V.
 
 (* ------------ Semantic Operators ------------------ *)
 
-Definition NAT : nat -> P Value :=
-  fun j v => match v with 
-          | v_nat k => j = k
-          | _ => False
-          end.
+Definition NAT (k : nat) : P Value := ⌈ v_nat k ⌉.
 
 Definition LIST : list (P Value) -> P Value  :=
   fun DS w => 
@@ -485,7 +479,7 @@ Fixpoint denot_comp_n (n : nat) (a : tm) (ρ : Rho) : P (Comp (fset Value)) :=
 
      | lit k => NAT k
 
-     | add => ADD
+     | prim p_add => ADD
 
      | tnil => NIL
 
@@ -549,7 +543,7 @@ Fixpoint denot_val_n (n : nat) (a : tm) (ρ : Rho) : P Value :=
 
      | lit k => NAT k
 
-     | add => ADD
+     | prim p_add => ADD
 
      | tnil => NIL
 

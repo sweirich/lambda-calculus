@@ -17,8 +17,12 @@ Arguments NFSet {_}.
 
 Definition singleton_nfset {A : Type} (x:A): nfset A := NFSet x nil.
 
+Definition concat_nfset: forall {A : Type}, nfset A -> nfset A -> nfset A :=
+  fun {A} '(NFSet x xs) '(NFSet y ys) => NFSet x (xs ++ y :: ys).
+
 Definition union_nfset: forall {A : Type}, nfset A -> nfset A -> nfset A :=
-  fun {A} '(NFSet x xs) '(NFSet y ys) => NFSet x (y :: xs ++ ys).
+  fun {A} '(NFSet x xs) '(NFSet y ys) => NFSet y (x :: xs ++ ys).
+
 Definition In_nfset {A : Type}(x : A) '(NFSet y ys) : Prop :=
   x = y \/ List.In x ys.
 Definition Included_nfset: forall {A : Type}, nfset A -> nfset A -> Prop :=
@@ -60,6 +64,19 @@ Lemma valid_mem: forall {A : Type} {V : nfset A}, valid (mem V). Admitted.
   Reflexive_Equal_nfset Reflexive_Included_nfset
   mem_In mem_union mem_union_Included mem_singleton Forall_mem Forall_sub_mem 
   In_mem valid_mem_singleton nonemptyT_mem valid_mem : core.
+
+
+Lemma nfset_induction {A} (Pr : nfset A -> Prop) : 
+  (forall x, Pr (singleton_nfset x)) -> 
+  (forall x W, Pr W -> Pr (union_nfset (singleton_nfset x) W)) ->
+  forall V, Pr V.
+Proof. 
+  intros S C V.
+  destruct V. 
+  induction l. 
+  - eapply S. 
+  - specialize (C a0 (NFSet a l) IHl). cbn in C. auto.
+Qed.
 
 
 (* ---------------------- Notations ------------------------ *)

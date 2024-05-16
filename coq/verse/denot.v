@@ -141,7 +141,7 @@ Qed.
 Lemma denot_lit : forall k ρ,  denot (lit k) ρ = RET (NAT k).
 Proof. intros. reflexivity. Qed. 
 
-Lemma denot_add : forall ρ,  denot add ρ = RET ADD.
+Lemma denot_add : forall ρ,  denot (prim p_add) ρ = RET ADD.
 Proof. intros. reflexivity. Qed. 
 
 Lemma denot_tnil : forall ρ,  denot tnil ρ = RET NIL.
@@ -442,7 +442,7 @@ Qed.
 Lemma denot_val_lit : forall k ρ,  denot_val (lit k) ρ = (NAT k).
 Proof. intros. reflexivity. Qed. 
 
-Lemma denot_val_add : forall ρ,  denot_val add ρ = ADD.
+Lemma denot_val_add : forall ρ,  denot_val (prim p_add) ρ = ADD.
 Proof. intros. reflexivity. Qed. 
 
 Lemma denot_val_tnil : forall ρ,  denot_val tnil ρ = NIL.

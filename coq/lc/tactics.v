@@ -177,7 +177,7 @@ Lemma tm_induction : forall (P : tm -> Prop),
           (forall x , x `notin` fv_tm t -> P (t ^ x)) 
           -> P (abs t))
     -> (forall k, P (lit k))
-    -> P add
+    -> (forall p, P (prim p))
     -> P tnil
     -> (forall t1 t2, P t1 -> P t2 -> P (tcons t1 t2))
     -> P fail

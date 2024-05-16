@@ -26,6 +26,16 @@ Lemma Forall2_length {A} : forall f (l1 l2 : list A), List.Forall2 f l1 l2 -> le
 Proof.  induction 1; eauto. simpl. f_equal. auto. Qed.
 
 
+Lemma ForallT_forall1
+     : forall (A : Type) (P : A -> Type) (l : list A), 
+            List.ForallT P l -> (forall x : A, In x l -> P x).
+Admitted.
+
+Lemma ForallT_forall2
+     : forall (A : Type) (P : A -> Type) (l : list A), 
+            (forall x : A, In x l -> P x) -> List.ForallT P l.
+Admitted.
+
 (* ------------------------ *)
 
 
@@ -177,7 +187,7 @@ Definition continuous_env {A} (D:Rho Value -> P A) (ρ:Rho Value) : Prop :=
 *)
 
 Definition continuous_env {A} `{Validity A} (D:Rho Value -> P A) (ρ:Rho Value) : Prop :=
-  forall (V :nfset A), validT_set (mem V) -> continuous_Sub D ρ V.
+  forall (V :nfset A), continuous_Sub D ρ V.
 
 
 End Continuity.
@@ -339,7 +349,6 @@ Lemma single_fin { X x ρ NE } :
   finite_env (single_env x X ρ NE).
 Proof.
   move: x. induction NE; intro FIN; unfold finite_env; eauto.
-  unfold single_env. cbn. econstructor.
   unfold single_env. simpl. destruct (pick x p) as [v1 [v2 v3]].
   destruct FIN eqn:EQ.
   + subst. simpl.
@@ -474,25 +483,36 @@ Proof.
          eapply VEρ1. right; auto.
 Admitted.
 
+Lemma make_valid {A} : nfset A -> nfset A. Admitted.
+Lemma make_valid_spec {A}`{Validity A} {V : nfset A}: 
+  validT_set (mem (make_valid V)).
+Admitted.
+Lemma make_valid_sub {A}`{Validity A} {V : nfset A} {X : P A}:  
+  validT_set X -> mem V ⊆ X -> mem (make_valid V) ⊆ X.
+Admitted.
+
 Lemma access_continuous_env { ρ x } : 
   continuous_env (fun ρ0 : Rho Value => ρ0 ⋅ x) ρ.
 Proof. 
-  move=> V VAL vIn NE.
+  move=> V vIn NE.
   cbn in vIn.
   destruct (Nat.lt_decidable x (dom ρ)).
-  exists (single_env x (mem V) ρ NE).
+  exists (single_env x (mem (make_valid V)) ρ NE).
   repeat split.
-  eapply single_valid; eauto. 
+  eapply single_valid; eauto using make_valid_spec. 
   eapply single_fin; eauto.
-  exists V; reflexivity.
+  exists (make_valid V); reflexivity.
   eapply single_sub; auto.
+  eapply make_valid_sub.
+Admitted.
+(* { unfold validT_env in NE. Search List.ForallT.
   erewrite -> (single_access H). reflexivity.
   exists (initial_finite_env ρ NE).
   rewrite access_fresh in vIn. auto. 
   apply valid_nonempty in VAL. destruct VAL.
   specialize (vIn _ i).
   done.
-Qed.
+Qed. *)
 
 (* ⟦⟧-continuous-⊆ *) 
 Lemma generic_continuous_sub {A}`{Validity A}{ρ}{F : Rho Value -> P A} : 
@@ -607,4 +627,5 @@ Proof. intros NEP NEX. eapply List.ForallT_cons; eauto. Qed.
 End ValidTheory.
 
 #[export] Hint Resolve valid_nil : core.
+
 #[export] Hint Resolve extend_valid_env : core.

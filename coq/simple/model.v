@@ -1,5 +1,3 @@
-
-
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Classes.RelationClasses.
 Require Coq.Relations.Relation_Definitions.
@@ -14,7 +12,6 @@ Require Import structures.Structures.
 Require Export structures.consistency.
 
 Require Import structures.NFSet.
-
 Require Export denot.nelist_properties.
 
 Import MonadNotation.
@@ -22,145 +19,26 @@ Open Scope monad_scope.
 Import SetNotations.
 Local Open Scope set_scope.
 
-Import EnvNotations.
-
 Create HintDb examples.
 
-(* This is an  example of the graph model for the pure 
+(* 
+   This is an  example of the graph model for the pure 
    untyped lambda calculus plus natural numbers. 
-   
 *)
+
 
 (* 
-Lemma In_mem_fset {A}{v : A} : v ∈ mem (singleton_fset v).
-Proof. cbn. left. auto. Qed.
-
-Lemma  valid_mem_singleton_fset {A}{v:A} :
-  valid_mem (singleton_fset v).
-Proof. cbn. done. Qed.
-#[export] Hint Resolve valid_mem_singleton_fset : core. 
-*)
-(* ----------------------------------------------------------- *)
-
-
-(* NONEMPTY FINITE SETS *)
-(*
-Inductive nfset (A : Type) : Type := 
-  | NFSet : A -> list A -> nfset A.
-Arguments NFSet {_}.
-
-Definition singleton_nfset {A : Type} (x:A): nfset A := NFSet x nil.
-
-Definition union_nfset: forall {A : Type}, nfset A -> nfset A -> nfset A :=
-  fun {A} '(NFSet x xs) '(NFSet y ys) => NFSet x (y :: xs ++ ys).
-Definition In_nfset {A : Type}(x : A) '(NFSet y ys) : Prop :=
-  x = y \/ List.In x ys.
-Definition Included_nfset: forall {A : Type}, nfset A -> nfset A -> Prop :=
-  fun {A} (s1 s2: nfset A) => forall (x:A), In_nfset x s1 -> In_nfset x s2.
-Definition Equal_nfset {A:Type}(s1 s2 : nfset A) := 
-  Included_nfset s1 s2 /\ Included_nfset s2 s1.
-Definition Forall_nfset: forall {A : Type}, (A -> Prop) -> nfset A -> Prop := 
-  fun {A} Pr '(NFSet x xs) => Pr x /\ List.Forall Pr xs.
-Definition ForallT_nfset: forall {A : Type}, (A -> Type) -> nfset A -> Type :=
-  fun {A} Pr '(NFSet x xs) => (Pr x * List.ForallT Pr xs)%type.
-Definition mem : forall {A : Type}, nfset A -> P A := 
-  fun {A} (xs : nfset A) (x : A) => In_nfset x xs.
-
-#[export] Instance Symmetric_Equal_nfset: forall {A : Type}, nfset A -> Symmetric (@Equal_nfset A). Admitted.
-#[export] Instance Reflexive_Equal_nfset: forall {A : Type}, nfset A -> Reflexive (@Equal_nfset A). Admitted.
-#[export] Instance Transitive_Included_nfset: forall {A : Type}, nfset A -> Transitive (@Included_nfset A). Admitted.
-#[export] Instance Reflexive_Included_nfset: forall {A : Type}, nfset A -> Reflexive (@Included_nfset A). Admitted.
-#[export] Instance Transitive_Equal_nfset: forall {A : Type}, nfset A -> Transitive (@Equal_nfset A). Admitted.
-
-Lemma mem_In: forall {A : Type} {E : nfset A} (x : A), x ∈ mem E -> In_nfset x E. Admitted.
-Lemma mem_union: forall {A : Type} {E1 E2 : nfset A}, mem (union_nfset E1 E2) = (mem E1 ∪ mem E2). Admitted.
-Lemma mem_union_Included: forall {A : Type} {D1 D2 : nfset A} {w : P A},
-  mem D1 ⊆ w -> mem D2 ⊆ w -> mem (union_nfset D1 D2) ⊆ w. Admitted.
-Lemma mem_singleton {A}{v : A} : v ∈ mem (singleton_nfset v). Admitted.
-
-Lemma In_mem : forall {A : Type} {E : nfset A} (x : A), In_nfset x E -> x ∈ mem E. Admitted.
-Lemma mem_Forall: forall {A : Type} {E : nfset A} {Pr : A -> Prop}, Sets.Forall Pr (mem E) -> Forall_nfset Pr E.  Admitted.
-
-
-Lemma Forall_mem: forall {A : Type} {E : nfset A} {Pr : A -> Prop}, Forall_nfset Pr E -> Sets.Forall Pr (mem E). Admitted.
-Lemma Forall_sub_mem: forall {A : Type} {E : nfset A} (X : P A) (Pr : A -> Prop), mem E ⊆ X -> Sets.Forall Pr X -> Forall_nfset Pr E. Admitted.
-
-Lemma valid_mem_singleton: forall {A : Type}, nfset A -> forall x : A, valid (mem (singleton_nfset x)). Admitted.
-Lemma nonemptyT_mem: forall {A : Type} {E : nfset A}, nonemptyT (mem E). Admitted.
-Lemma valid_mem: forall {A : Type} {V : nfset A}, valid (mem V). Admitted.
-
-
-#[export] Hint Resolve 
-  Reflexive_Equal_nfset Reflexive_Included_nfset
-  mem_In mem_union mem_union_Included mem_singleton Forall_mem Forall_sub_mem 
-  In_mem
-  valid_mem_singleton nonemptyT_mem valid_mem : core.
-*)
-(*
-Definition eq_fset {A} : (fset A) -> fset A -> Prop := 
-  fun '(FSet xs) '(FSet ys) => forall x, (List.In x xs -> List.In x ys) /\ 
-                            forall x, (List.In x ys -> List.In x xs).
-
-Instance Eqfset {A} `{EqDec_eq A} : Equivalence (@eq_fset A).
-Admitted.
-
-
-Definition add_list {A}`{EqDec_eq A} (x : A) (xs : list A)  : list A := 
-  match In_dec_list x xs with 
-  | left _ => xs
-  | right _ => cons x xs
-  end.
-Definition add_fset {A}`{EqDec_eq A} (x : A) (f : fset A)  : fset A := 
-  let '(FSet xs) := f in FSet (add_list x xs) .
-
-Definition union_fset {A} `{EqDec_eq A}  (f : fset A) (g : fset A)  : fset A := 
-  let '(FSet xs) := f in 
-  fold_right add_fset g xs.                      
-
-  
-Lemma In_dec_list {A}`{EqDec_eq A} : 
-  forall (x : A) (xs : list A), { List.In x xs } + { not (List.In x xs) }.
-Proof.
-  intros x. induction xs. right. done.
-  destruct (H x a); subst.
-  - left. left. auto.
-  - destruct IHxs; subst.
-     + left. right. auto.
-     + right. intro h. inversion h. subst. done. done.
-Defined.
-
-
-*) 
-  
-(*
-Declare Scope nfset_scope.
-Open Scope nfset_scope.
-
-Module NFSetNotations.
-Notation " [ x ] " := (NFSet x nil) : nfset_scope.
-Notation " [ x ; y1 ; .. ; yn ] " := (NFSet x (cons y1 .. (cons yn nil) .. )) : nfset_scope.
-End NFSetNotations.
-*)
+The denotation of a lambda calculus function is as its "graph" or set of
+input / output pairs.
+   
+   Each pair in the set (i.e. v_map VS WS) declares that if this value is
+   applied to any value in VS, the result is W.
+   
+ *)
 
 Open Scope nfset_scope.
 Import NFSetNotations.
 
-(* ------------------------------------------------------------------------------------- *)
-
-
-(* The denotation of a lambda calculus function is as its "graph" or set of
-   input / output pairs.
-   
-   Each pair in the set (i.e. v_map VS W) declares that if this value is
-   applied to any value in VS, the result is W.
-
-   NOTE: because we don't have a unique representation for finite sets, 
-   we don't have a uniq representation for Values.
-
-   Solutions: work up to an equivalence of Values? yuck!
-   define "canonical" values based on a strict ordering? maybe
-   
- *)
 
 (* begin Value *)
 Inductive Value : Type :=
@@ -906,9 +784,6 @@ Proof. intros s1 s2.
        right; eauto.
 Qed.
 
-(* We need an operation that computes the closure of a single value. *)
-Definition close_nfset : Value -> nfset Value. Admitted.
-
 Lemma approx_union {D X Y} : D ⊑ (X ∪ Y) -> exists D1, exists D2, (D1 ⊑ X) /\ (D2 ⊑ Y) /\ (D ≃ (D1 ∪ D2)).
 Proof. intros. 
        unfold approx_set in H.
@@ -1308,6 +1183,7 @@ Qed.
 #[export] Hint Resolve complete_Bottom : core.
 *)
 
+Import EnvNotations.
 
 (* Denotation function *)
 
@@ -1325,7 +1201,7 @@ Fixpoint denot (a : tm) (ρ : Rho) : P Value :=
 
      | lit i => NAT i
 
-     | add   => close ADD
+     | prim p_add   => close ADD
 
      | _ => Bottom
      end.
@@ -1374,14 +1250,15 @@ unfold Proper. intros x1 y1 E1. eapply close_cong; eauto. Qed.
    the result. But this depends on the definition of Λ which quantifies
    over valid sets (i.e. CBV) *)
 Lemma LAMBDA_ext_sub {F1 F2} :
-  (forall {X : P Value}, valid X -> F1 X ⊆ F2 X) -> LAMBDA F1 ⊆ LAMBDA F2.
+  (forall {X : P Value}, nonempty X -> F1 X ⊆ F2 X) -> LAMBDA F1 ⊆ LAMBDA F2.
 Proof.
   intros F1F2 v Iv.
   invert_sem; econstructor; try eapply F1F2; eauto.
+  destruct V. exists v. cbn. left; auto.
 Qed.
 
 Lemma LAMBDA_ext {F1 F2} :
-  (forall {X}, valid X -> F1 X ≃ F2 X) -> LAMBDA F1 ≃ LAMBDA F2.
+  (forall {X}, nonempty X -> F1 X ≃ F2 X) -> LAMBDA F1 ≃ LAMBDA F2.
 Proof. 
   intros g. split;
   eapply LAMBDA_ext_sub; intros X NEX; destruct (g X); eauto.
@@ -1393,19 +1270,8 @@ Proof.
   intros D13 D24 w wIn. 
   invert_sem.
   eapply BETA with (V := V); eauto.
-(*   eapply approx_sub; eauto. *)
   transitivity D2; auto.
 Qed.
-
-(*
-Lemma maximal_APPLY_mono_sub { D1 D2 D3 D4 } :
-    D1 ⊆ D3 -> D2 ⊆ D4 -> ((maximal_APPLY D1 D2) ⊆ (maximal_APPLY D3 D4)).
-Proof.  
-  intros D13 D24 w [APP mAPP]. 
-  split. eapply APPLY_mono_sub; eauto.
-  intros y yIn SUB.
-Abort. *)
-
 
 Lemma APPLY_cong { D1 D2 D3 D4 } :
     D1 ≃ D3 -> D2 ≃ D4 -> ((APPLY D1 D2) ≃ (APPLY D3 D4)).
@@ -1475,9 +1341,9 @@ Proof.
 Qed.
 
 
-(* ------------------ valid ---------------------- *)
+(* ------------------ nonempty ---------------------- *)
 
-Lemma valid_close : forall D, valid D -> Sets.Forall cc D -> valid (close D).
+Lemma nonempty_close : forall D, nonempty D -> Sets.Forall cc D -> nonempty (close D).
 Proof. intros D vD ccD. destruct vD as [w wIn].
 exists w. split. eapply ccD; eauto. exists w. split; eauto.
 Qed.
@@ -1488,11 +1354,11 @@ rewrite Sets.Forall_forall. intros x xIn.
 inversion xIn; auto. eauto with examples.
 Qed.
 
-Lemma valid_LAMBDA : forall F, valid (close (LAMBDA F)).
+Lemma nonempty_LAMBDA : forall F, nonempty (close (LAMBDA F)).
 Proof. intros F. exists v_fun. split. eauto with examples.
 exists ∘. split. eapply s_fun. eauto. Qed.
 
-Lemma valid_NAT : forall k, valid (NAT k).
+Lemma nonempty_NAT : forall k, nonempty (NAT k).
 Proof. intros k. cbv. exists (v_nat k). econstructor; eauto. Qed.
 
 Lemma cc_v_nat k : cc (v_nat k).
@@ -1512,7 +1378,7 @@ Qed.
 
 #[export] Hint Resolve cc_v_nat cc_nfset_nat : examples.
 
-Lemma valid_ADD : valid (close ADD).
+Lemma nonempty_ADD : nonempty (close ADD).
 Proof. 
   exists (v_map (singleton_nfset (v_nat 0)) 
             (v_map (singleton_nfset (v_nat 0)) (v_nat 0))).
@@ -1544,8 +1410,9 @@ Proof.
   - eapply Forall_access; eauto with examples.
   - eapply cc_close.
   - eapply cc_close.
-  - eapply cc_close.
-Qed.
+  - destruct primitive5. eapply cc_close. 
+    admit.
+Admitted.
 
 (* ------------------ continuity ---------------------- *)
 
@@ -1569,34 +1436,55 @@ Definition continuous_Sub {A} (D:Rho Value -> P A) (ρ:Rho Value) (V:nfset A) : 
 
 (* ------------------ continuity ---------------------- *)
 
+Definition close_nfset : nfset Value -> nfset Value. Admitted.
+Lemma close_nfset_spec {V : nfset Value} : 
+  mem (close_nfset V) ≃ close (mem V).
+Admitted.
+
+
+
+Lemma extract {V} :
+  forall D, mem V ⊆ close D -> exists W, (mem W ⊆ D) /\ (close (mem V) ≃ close (mem W)).
+Proof. 
+  eapply nfset_induction with (Pr := fun V => forall D : P Value, mem V ⊆ close D -> exists W : nfset Value, (mem W ⊆ D) /\ (close (mem V) ≃ close (mem W))).
+  - intros x D SUB.
+    unfold singleton_nfset in SUB.
+    unfold close in SUB.
+    specialize (SUB x ltac:(left; auto)).
+Abort.
+
 Lemma close_continuous_env {D : Rho -> P Value}{ρ} :
-  (validT_env ρ)
-  -> continuous_env D ρ 
+    continuous_env D ρ 
   -> monotone_env (dom ρ) D 
   -> continuous_env (fun ρ => close (D ρ)) ρ.
 Proof.  
-  intros NE IHD mD.
-  unfold continuous_env in IHD.
-  intros V h SUB VE.
-  destruct (IHD V ltac:(auto)) as 
+Admitted.
+(*
+  intros IHD mD V VAL SUB VE.
+  unfold continuous_env, continuous_Sub in IHD.
+  have [W [h1 h2]]: (exists W, (mem W ⊆ D ρ) /\ validT_set (mem W)). admit.
+  destruct (IHD W ltac:(auto)) as 
       [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]]; auto.
   exists ρ1. exists fρ1. split. auto.
   split. auto.
   exists y. split; auto.
 Qed. 
-
+*)
 
 Lemma APPLY_continuous_env {D E : Rho -> P Value}{ρ} :
-  (nonempty_env ρ)
-  -> continuous_env D ρ 
+    continuous_env D ρ 
   -> continuous_env E ρ
   -> monotone_env (dom ρ) D 
   -> monotone_env (dom ρ) E
-  -> continuous_env (fun ρ => APPLY (D ρ)(E ρ)) ρ.
+  -> continuous_env (fun ρ => close (APPLY (D ρ)(E ρ))) ρ.
 Proof.  
-  intros NE IHD IHE mD mE.
-  intros w APP.
-  invert_sem.
+  intros IHD IHE mD mE.
+Admitted.
+(*
+  intros W VW APP VE.
+  unfold continuous_env, continuous_Sub in IHD.
+  unfold close in APP.
+
   destruct (IHD (v_map V  w ) ltac:(auto)) as 
       [ ρ1 [ fρ1 [ ρ1ρ VwDp1 ]]].
   destruct 
@@ -1620,11 +1508,13 @@ Proof.
       eapply join_sub_right.  auto. }
     eapply BETA with (V:=V); auto.
 Qed.
+*)
 
 (* Algebraicity.  
    Only need finite information from the environment.
 *)
 
+(*
 Lemma LAMBDA_continuous_env {E ρ} {NE : nonempty_env ρ} :
     (forall V, valid (mem V) -> continuous_env E (mem V :: ρ))
   -> monotone_env (S (dom ρ)) E
@@ -1821,7 +1711,7 @@ split.
   eapply In_mem_Included. cbv; eauto.
   eapply In_mem_Included. cbv; eauto.
 Qed.
-*)
+
 
 (* ------------------- beta reduction is sound ----------------- *)
 
@@ -2141,3 +2031,4 @@ Proof. intros x xIn.
        move: (Delta_chain H M1 H0) => chain.
        eapply impossible; eauto.
 Qed.
+*)

@@ -916,6 +916,8 @@ Proof.
     split. auto.
     cbn.
     split.  subst E. auto. auto.
+  + (* PRIM *)
+    admit.
   + (* CONS *)
     specialize (IH1 _ NE).
     specialize (IH2 _ NE).

@@ -79,7 +79,7 @@ Proof. intros. destruct v; inversion H. done. Qed.
 
 
 Lemma NAT_den {k} : NAT k ≃ ⌈ v_nat k ⌉.
-split. intros x In. destruct x; try done. inversion In. subst. constructor.
+split. intros x In. destruct x; try done. 
 intros x In. inversion In. cbn. auto. Qed.
 
 Lemma den_list : forall i j D, D ⊆ LIST (NAT i :: NAT j :: nil) ->
@@ -107,15 +107,13 @@ Proof.
     destruct In as [y In]. apply v_in_den_k_inv in y.
     destruct l; try done. 
     subst. cbn. 
-    econstructor; eauto. reflexivity. 
-    econstructor; eauto. reflexivity. 
+    econstructor; eauto.  
     cbv in In. inversion In.
   + intros w In.
     eapply den_list in In. 2: { reflexivity.  }
     subst. 
     econstructor; eauto using k_in_den_k.
     econstructor; eauto using k_in_den_k.
-    econstructor.
 Qed.
 
 Lemma l_equiv_den_k1 {l k} : mem l ≃ ⌈ v_nat k ⌉ -> (mem l ⊆ NAT k) /\ nonempty_fset l.
@@ -306,8 +304,7 @@ Proof.
     erewrite denot_val_abs with (x:=x); eauto.
     eapply valid_Λ.
   + eapply valid_NAT; eauto. 
-  + eapply valid_ADD; eauto.
-  + assert False. inversion h. done.
+  + admit. (* eapply valid_ADD; eauto. *)
   + eapply valid_NIL; eauto.
   + (* exists nil. cbv. econstructor. *)
     intros x In. inversion In. exists nil. reflexivity.
@@ -330,7 +327,7 @@ Proof.
     intros x CC. 
     destruct x; try done.
     exists l. reflexivity.
-Qed.
+Admitted.
 
 Lemma denot_val_RET {ρ}{NE: nonempty_env ρ} {v} : 
   fv_tm v [<=] dom ρ -> value v -> denot v ρ ≃ RET (denot_val v ρ).
@@ -645,7 +642,8 @@ Proof.
     eapply valid_CONS. eapply valid_NAT. eapply valid_CONS. eapply valid_NAT. eapply valid_NIL.
     instantiate (1:= nil). cbv. econstructor; eauto.
     instantiate (1:= v_nat k2 :: nil). cbv. split. auto. econstructor; eauto.
-    
+    econstructor.
+
     eapply ADD_APPLY_CONS; eauto.
 Qed.
 
@@ -663,7 +661,7 @@ Qed.
 
 (* Prove that 3 + 4 is 7 *)
 Definition tm_Add : tm := 
-  app add (tcons (lit 3) (tcons (lit 4) tnil)).
+  app (prim p_add) (tcons (lit 3) (tcons (lit 4) tnil)).
 
 Lemma denot_tm_Add : denot tm_Add nil ≃ RET (NAT 7).
 Proof.

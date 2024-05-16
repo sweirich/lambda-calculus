@@ -114,7 +114,7 @@ Proof.
   intros efg. intros x y FF. 
   induction FF; intros EG; inversion EG; eauto.
   - inversion H.
-  - move: (Forall2_length _ _ FF) => eq. 
+  - move: (Forall2_length FF) => eq. 
     simpl in H0. rewrite eq in H0. done.
   - inversion H0; subst. eauto.
     eapply IHFF. right. eauto.

@@ -17,6 +17,14 @@ Local Set Warnings "-non-recursive".
 (* *********************************************************************** *)
 (** * Induction principles for nonterminals *)
 
+Scheme primitive_ind' := Induction for primitive Sort Prop.
+
+Combined Scheme primitive_mutind from primitive_ind'.
+
+Scheme primitive_rec' := Induction for primitive Sort Set.
+
+Combined Scheme primitive_mutrec from primitive_rec'.
+
 Scheme tm_ind' := Induction for tm Sort Prop.
 
 Combined Scheme tm_mutind from tm_ind'.
@@ -36,7 +44,7 @@ Fixpoint close_tm_wrt_tm_rec (n1 : nat) (x1 : tmvar) (t1 : tm) {struct t1} : tm 
     | abs t2 => abs (close_tm_wrt_tm_rec (S n1) x1 t2)
     | app t2 u1 => app (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 u1)
     | lit k1 => lit k1
-    | add => add
+    | prim primitive1 => prim primitive1
     | tnil => tnil
     | tcons t2 u1 => tcons (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 u1)
     | choice t2 t3 => choice (close_tm_wrt_tm_rec n1 x1 t2) (close_tm_wrt_tm_rec n1 x1 t3)
@@ -57,6 +65,12 @@ Definition close_tm_wrt_tm x1 t1 := close_tm_wrt_tm_rec 0 x1 t1.
 Definition size_j (j1 : j) : nat := 1
 .
 
+Fixpoint size_primitive (primitive1 : primitive) {struct primitive1} : nat :=
+  match primitive1 with
+    | p_add => 1
+    | p_dec => 1
+  end.
+
 Fixpoint size_tm (t1 : tm) {struct t1} : nat :=
   match t1 with
     | var_f x1 => 1
@@ -64,7 +78,7 @@ Fixpoint size_tm (t1 : tm) {struct t1} : nat :=
     | abs t2 => 1 + (size_tm t2)
     | app t2 u1 => 1 + (size_tm t2) + (size_tm u1)
     | lit k1 => 1 + (size_j k1)
-    | add => 1
+    | prim primitive1 => 1 + (size_primitive primitive1)
     | tnil => 1
     | tcons t2 u1 => 1 + (size_tm t2) + (size_tm u1)
     | choice t2 t3 => 1 + (size_tm t2) + (size_tm t3)
@@ -97,8 +111,8 @@ Inductive degree_tm_wrt_tm : nat -> tm -> Prop :=
     degree_tm_wrt_tm n1 (app t1 u1)
   | degree_wrt_tm_lit : forall n1 k1,
     degree_tm_wrt_tm n1 (lit k1)
-  | degree_wrt_tm_add : forall n1,
-    degree_tm_wrt_tm n1 (add)
+  | degree_wrt_tm_prim : forall n1 primitive1,
+    degree_tm_wrt_tm n1 (prim primitive1)
   | degree_wrt_tm_tnil : forall n1,
     degree_tm_wrt_tm n1 (tnil)
   | degree_wrt_tm_tcons : forall n1 t1 u1,
@@ -151,8 +165,8 @@ Inductive lc_set_tm : tm -> Set :=
     lc_set_tm (app t1 u1)
   | lc_set_lit : forall k1,
     lc_set_tm (lit k1)
-  | lc_set_add :
-    lc_set_tm (add)
+  | lc_set_prim : forall primitive1,
+    lc_set_tm (prim primitive1)
   | lc_set_tnil :
     lc_set_tm (tnil)
   | lc_set_tcons : forall t1 u1,
@@ -213,7 +227,7 @@ Definition body_tm_wrt_tm t1 := forall x1, lc_tm (open_tm_wrt_tm t1 (var_f x1)).
 
 (** Additional hint declarations. *)
 
-#[export] Hint Resolve plus_le_compat : lngen.
+(* #[export] Hint Resolve plus_le_compat : lngen. *)
 
 (** Redefine some tactics. *)
 
@@ -244,6 +258,20 @@ forall j1, 1 <= size_j j1.
 Proof. Admitted.
 
 #[export] Hint Resolve size_j_min : lngen.
+
+(* begin hide *)
+
+Lemma size_primitive_min_mutual :
+(forall primitive1, 1 <= size_primitive primitive1).
+Proof. Admitted.
+
+(* end hide *)
+
+Lemma size_primitive_min :
+forall primitive1, 1 <= size_primitive primitive1.
+Proof. Admitted.
+
+#[export] Hint Resolve size_primitive_min : lngen.
 
 (* begin hide *)
 
@@ -680,6 +708,12 @@ Proof. Admitted.
 #[export] Hint Resolve lc_tm_of_degree : lngen.
 
 Ltac j_lc_exists_tac :=
+  repeat (match goal with
+            | H : _ |- _ =>
+              fail 1
+          end).
+
+Ltac primitive_lc_exists_tac :=
   repeat (match goal with
             | H : _ |- _ =>
               fail 1
