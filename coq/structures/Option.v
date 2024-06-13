@@ -64,3 +64,22 @@ Definition recT_option {A} (P : A -> Type) (rec : forall (v:A), P v)
     | Some w => ForallT_Some P w (rec w)
     end.
 
+
+Definition liftA1 {A B} (f : A -> B) : option A -> option B := 
+  fun x => 
+    match x with 
+    | Some s1 => Some (f s1)
+    | _ => None
+    end.
+Definition liftA2 {A B C} (f : A -> B -> C) : option A -> option B -> option C := 
+  fun x y => 
+    match x , y with 
+    | Some s1 , Some s2 => Some (f s1 s2)
+    | _ , _ => None
+    end.
+
+Definition bind {A B} (m : option A) (k : A -> option B) := 
+  match m with 
+  | Some s => k s 
+  | None => None
+  end.

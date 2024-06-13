@@ -6,7 +6,6 @@ Require Export Coq.Program.Equality.  (* for dependent induction *)
 Require Import Coq.Classes.Morphisms.
 Require Import Coq.Setoids.Setoid.
 
-
 Require Import Monad.
 
 (* Representing sets by their characteristic functions. 
@@ -229,6 +228,29 @@ Proof. split; eauto using mem_singleton, singleton_mem. Qed.
 
 #[export] Hint Resolve singleton_mem mem_singleton : core. 
 
+
+Lemma mem_cons_inv {A} {a:A} {xs ys : list A} : 
+  ~(List.In a xs) -> ~(List.In a ys) -> mem (a :: xs) ≃ mem (a :: ys) -> mem xs ≃ mem ys.
+Proof. 
+  intros nI1 nI2 [h1 h2].
+  split.
+  - intros x xIn.
+    specialize (h1 x).
+    have h: x ∈ mem (a :: xs). right. auto.
+    specialize (h1 h). clear h2.
+    destruct h1.
+    -- subst. done.
+    -- done.
+  - intros x xIn.
+    specialize (h2 x).
+    have h: x ∈ mem (a :: ys). right. auto.
+    specialize (h2 h). 
+    destruct h2.
+    -- subst. done.
+    -- done.
+Qed.
+
+
 (* ----------------------------------------- *)
 
 
@@ -314,6 +336,41 @@ Proof. intros. induction l. cbv in H. done.
    }.
 
 
+
+
+#[export] Instance bind_Included_Proper {A B} :
+  Proper (Included ==> (fun k1 k2 => forall x, Included (k1 x) (k2 x)) ==> Included) 
+    (bind : P A -> (A -> P B) -> P B).
+Proof.
+  intros m1 m2 R k1 k2 S.
+  cbv.
+  intros x [a [h1 h2]].
+  exists a. split; eauto. eapply R; eauto. eapply S; eauto.
+Qed.
+
+#[export] Instance bind_Same_set_Proper {A B} :
+  Proper (Same_set ==> (fun k1 k2 => forall x, Same_set (k1 x) (k2 x)) ==> Same_set) 
+    (bind : P A -> (A -> P B) -> P B).
+Proof.
+    intros m1 m2 R k1 k2 S.
+Admitted.
+
+
+(*
+#[export] Instance BIND_Included_Proper {A B} :
+  Morphisms.Proper (Included ==> (fun f1 f2 => forall x, Included (f1 x) (f2 x)) ==> Included) 
+    (bind : P A -> (A -> P B) -> P B).
+Proof.
+  intros s1 t1 R1 s2 t2 R2.
+  cbv.
+  intros x [a [h1 h2]].
+  move: (R1 _ h1) => S1.
+  move: (R2 a x h2) => S2.
+  exists a. split; auto.
+Qed.
+
+
+
 Definition valid {A} (V : P A) : Type :=
   nonemptyT V.
 
@@ -333,3 +390,17 @@ Proof.
 Qed.
 
 #[export] Hint Resolve in_singleton_sub : core.
+
+
+
+Definition filter {A} (f : A -> bool) : P A -> P A := 
+  fun s => fun x => (f x = true) /\ (x ∈ s).
+
+Lemma fmap_Included {A B}{f : A -> B}{s1}{s2} :
+  s1 ⊆ s2 -> fmap f s1 ⊆ fmap f s2.
+Proof. 
+  cbv.
+  intros h x [a [h1 h2]]. 
+  apply h in h1.
+  exists a. split; auto.
+Qed.
