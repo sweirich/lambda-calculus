@@ -20,30 +20,19 @@ Set Implicit Arguments.
    W* == (label * result W) -> Prop
 
    The label records which branch of an "Or" we are in
-   The option records whether that branch diverges or not
-   If a branch fails, that label will not be in the set
+   The result records whether that branch diverges, type errors, 
+   or returns a value.
 
-   NOTE: In Coq, the type A -> Prop represents a set of "A"s. In 
-   this semantics, we have an invariant that for any l, there is at most *one*
-   x in the set. So really instead of a set of values, we have 
-   a partial mapping of labels to values.
+   If a branch fails, that label will not be in the set.
 
-   W* == Set of (label * option W) 
+   NOTE: the definition of "bind" for P A = (A -> Prop) has type:
 
-   Can we capture this invariant in the type some how? I'm not sure
+      bind :: P A -> (A -> P B) -> P B
 
-     o  W* == label -> option A   
- 
-        is not the same because it requires a deciable function, not a relation
+   This operation is like a flat map for sets
 
-     o  W* == label -> option W -> Prop 
-
-        doesn't enforce the invariant, because it is just currying the above
-
-     o  W* == { S : P (label * option W) | partial_function S }
-
-        enforces invariant but is annoying to work with
-
+      bind m f  ===  union_{x ∈ m} (f x)
+                       
 *)
 
 (* --------------------------------------------------------- *)
@@ -531,12 +520,21 @@ End PartialFunctions.
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
 
-(* Note: failure is the absence of a result. We don't want it 
-   to be a specific result, because terms will fail in LOTs 
-   of ways and we don't want to keep track of that. *)
+(* Note: failure is the absence of any result in the set. We don't want
+   failure to be constructor in this type.
+
+   - this simplifies the operation of "One" --- we only need to find the
+   result with the smallest label in the set not the smallest label with a
+   nonfailing result in the set.
+
+   the cost for not modelling failure is that it is more difficult to say 
+   when one set of results approximates another. Labeled bottoms can disappear
+   with more fuel when they fail.
+
+ *)
 Inductive Result (A : Type) : Type := 
-  | Bottom : Result A
-  | Wrong  : Result A 
+  | Bottom : Result A       (* divergence *)
+  | Wrong  : Result A       (* runtime type error *)
   | Value  : A -> Result A.
 
 Arguments Bottom {_}.
@@ -552,12 +550,14 @@ Definition isBottom {A} (r: Result A) : bool :=
 Definition isValue {A} (r: Result A) : bool := 
   match r with | Value _ => true | _ => false end.
 
+(*
 Definition strict {A} (r1 r2 : Result A) : Result A  := 
   match r1 , r2 with
   | Bottom , _ => Bottom
   | Wrong , _ => Wrong
   | Value _ , r2 => r2
   end.
+*)
 
 Definition approx {A} (r1 r2 : Result A) : Prop := 
   match r1 , r2 with 
@@ -567,11 +567,13 @@ Definition approx {A} (r1 r2 : Result A) : Prop :=
   | _ , _ => False
 end.
 
-Definition keep {A} (R : A -> A -> bool) (w1 : A) (r : Result A) : bool := 
-  match r with
-  | Value w2 => R w1 w2
-  | Bottom => true
-  | Wrong => false
+
+Definition approxb {A} (R : A -> A -> bool) (r1 : Result A) (r2 : Result A) : bool := 
+  match r1 , r2 with
+  | Value w1 , Value w2 => R w1 w2
+  | Wrong , Wrong => true
+  | Bottom , _ => true
+  | _ , _  => false
   end.
 
 End R.
@@ -653,34 +655,30 @@ Definition UNION {A} (s1 s2 : P (label * Result A)) :=
   fmap left s1 ∪ fmap right s2.
 
 
-(* 
-If the second expression fails, then the whole expression fails, no matter 
-what the first expression is. 
-If the first expression is fail, loop or error, that is the result of the 
-entire expression.
-If the first expression succeeds, then the result is the second expression.
+(*  For sequence we want to have this behavior:
 
-r ; fail    --> fail
-r ; fail    --> fail
-fail  ; r   --> fail
 loop  ; r   --> loop
+fail  ; r   --> fail
 error ; r   --> error
 value ; r   --> r 
 
- *)
-  (* {(𝑙1 ⋈ 𝑙2,𝑤2) | (𝑙1,𝑤1) ∈ 𝑠1, (𝑙2,𝑤2) ∈ 𝑠2} *)
-Definition SEQ {A} s1 s2 :  P (label * Result A)%type :=
-  '(l1, r1) <- s1 ;;
-  '(l2, r2) <- s2 ;;
-  ⌈ (l1 ⋈ l2, R.strict r1 r2) ⌉
-(* add this to make loop ; fail --> loop *)
-    ∪
-  (fun '(l1, r1) => match (l1, r1) with 
-                | (l ⋈ Top, Bottom) => (l, Bottom) ∈ s1
-                | _ => False
-                end).
+But, there is a catch! with bind, if there is a result for the 
+first s1 but no result for the second, then the whole expression fails. 
+But if that first result is "loop" or "error", then we want the expression
+to loop or error instead.
 
-(* Find the result associated with the *smallest* entry in the set. *)
+ *)
+
+Definition SEQ {A} (s1 s2 : P (label * Result A)) :  P (label * Result A)%type :=
+(* First part corresponds to  {(𝑙1 ⋈ 𝑙2,𝑤2) | (𝑙1,𝑤1) ∈ 𝑠1, (𝑙2,𝑤2) ∈ 𝑠2} *)
+  '(l1, r1) <- s1 ;;
+  match r1 with 
+  | Bottom => ⌈ (l1 ⋈ Top, Bottom) ⌉
+  | Wrong =>  ⌈ (l1 ⋈ Top, Wrong) ⌉
+  | _ =>  '(l2, r2) <- s2 ;; ⌈ (l1 ⋈ l2, r2) ⌉
+  end.
+
+(* Find the result associated with the *smallest* label in the set. *)
 Definition ONE {A} (s : P (label * Result A)) : (label * Result A) -> Prop := 
   fun '(l,w) => 
     match l , w with 
@@ -691,24 +689,21 @@ Definition ONE {A} (s : P (label * Result A)) : (label * Result A) -> Prop :=
 
 (* Merge togther the result of the function f applied to every w in W.
 
-   - Ensure that we only have one nonfailing result per label. If a label has
-     a different mapping (for any picked value), then do not include it in the
-     set. (TODO: make it WRONG instead?)  *)
+   Also, ensure that we only have one result per label. If a label has
+   multiple mappings (for any picked value w), then the overall result
+   is WRONG *)
                                           
 Definition EXISTS {A} (f : A -> M A) : M A := 
-  fun '(l,r) => (exists w, (l,r1) ∈ f w) 
-           /\ ((forall w' r2, (l, r2) ∈ f w' -> (r1 = r2 -> r = r1))      (* all agree *)
-            \/ (exists w' r2, (l, r2) ∈ f w' -> (r1 <> r2 /\ r = WRONG)))  (* some discrepancy *)
-              (* make ∃x.x fail *)
+  fun '(l,r) => (exists w r1, ((l, r1) ∈ f w)
+        /\ ((forall w' r2, (l, r2) ∈ f w' -> (r = r2))                (* all results agree for l *)
+        \/ (exists w' r2, ((l, r2) ∈ f w') /\ r1 <> r2 /\ r = Wrong)))  (* some discrepancy *)
 .
 
 
 (* Could value w1 be represented by the entry? *)
-Definition keep (w1 : W) (entry : label * Result W) : bool := 
-  match entry with
-  | (l, Some w2) => W.eqb w1 w2
-  | (l, None) => true
-  end.
+Definition keep : W -> (label * Result W) -> bool := 
+  fun w1 '(_, r2) => R.approxb W.eqb r2 (Value w1).
+
 (*  Intersection fails if its argument fails
     and diverges if its argument diverges *)
   (* { (l2, 𝑤2) | (𝑙2,𝑤2) ∈ 𝑠2, 𝑤1 = 𝑤2} *)
@@ -720,15 +715,14 @@ Definition INTER (w : W) : M W -> M W := Sets.filter (keep w).
 Definition ALL : M W -> M W := 
   fun s => fun '(l,r) => 
     match l , r with 
-    | Top , Some (TupleV ws) => 
+    | Top , Value (TupleV ws) => 
         exists entries , elements (fun x y => x <? y = true) s entries 
-               /\ (List.map snd entries = List.map Some ws) 
-                                          (* all of the results must succeed *)
-    | Top , None => exists l, (l , None) ∈ s    (* if any of the results diverge, ALL diverges *)
-    | _   , _ => False                         (* if there are no results, ALL fails *)
+               /\ (List.map snd entries = List.map Value ws) 
+                                            (* all of the results must succeed *)
+    | Top , Bottom => exists l, (l , Bottom) ∈ s  (* if any of the results diverge, ALL diverges *)
+    | Top , Wrong  => exists l, (l , Wrong) ∈ s   (* if any of the results errors, ALL errors *)
+    | _   , _ => False                           (* if there are no results, ALL fails *)
     end.
-
-
 
 End Semantics.
 
@@ -870,7 +864,7 @@ Lemma partial_function_FAIL {A} : partial_function (@FAIL A).
 Qed.
 
 Lemma partial_function_WRONG {A} : partial_function (@WRONG A).
-  intros k v1 v2 in1 in2. inversion in1. 
+  intros k v1 v2 in1 in2. inversion in1. inversion in2. done.
 Qed.
 
 Lemma partial_function_UNION {A} (s1 s2 : M A) : partial_function s1 -> partial_function s2 -> partial_function (UNION s1 s2).
@@ -900,23 +894,31 @@ Proof.
   move=> pf1 pf2 k v1 v2 in1 in2.
   unfold partial_function in *.
   cbn in in1.
-  move: in1 => [[l1 r1] [h1 [[l1' r1'] [h1' h]]]]. inversion h. subst. clear h.
-  move: in2 => [[l2 r2] [h2 [[l2' r2'] [h2' h]]]]. inversion h. subst. clear h.
-  move: (pf1 _ _ _ h1 h2) => E1.
-  move: (pf2 _ _ _ h1' h2') => E2.
-  subst.
-  auto.
+  move: in1 => [[l1 r1] [h1 h1']]. 
+  move: in2 => [[l2 r2] [h2 h2']]. 
+
+  destruct r1; inversion h1';
+  destruct r2; inversion h2'; subst; auto.
+  all: try solve [inversion H2; subst; move: (pf1 _ _ _ h1 h2) => E1; done].
+  all: destruct x as [l3 r3]; destruct H as [h3 h4]; inversion h4; clear h4; subst.
+  all: try move: (pf1 _ _ _ h1 h2) => E1. 
+  all: try done.
+  destruct x0 as [l3' r3']. destruct H0 as [h3' h4']. inversion h4'. subst.
+  move: (pf2 _ _ _ h3 h3') => E2.
+  done.
 Qed.
 
 (* The IH doesn't help here because it only talks about individual 
    sets f w. But we need to reason about all f w. *)
 Lemma partial_function_EXISTS {A} (f : A -> M A) : 
-  (forall w, partial_function (f w)) -> partial_function (EXISTS f).
+  partial_function (EXISTS f).
 Proof.
-intros ih k v1 v2 in1 in2.
-move: in1 => [[w1 in1] p1].
-move: in2 => [[w2 in2] p2].
-eapply p1; eauto.    
+intros k r r2 in1 in2.
+move: in1 => [w1 [r1 [h1 [p1 | [w [r2' [in2' [ne p1]]]]]]]]. 
++ move: in2 => [w2 [r2'' [in2 p2]]].
+  eapply p1; eauto.    
++ move: in2 => [[w2 in2] [p2|[w' [r3' p2]]]]. 
+  symmetry. eapply p2; eauto. intuition. subst; auto.
 Qed.
 
 Lemma partial_function_ONE (e : M W) : partial_function e -> partial_function (ONE e).
@@ -944,10 +946,11 @@ Proof.
   destruct k; try done.
   destruct v1; try done.
   destruct v2; try done.
+  move: in1 => [l1 in1].
+  move: in2 => [l2 in2].
+
   destruct w; try done.
   destruct w0; try done.
-  move: in1 => [w1 [in1 p1]].
-  move: in2 => [w2 [in2 p2]].
   - f_equal. f_equal.
     have EQ : (w1 = w2). eapply elements_functional; eauto. subst.
     rewrite p1 in p2.
