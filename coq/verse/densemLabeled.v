@@ -1605,57 +1605,16 @@ Proof.
   - intros l1 v1 h.
     move: h => [h1 h2].
     split. eauto. eauto.
-  - intros [l2 v2][h2 h3].
-    move: (A2 _ h3) => [[l1 v1] [h1 A3]].
-    exists (l1, v1). split; eauto.
+  - intros l2 v2 [h2 h3].
+    move: (A2 _ _ h3) => [l1 [v1 [h1 A3]]].
+    exists l1. exists v1. split; eauto.
     split; auto.
-    destruct v1; destruct v2; simpl in *; auto.
-    move:A3 => [h4 ->]. auto.
+    destruct v2; simpl in A3, h2.
+    destruct v1; simpl in A3.
+    destruct A3 as [e1 e2]. subst. simpl. auto.
+    simpl. auto.
+    destruct v1; try done.
 Qed.
-
-(*
-  repeat split.
-  all: intros.
-  + destruct l1; cbn in *; try done.
-    go. 
-    ind1 l1' h1.
-    match goal with 
-      | [ H1 : (?l1 , Some ?v) ∈ s2 ,
-          H2 : forall l v, (l, Some v) ∈ s2 -> _ |- _ ] => 
-          move: (H2 _ _ H1) => [l2' h2] ; clear H2
-    end.
-    exists (l1' ⋈ l2').
-    go.
-    repeat split; eauto.
-    simpl.
-    rewrite_approx.
-    rewrite_approx.
-    reflexivity.
-  + (* some s' => some s \/ none *)
-    destruct l2; cbn in *; try done.
-    go.
-    match goal with 
-      | [ H1 : (?l1 , Some ?v) ∈ s1' ,
-          H2 : forall l v, (l, Some v) ∈ s1' -> _ |- _ ] => 
-          specialize (H2 _ _ H1); destruct H2 as [[l1' h1]|h1] end.
-    match goal with 
-      | [ H1 : (?l1 , Some ?v) ∈ s2' ,
-          H2 : forall l v, (l, Some v) ∈ s2' -> _ |- _ ] => 
-          specialize (H2 _ _ H1); destruct H2 as [[l2' h2]|h2] end.
-    all: go.
-    ++ left. 
-       exists (l1' ⋈ l2'). 
-       repeat split; eauto.
-       rewrite_approx.
-       rewrite_approx.
-       auto.
-    ++ 
-      match goal with 
-      | [ H1 : (?l1 , Some ?v) ∈ s2' ,
-          H2 : forall l v, (l, Some v) ∈ s2' -> _ |- _ ] => 
-          specialize (H2 _ _ H1) end.
-
-Qed. *)
 
 Lemma EXISTS_monotone {A} {f f' : A -> M A} :
   (forall w, approx (f w) (f' w)) ->
@@ -1669,16 +1628,27 @@ Proof.
     move: (hA w) => [hA1 hA2].
     split.
     exists w. eauto.
+    split.
     intros w' r' wIn'.
-    
-
-    eapply h1. 
 Admitted.
 
+Lemma approx_BOTTOM {A} : forall (s : M A), approx ⌈ (Top, None) ⌉ s.
+intros s. split.
++ intros l r lin. inversion lin.
++ intros l' r' lin'. exists Top. exists None. split.
+  eapply in_singleton. simpl. auto.
+Qed.
+
+Lemma approx_refl {A} : forall (s : M A), approx s s.
+intros s. split.
++ eauto.
++ intros. exists l'. exists r'. split; auto. destruct r'. simpl. split; auto.
+  simpl. eapply Label.approx_refl.
+Qed.
 
 Lemma evalExp_monotone : forall k n (env : Env n) e , approx (evalExp k e env) (evalExp (S k) e env).
 intros k. induction k.
-- intros. admit. 
+- intros. simpl. unfold BOTTOM. eapply approx_BOTTOM.
 - intros.
   destruct e.
   + simpl. eapply approx_refl.
