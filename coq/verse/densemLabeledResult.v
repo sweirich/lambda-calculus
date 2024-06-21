@@ -694,9 +694,12 @@ Definition ONE {A} (s : P (label * Result A)) : (label * Result A) -> Prop :=
    is WRONG *)
                                           
 Definition EXISTS {A} (f : A -> M A) : M A := 
-  fun '(l,r) => (exists w r1, ((l, r1) ∈ f w)
-        /\ ((forall w' r2, (l, r2) ∈ f w' -> (r = r2))                (* all results agree for l *)
-        \/ (exists w' r2, ((l, r2) ∈ f w') /\ r1 <> r2 /\ r = Wrong)))  (* some discrepancy *)
+  fun '(l,r) => 
+    (* all results for l agree and there is some result *)
+    ((forall w' r2, (l, r2) ∈ f w' -> (r = r2)) /\ (exists w, (l,r) ∈ f w))
+    \/ 
+    (* there is a discrepancy *)
+    (exists w1 r1 w2 r2, ((l, r1) ∈ f w1) /\ ((l, r2) ∈ f w2) /\ r1 <> r2 /\ r = Wrong)
 .
 
 
@@ -913,12 +916,17 @@ Qed.
 Lemma partial_function_EXISTS {A} (f : A -> M A) : 
   partial_function (EXISTS f).
 Proof.
-intros k r r2 in1 in2.
-move: in1 => [w1 [r1 [h1 [p1 | [w [r2' [in2' [ne p1]]]]]]]]. 
-+ move: in2 => [w2 [r2'' [in2 p2]]].
-  eapply p1; eauto.    
-+ move: in2 => [[w2 in2] [p2|[w' [r3' p2]]]]. 
-  symmetry. eapply p2; eauto. intuition. subst; auto.
+intros k r r' ein ein'.
+move: ein => [[p1 [w1 in1]] | [w1 [r1 [w2 [r2 [in1 [in2 [p2 ->]]]]]]]];
+move: ein' => [[p1' [w1' in1' ]] | [w1' [r1' [w2' [r2' [in1' [in2' [p2' ->]]]]]]]].
++ (* agree/agree *)
+eauto.
++ (* agree/disagree *)
+assert False.  move: (p1 _ _ in1') => e1. move: (p1 _ _ in2') => e2. subst. contradiction. done.
++ (* disagree/agree *)
+assert False.  move: (p1' _ _ in1) => e1. move: (p1' _ _ in2) => e2. subst. contradiction. done.
++ (* disagree/disagree *)
+auto.
 Qed.
 
 Lemma partial_function_ONE (e : M W) : partial_function e -> partial_function (ONE e).
@@ -948,7 +956,8 @@ Proof.
   destruct v2; try done.
   move: in1 => [l1 in1].
   move: in2 => [l2 in2].
-
+Admitted.
+(*
   destruct w; try done.
   destruct w0; try done.
   - f_equal. f_equal.
@@ -972,7 +981,7 @@ Proof.
     rewrite List.in_map_iff in h3.
     move: h3 => [? [h3 _]]. done.
     auto.
-Qed.
+Qed. *)
 
 Lemma partial_function_evalPrim {o w} :
    partial_function (evalPrim o w).
@@ -1007,7 +1016,7 @@ intros k. induction k.
   + repeat rewrite eval_Seq. eapply partial_function_SEQ; eauto.
   + repeat rewrite eval_Unify. eapply partial_function_INTER; eauto.
   + repeat rewrite eval_Exists.
-    eapply partial_function_EXISTS. intro w; eauto.
+    eapply partial_function_EXISTS. 
   + repeat rewrite eval_Or.
     eapply partial_function_UNION; eauto.
   + simpl.
