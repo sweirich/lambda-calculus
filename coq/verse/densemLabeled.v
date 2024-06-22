@@ -1455,6 +1455,115 @@ Definition approx {A} (s1 s2 : M A) : Prop :=
   (forall l r, ((l, Some r) ∈ s1) -> ((l, Some r) ∈ s2)) /\
   (forall l' r', ((l',r') ∈ s2) -> exists l r, ((l,r) ∈ s1) /\ entry_approx (l,r) (l',r')).
 
+(* If two comparable labels approx the same label, then 
+   they are equal *)
+Lemma eq_preserving : forall l2 l1 l1',
+  Label.comparable l1 l1' = true ->
+  l1 ⊑ l2 = true -> l1' ⊑ l2 = true -> l1 = l1'.
+Proof. 
+  intros l2. induction l2; intros l1 l1' hc h2 h3.
+  + destruct l1; try done.
+    destruct l1'; cbv in h3; try done.
+  + (* l2 is l2_1 ⋈ l2_2 *)
+    destruct l1; try done.
+    destruct l1'; cbn in hc; try done. 
+    (* l1 is l1_1 ⋈ l1_2 *)
+    simpl in h2.
+    eapply Bool.andb_true_iff in h2. move: h2 => [h21 h22].
+    destruct l1'; cbn in h3; try done.  
+    eapply Bool.andb_true_iff in h3. move: h3 => [h31 h32].
+    simpl in hc.
+    eapply Bool.andb_true_iff in hc. move: hc => [hc1 hc2].
+    specialize (IHl2_1 l1_1 l1'1). rewrite IHl2_1; eauto.
+    specialize (IHl2_2 l1_2 l1'2). rewrite IHl2_2; eauto.
+  + (* l2 is L l2 *)
+    destruct l1; try done.
+    destruct l1'; cbn in hc; try done. 
+    (* l1 is L l1 ⋈ l1_2 *)
+    simpl in h2.
+    destruct l1'; cbn in h3; try done.  
+    simpl in hc.
+    f_equal. eauto.
+  + (* l2 is R l2 *)
+    destruct l1; try done.
+    destruct l1'; cbn in hc; try done. 
+    (* l1 is R l1 ⋈ l1_2 *)
+    simpl in h2.
+    destruct l1'; cbn in h3; try done.  
+    simpl in hc.
+    f_equal. eauto.
+Qed.
+
+(* strictly ordered labels are approximated by 
+   strictly ordered labels *)
+Lemma order_preserving : forall l2 l2' l1 l1',
+  Label.comparable l1 l1' = true ->
+  Label.comparable l2 l2' = true ->
+  l2 < l2' -> l1 ⊑ l2 = true -> l1' ⊑ l2' = true -> l1 < l1'.
+Proof. 
+  intros l2. induction l2; intros l2' l1 l1' hc1 hc2 h1 h2 h3.
+  + destruct l1; try done.
+    destruct l1'; eauto.
+    destruct l2'; eauto.
+  + (* l2 is l2_1 ⋈ l2_2 *)
+    destruct l1; try done.
+    ++ (* l1 is Top *)
+      destruct l1'; cbn in hc1; try done. 
+       (* l1' is Top *)
+Abort.
+(* Lemma is not true when l1 and l1' are Top. By backing 
+   up the approximation, we can lose the distinction between 
+   l2 and l2'. *)
+    
+
+(* If ordered labels are approximated by ordered labels *)
+Lemma order_preserving : forall l2 l2' l1 l1',
+  Label.comparable l1 l1' = true ->
+  l2 <= l2' -> l1 ⊑ l2 = true -> l1' ⊑ l2' = true -> l1 <= l1'.
+Proof. 
+  intros l2. induction l2; intros l2' l1 l1' hc h1 h2 h3.
+  + destruct l1; try done.
+    destruct l1'; eauto.
+  + (* l2 is l2_1 ⋈ l2_2 *)
+    destruct l1; try done.
+    destruct l1'; eauto.
+    (* l1 is l1_1 ⋈ l1_2 *)
+    simpl in h2.
+    eapply Bool.andb_true_iff in h2. move: h2 => [h21 h22].
+    destruct l2'; try done.
+    ++ (* l2' is l2'1 ⋈ l2'2 *)
+      unfold Label.le in h1.
+      rewrite Label.leb_Br in h1.
+      destruct l1'; try done. 
+      (* l1' is l1'1 ⋈ l1'2 *)
+      cbn in h3.
+      eapply Bool.andb_true_iff in h3. move: h3 => [h31 h32].
+      (* how are l2 and l2' related? *)
+      destruct h1.
+      ++++  (*  l2_1 < l2_2 *)    
+            (* eg: L Top ⋈ R Top < R Top ⋈ L Top *)
+        (* then l1 could be     Top ⋈ R Top 
+           and  l1' could be    Top ⋈ L Top 
+           so the two labels could swap orderings as we 
+           gain more information during the computation.
+
+           This is unfortunate because it wouldn't happen 
+           in practice due to the strictness of ;
+           we will completely evaluate the first side 
+           before we start evaluating the second side.
+
+           would it help to have a "bot" label for 
+           computation that isn't finished yet? then 
+           we can equate Bot ⋈ R Top and Bot ⋈ L Top
+           instead of ordering them.
+
+           or is there a better behaved Br label?
+
+           or could we drop the Br labels?
+           
+         *)
+Abort.
+
 
 Lemma approx_minimal_Some {A} (s s' : M A) l1 l1' a r1' : 
   Valid s -> 
@@ -1499,6 +1608,16 @@ Proof. intros V1 V2 [ap1 ap2] in1 min in1' min'.
          move: (V2 _ _ _ in1' in2') => h. done.
 Qed.
 
+
+Lemma approx_minimal_None {A} (s s' : M A) l1 l1' r1' : 
+  Valid s -> 
+  Valid s' -> 
+  approx s s' -> 
+  (l1,None) ∈ s -> minimalIn l1 s -> 
+  (l1',r1') ∈ s' -> minimalIn l1' s' -> 
+  exists l2, exists r2, entry_approx (l2,r2) (l1',r1').
+Admitted.
+
 Lemma ONE_monotone {s s' : M W} : 
   Valid s -> Valid s' ->
   approx s s' -> approx (ONE s) (ONE s').
@@ -1526,13 +1645,29 @@ Proof.
    move: in' => [k' [kin' kmin']].
    move: (A2 _ _ kin') => [l [r [lin eap]]].
    destruct r.
-   ++ admit.
-   ++ simpl in eap.
-      exists Top.
-      exists None.
-      split; simpl; auto. 
-      cbn.
+   ++
 Admitted.        
+
+Lemma elements_in {A} (s : M A) entries : 
+  elements (fun x y : label => x < y) s entries -> 
+  forall x, x ∈ s -> List.In x entries.
+Admitted.
+
+Lemma ALL_monotone {s s' : M W} : 
+  Valid s -> Valid s' ->
+  approx s s' -> approx (ALL s) (ALL s').
+Proof.
+  intros V1 V2 [A1 A2].
+  split.
+  + intros l1 r1 in1.
+    destruct l1; try done.
+    destruct r1; try done.
+    cbn in in1.
+    move: in1 => [entries [hsort hsome]].
+    move: (elements_in hsort) => ine.
+    exists entries. split; eauto.
+    move: hsort => [h1 h2].
+    unfold elements. split. 
 
 Lemma SEQ_monotone {A} {s1 s2 s1' s2' : M A} : 
   approx s1 s1' -> approx s2 s2' -> approx (SEQ s1 s2) (SEQ s1' s2').
