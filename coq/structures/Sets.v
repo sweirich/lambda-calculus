@@ -140,10 +140,15 @@ Qed.
 
 
 Lemma union_left_inv1 {A}{X Y Z: P A} : X ∪ Y ⊆ Z -> X ⊆ Z.
-Admitted.
+Proof. 
+  intros h x in1. apply h. econstructor; eauto.
+Qed.
 
 Lemma union_left_inv2 {A}{X Y Z: P A} : X ∪ Y ⊆ Z -> Y ⊆ Z.
-Admitted.
+Proof. 
+  intros h x in1. apply h. eapply Union_intror; eauto.
+Qed.
+
 
 #[export] Hint Resolve union_left_inv1 union_left_inv2 : core.
 
@@ -353,10 +358,15 @@ Qed.
     (bind : P A -> (A -> P B) -> P B).
 Proof.
     intros m1 m2 R k1 k2 S.
-Admitted.
+    unfold bind, Monad_P.
+    move: R => [M12 M21].
+    split. 
+    + intros b [a [h1 h2]].
+      exists a. split. eauto. move: (S a) => [K12 K21]. eauto.
+    + intros b [a [h1 h2]].
+      exists a. split. eauto. move: (S a) => [K12 K21]. eauto.
+Qed.
 
-
-(*
 #[export] Instance BIND_Included_Proper {A B} :
   Morphisms.Proper (Included ==> (fun f1 f2 => forall x, Included (f1 x) (f2 x)) ==> Included) 
     (bind : P A -> (A -> P B) -> P B).

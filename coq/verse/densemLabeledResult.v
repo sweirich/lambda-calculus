@@ -304,7 +304,7 @@ Module Label.
     end.
 
 
-  (* During computation, a partial result will have label "Bot". However, 
+  (* During computation, a partial result have label "Bot". However, 
      if we give the evaluator more fuel, the expression may make 
      choices, so the label will grow more structure.
 
@@ -315,21 +315,21 @@ Module Label.
               ⊑ L (R (L Bot ⋈ R Bot))
    *)
   
-  Fixpoint approx (l1 l2 : label) : bool := 
+  Fixpoint approxb (l1 l2 : label) : bool := 
     match l1 , l2 with 
     | Bot , _  => true
     | Top , Top => true 
-    | L l0 , L l1 => approx l0 l1 
-    | R l0 , R l1 => approx l0 l1 
-    | Br l1 l2 , Br l3 l4 => approx l1 l3 && approx l2 l4
+    | L l0 , L l1 => approxb l0 l1 
+    | R l0 , R l1 => approxb l0 l1 
+    | Br l1 l2 , Br l3 l4 => approxb l1 l3 && approxb l2 l4
     | _ , _ => false
     end.
 
-  Lemma approx_refl : forall l, approx l l = true.
+  Lemma approxb_refl : forall l, approxb l l = true.
   Proof. induction l; eauto. simpl. rewrite IHl1. rewrite IHl2. auto. Qed.
 
-  Lemma approx_trans : forall l2 l1 l3, 
-      approx l1 l2 = true -> approx l2 l3 = true -> approx l1 l3 = true.
+  Lemma approxb_trans : forall l2 l1 l3, 
+      approxb l1 l2 = true -> approxb l2 l3 = true -> approxb l1 l3 = true.
   Proof. induction l2. all: intros l1 l3. 
          all: destruct l1; destruct l3.
          all: simpl; intros h1 h2; try done. 
@@ -348,6 +348,7 @@ Module Label.
   Definition lt (l m : label) : Prop := ltb l m = true.
   Definition le (l m : label) : Prop := leb l m = true.
   Definition eq (l m : label) : Prop := eqb l m = true.
+  Definition approx (l m : label) : Prop := approxb l m = true.
 
 
 Lemma compare_refl: forall x, compare x x = Eq.
@@ -542,8 +543,8 @@ Qed.
   Qed.
 
 
-Lemma approx_leb : forall l1 l2, 
-    Label.approx l1 l2 = true -> Label.leb l1 l2 = true.
+Lemma approxb_leb : forall l1 l2, 
+    Label.approxb l1 l2 = true -> Label.leb l1 l2 = true.
 Proof. 
   induction l1; intros l2; destruct l2; simpl.
     all: try done.
@@ -569,9 +570,9 @@ Proof.
   Qed.
 
 
-  Lemma approx_le : forall l1 l2, 
-      approx l1 l2 = true -> Label.le l1 l2.
-  Proof. intros. unfold Label.le. eapply Label.approx_leb. auto. Qed.
+  Lemma approxb_le : forall l1 l2, 
+      approxb l1 l2 = true -> Label.le l1 l2.
+  Proof. intros. unfold Label.le. eapply Label.approxb_leb. auto. Qed.
 
 Lemma leb_antisymmetry k1 k2 : 
   Label.leb k1 k2 = true -> Label.leb k2 k1 = true -> k1 = k2.
@@ -619,7 +620,7 @@ Import Label.
    nonfailing result in the set.
 
    the cost for not modelling failure is that it is difficult to say when one
-   set of results approximates another. Labeled bottoms can disappear when 
+   *set* of results approximates another. Labeled bottoms can disappear when 
    given more fuel, because they could fail.
 
  *)
@@ -677,29 +678,33 @@ Import SetNotations.
    for values with multiple representations (i.e. functions) this definition
    is too rigid.  *)
 
-(*
-Definition partial_function {A} (s : M A) : Prop := 
-  forall e1 e2, (e1 ∈ s) -> (e2 ∈ s) -> not (entry_approx e1 e2).
-*)
+Definition M (A : Type) := (label * Result A) -> Prop.  
 
-Definition partial_function {K}{V}  (S : P (K * V)) := 
-  forall k v1 v2, (k , v1) ∈ S -> (k , v2) ∈ S -> v1 = v2.
+Definition entry_approx {A} '(l1,r1) '(l2, r2) : Prop := 
+  Label.approx l1 l2 /\ R.approx r1 (r2 : Result A).
+
+Definition mapsto {A} '(l,r) (s : M A) := 
+  exists l', ((l',r) ∈ s) /\ Label.approx l' l.
+
+Definition partial_function {A} (s : M A) := 
+  forall l r1 r2, mapsto (l,r1) s -> mapsto (l, r2) s -> r1 = r2.
 
 (* This predicate defines when a key is in the domain of 
    the partial function *)
-Definition in_dom {K}{V} (s : P (K * V)) (k : K) : Prop := 
-  exists v, (k,v) ∈ s.
+Definition in_dom {A} (s : M A) (l : label) : Prop := 
+  exists l' r, ((l', r) ∈ s) /\ Label.approx l' l.
+
 
 (* Access the canonical list of elements in a finite mapping *)
-Definition elements {K}{V} (R : K -> K -> Prop) (s : P (K * V)) (l : list (K * V)) : Prop := 
-  let LT := fun '(l1,_) '(l2, _)=> R l1 l2 in
+Definition elements {A} (s : M A) (l : list (label * Result A)) : Prop := 
+  let LT := fun '(l1,_) '(l2, _)=> Label.lt l1 l2 in
   (mem l = s) /\                        (* memberships are equal *)
   @Sorted.LocallySorted _ LT l.        (* the list is sorted by the labels *)
 
 
-Lemma smaller_notpresent {K}{V}{R : K -> K -> Prop}`{StrictOrder _ R}
-  (a : K * V) (w : list (K * V)) :
-  List.Forall (let '(l1, _) := a in fun '(l2, _) => R l1 l2) w ->
+Lemma smaller_notpresent {A} 
+  (a : label * Result A) (w : list (label * Result A)) :
+  List.Forall (let '(l1, _) := a in fun '(l2, _) => Label.lt l1 l2) w ->
   ~(List.In a w).
 Proof. destruct a. 
        induction w.
@@ -707,55 +712,18 @@ Proof. destruct a.
        intros h1 h2. simpl in h2. 
        inversion h1. subst.
        destruct h2.
-       + rewrite H0 in H2. destruct H. 
-         unfold Irreflexive, complement, Reflexive in *. 
-         eauto.
+       + subst. eapply Label.lt_irreflexive; eauto.
        + apply IHw; eauto.
 Qed.
 
-Lemma elements_functional {K}{V}{R : K -> K -> Prop}
-  `{StrictOrder _ R}{e: P (K * V) }{w1 w2} : 
+Lemma elements_functional {A}{e: M A}{w1 w2} : 
   partial_function e -> 
-  elements R e w1 -> elements R e w2 -> w1 = w2.
+  elements e w1 -> elements e w2 -> w1 = w2.
 Proof.
   move=> pfe.
-  have TR: Transitive (fun '(l1, _) '(l2, _) => R l1 l2).
-  { intros t. unfold Transitive.
-    intros [l1 _][l2 _][l3 _]. eapply H. }
-  unfold elements in *.
-  repeat rewrite <- Sorted.Sorted_LocallySorted_iff.
-  move=> [m1 S1].
-  move=> [m2 S2]. rewrite <- m1 in m2. 
-  apply Sorted.Sorted_StronglySorted in S1; try apply TR.
-  apply Sorted.Sorted_StronglySorted in S2; try apply TR.
-  remember ((fun '(l1, _) '(l2, _) => R l1 l2) : (K * V) -> (K * V) -> Prop) as Rl.
-  move: S1 w2 m2 S2.
-  induction w1.
-  - intros S1 w2 m2 s2. destruct w2. done.
 Admitted.
-(*    
-    unfold mem in m2. 
-    
-    move: m2 => [m21 _].
-    specialize (m21 p ltac:(left; eauto)).
-    inversion m21.
-  - intros S1 w2 m2 S2. destruct w2. 
-    -- move: m2 => [_ m22].
-       specialize (m22 a ltac:(left; eauto)).
-       inversion m22.
-    -- inversion S1. subst.
-       inversion S2. subst.
-       move: (@smaller_notpresent K V R H a w1 H3) => ni1.
-       move: (@smaller_notpresent K V R H p w2 H5) => ni2.
-       have: (a = p). admit. move => h. subst a.
-       apply Sets.mem_cons_inv in m2.
-       f_equal. eapply IHw1; eauto.
-Admitted. *)
 
 End PartialFunctions.
-
-
-
 
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
@@ -810,24 +778,27 @@ Import AlternativeNotation.
 
 Local Open Scope monad_scope.
 
-Definition left {A} : (label * A) -> (label * A) := 
+Context {A : Type} {eqb : A -> A -> bool}.
+
+Definition left : (label * Result A) -> (label * Result A) := 
   fun '(l,w) => (L l, w).
-Definition right {A} : (label * A) -> (label * A) := 
+Definition right : (label * Result A) -> (label * Result A) := 
   fun '(l,w) => (R l, w).
 
-Definition M (A : Type) := (label * Result A) -> Prop.  
 
-Definition BOTTOM {A} : P (label * Result A) := ⌈ (Bot, Bottom) ⌉.
+Definition BOTTOM : M A := ⌈ (Bot, Bottom) ⌉.
 
-Definition WRONG {A} : P (label * Result A) := ⌈ (Top, Wrong) ⌉.
+Definition WRONG  : M A := ⌈ (Top, Wrong) ⌉.
 
-Definition FAIL {A} : P (label * Result A) := ∅.
+Definition FAIL   : M A := ∅.
 
-Definition UNIT {A} (x : A) : P (label * Result A) := ⌈ (Top, Value x) ⌉.
+Definition UNIT (x : A) : M A := ⌈ (Top, Value x) ⌉.
 
 (* { (L𝑙,𝑤) | (𝑙,𝑤) ∈ 𝑠1 } ∪ {(R𝑙,𝑤) | (𝑙,𝑤) ∈ 𝑠2 } *)
-Definition UNION {A} (s1 s2 : P (label * Result A)) := 
-  fmap left s1 ∪ fmap right s2.
+Print fmap.
+Definition UNION (s1 s2 : P (label * Result A)) := 
+  @Union (label * Result A) (@fmap P ltac:(eauto) (label * Result A) (label * Result A) left s1) 
+    (@fmap P ltac:(eauto) (label * Result A) (label * Result A) right s2).
 
 
 (* SEQ:  For sequence we want to have this behavior:
@@ -870,39 +841,83 @@ Definition ONE {A} (s : P (label * Result A)) : (label * Result A) -> Prop :=
 
 (* EXISTS: Merge togther the result of the function f applied to every w in W.
 
-   Not every result will be defined for each w. If we have a partial result,
-   then the whole result is partial. 
-
-   Also, ensure that we only have one result per label. If a label has
+   - Ensures that we only have one result per label. If a label has
    multiple mappings (for any picked value w), then the overall result
    is WRONG.
       exists X.X -> WRONG
       exists X. [X=3;X | X=4;X] -> { (L Top, 3) ∪ (R Top, 4) }
+
+   - Not every result will be defined for each w. If we have a partial result for 
+     and w, then the *whole* result is partial. 
+
+   For example:
+
+      fact = \x. if x = 0 then 1 else x * fact (x - 1) 
+
+      exists x. fact x = 120
+
+   This program must diverge, because fact (-1) goes into an infinite loop.
+   To prevent this, must add a guard to the term so that it fails for negative
+   inputs.
+
+      exists x. x >= 0 ; fact x = 120
+
+   This program terminates on all inputs, so its meaning is "5"
+
+   - Note: exists must often be we guarded by a type check for base types. 
+     For example, the meaning of this program is WRONG
+
+        exists X. X + 1 = 2  
+
+     because if X is not a number then the result is WRONG and that clashes 
+     with the case that X is 1.
+
+     Instead, this *must* be written as 
+
+         exists X. (X : int) ; X + 1 = 2
+     
+   - Note: in this semantics we cannot define functions extensionally. 
+     For example, we might want to say:
+
+         exists f. (f : bool -> bool) ; f false = true ; f false = true
+
+     as a way to define the boolean negation function. 
+
+     However, guessing the function "\b.loop" causes that case to 
+     diverge, so this term must diverge.
+     [Even if this were not the case, we would still be in trouble 
+     because there are multiple ways of expressing the negation 
+     function, so the result would be wrong instead.]
+
+     Instead, we can only define functions intensionally:
+   
+         exists f. f = \x. x + 1 ; f 
+
+   Monotonicity + WRONG for disagreement means that we have to wait for all 
+   options to continue before providing a result. If, instead, we return the 
+   "first" successful answer, we may later learn that the answer should be 
+   WRONG instead.
+
+
 *)
                                           
 Definition EXISTS {A} (f : A -> M A) : M A := 
   fun '(l,r) => 
     if R.isBottom r then
-        (* there is some result that is bottom for this label *)
-        exists w', exists l', ((l', Bottom) ∈ f w') /\ (l' ⊑ l = true)
+        (* there is a bottom in some guessed value *)
+        exists w', mapsto (l, Bottom) (f w') 
     else 
-        (* there are no bottom results for this label *)
-        (forall w2 l2 , (l2, Bottom) ∈ f w2 -> l2 ⊑ l = false) /\
+        (* there are no bottom results for this label. i.e. for 
+           any value that we guess, the function terminates. *)
+        (forall w2, not (mapsto (l, Bottom) (f w2))) /\
         
         (* there is a result for exactly this label *)
         (exists w1 r1, ((l, r1) ∈ f w1) /\
 
-        (* and, for any other result it either matches this, or the 
-           final result is wrong. *)
+        (* and, for any other input the result either matches this, or the 
+           final result is Wrong. *)
         (forall w2 r2 , (l, r2) ∈ f w2 ->
               ((r1 = r2 /\ r1 = r) \/ (r1 <> r2) /\ r = Wrong))).
-
-
-(* NOTE: with functions, we can *only* quantify over functions that we provide a 
-   full syntactic, definition for. 
-
-    exists f.  f = \x. x + 1 ; f
- *)
 
 
 (* Could value w1 be represented by the entry? *)
@@ -921,7 +936,7 @@ Definition ALL : M W -> M W :=
   fun s => fun '(l,r) => 
     match l , r with 
     | Top , Value (TupleV ws) => 
-        exists entries , elements (fun x y => x <? y = true) s entries 
+        exists entries , elements s entries 
                /\ (List.map snd entries = List.map Value ws) 
                                             (* all of the results must succeed *)
     | Top , Bottom => exists l, (l , Bottom) ∈ s  (* if any of the results diverge, ALL diverges *)
@@ -974,6 +989,8 @@ Definition evalPrim (o : Op) (w : W) : M W :=
   end.
 
 (* semantics of expressions *)
+
+(* set of (label * Result Value) *)
 
 Fixpoint evalExp (m:nat) {n : nat} (e: Exp n) : Env n -> M W :=  
   match m with 
@@ -1056,7 +1073,7 @@ Import SetNotations.
  *)
 
 Lemma partial_function_BOTTOM {A} : partial_function (@BOTTOM A).
-  intros k v1 v2 in1 in2. inversion in1. inversion in2. done.
+  intros v1 v2 in1 in2. inversion in1. inversion in2. simpl. intuition. 
 Qed.
 
 Lemma partial_function_UNIT {A} (x:A) : partial_function (UNIT x).
@@ -1424,11 +1441,6 @@ We need (3) for the case of ONE
  *)
 
 
-Definition entry_approx {A}(e1 e2 : label * Result A) : Prop := 
-  match e1 , e2 with 
-  | (l1 , Bottom), (l2 , _) => Label.approx l1 l2 = true
-  | (l1 , r1),  (l2, r2) => Label.approx l1 l2 = true /\ r1 = r2
-  end.
 
 Lemma entry_approx_label {A:Type} {l1 r1 l2 r2}: 
   entry_approx (A:=A) (l1, r1) (l2, r2) -> Label.approx l1 l2 = true.

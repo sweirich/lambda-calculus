@@ -219,24 +219,25 @@ Import VectorDef.VectorNotations.
 (* Examples *)
 
 (* exists x. x = 3 ; x *)
-Definition ex0 : Exp 0 := 
-  Exists (Seq (Unify (Ret (Var F1)) (Ret (Int 3))) (Ret (Var F1))).
+Definition ex0 (y : nat) : Exp 0 := 
+  Exists (Seq (Unify (Ret (Var F1)) (Ret (Int y))) (Ret (Var F1))).
 
-Lemma evex0 : exists n, UNIT (IntV 3) ≃ evalExp n (@VectorDef.nil _) ex0.
+Lemma evex0 : forall y, exists n, (UNIT (IntV y)) ≃ evalExp n (@VectorDef.nil _) (ex0 y).
+intros y.
 exists 4. 
 simpl.
 split.
 - unfold EXISTS.
   intros x xIn. inversion xIn.
-  exists (IntV 3). 
+  exists (IntV y). 
   econstructor.
-  exists (IntV 3).
+  exists (IntV y).
   repeat econstructor; eauto.
   repeat econstructor; eauto.
 - unfold EXISTS.
   intros x xIn. inversion xIn.
   cbv in H.
-  move: H => [[y h1] h2].  inversion h2. subst.
+  move: H => [[y' h1] h2].  inversion h2. subst.
   inversion h1. subst. inversion H. subst. inversion H0. subst.
   auto.
 Qed.

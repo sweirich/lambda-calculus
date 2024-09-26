@@ -13,6 +13,8 @@ Require Import structures.Monad.
 Require Import fintype.
 Require Import verse.syntax.
 
+Open Scope bool_scope.
+
 Set Implicit Arguments.
 
 (* This file defines a "denotational" semantics for Verse.
@@ -246,12 +248,21 @@ Open Scope label_scope.
 Create HintDb label.
 
 Inductive label : Type := 
-   | Top : label
+   | Bot : label                   (* computation in progress *)
+   | Top : label                   (* computation finished *)
    | Br  : label -> label -> label   (* sequenced choices *)
    | L   : label -> label           (* inside a left choice *)
    | R   : label -> label           (* inside a right choice *)
 .
 
+Fixpoint hasBot (l : label) :=
+  match l with 
+  | Bot => true
+  | Top => false
+  | Br l1 l2 => hasBot l1 || hasBot l2
+  | L l => hasBot l 
+  | R l => hasBot l
+  end.
 
 Module Label.
 
@@ -265,7 +276,8 @@ Module Label.
     | L _  , R _  => Lt
     | R _ , L _   => Gt
 
-    | Top , Top => Eq
+    | Top, Top => Eq
+    | Bot , Bot => Eq
 
     | Br l1 l2 , Br l3 l4 => 
         match compare l1 l3 with
@@ -274,8 +286,8 @@ Module Label.
         end
 
     (* these don't matter, we will only compare comparable things *)
-    | Top , _ => Lt
-    | _   , Top => Gt
+    | Bot , _ => Lt
+    | _   , Bot => Gt
     | L _ , _  => Lt
     | _   , L _  => Gt
     | Br _ _ , _ => Lt
@@ -290,6 +302,7 @@ Module Label.
     | R l0 , R m0 => comparable l0 m0 
     | L _  , R _  => true
     | R _ , L _   => true
+    | Bot , Bot => true
     | Top , Top => true
     | Br l1 l2 , Br l3 l4 => comparable l1 l3 && comparable l2 l4
     | _ , _ => false
@@ -298,9 +311,9 @@ Module Label.
   (* alternative definition we would like to have. *)
   (*
   Inductive glabel : label -> Type := 
-    | GL : forall {l r}, ((r = L l) \/ (r = Top)) -> glabel l -> glabel r
-    | GR : forall {l r}, ((r = L l) \/ (r = Top)) -> glabel l -> glabel r
-    | GT : glabel Top
+    | GL : forall {l r}, ((r = L l) \/ (r = Bot)) -> glabel l -> glabel r
+    | GR : forall {l r}, ((r = L l) \/ (r = Bot)) -> glabel l -> glabel r
+    | GT : glabel Bot
     | GBr : forall {l1 l2}, glabel l1 -> glabel l2 -> glabel (Br l1 l2)
   .
 
@@ -499,19 +512,19 @@ Module Label.
    
   (* --------- approx : information ordering of labels ---------- *)
 
-  (* During computation, a partial result will have label "Top". However, 
+  (* During computation, a partial result will have label "Bot". However, 
      if we give the evaluator more fuel, the expression may make 
      choices, so the label will grow more structure.
 
-          Top ⊑ L Top
-              ⊑ L (R Top) 
-              ⊑ L (R (Top ⋈ Top))
-              ⊑ L (R (L Top ⋈ Top))
-              ⊑ L (R (L Top ⋈ R Top))
+          Bot ⊑ L Bot
+              ⊑ L (R Bot) 
+              ⊑ L (R (Bot ⋈ Bot))
+              ⊑ L (R (L Bot ⋈ Bot))
+              ⊑ L (R (L Bot ⋈ R Bot))
    *)
   Fixpoint approx (l1 l2 : label) : bool := 
     match l1 , l2 with 
-    | Top , _ => true 
+    | Bot , _ => true 
     | L l0 , L l1 => approx l0 l1 
     | R l0 , R l1 => approx l0 l1 
     | Br l1 l2 , Br l3 l4 => approx l1 l3 && approx l2 l4            
@@ -677,6 +690,118 @@ Infix "<=" := Label.le (at level 70) : label_scope.
 Infix "<" := Label.lt (at level 70) : label_scope.
 Infix "⊑" := Label.approx (at level 70) : label_scope.
 End LabelNotation.
+
+Import LabelNotation.
+
+(* If two comparable labels approx the same label, then 
+   they are equal *)
+Lemma eq_preserving : forall l2 l1 l1',
+  Label.comparable l1 l1' = true ->
+  l1 ⊑ l2 = true -> l1' ⊑ l2 = true -> l1 = l1'.
+Proof. 
+  intros l2. induction l2; intros l1 l1' hc h2 h3.
+  + destruct l1; try done.
+    destruct l1'; cbv in h3; try done.
+  + (* l2 is l2_1 ⋈ l2_2 *)
+    destruct l1; try done.
+    destruct l1'; cbn in hc; try done. 
+    (* l1 is l1_1 ⋈ l1_2 *)
+    simpl in h2.
+    eapply Bool.andb_true_iff in h2. move: h2 => [h21 h22].
+    destruct l1'; cbn in h3; try done.  
+    eapply Bool.andb_true_iff in h3. move: h3 => [h31 h32].
+    simpl in hc.
+    eapply Bool.andb_true_iff in hc. move: hc => [hc1 hc2].
+    specialize (IHl2_1 l1_1 l1'1). rewrite IHl2_1; eauto.
+    specialize (IHl2_2 l1_2 l1'2). rewrite IHl2_2; eauto.
+  + (* l2 is L l2 *)
+    destruct l1; try done.
+    destruct l1'; cbn in hc; try done. 
+    (* l1 is L l1 ⋈ l1_2 *)
+    simpl in h2.
+    destruct l1'; cbn in h3; try done.  
+    simpl in hc.
+    f_equal. eauto.
+  + (* l2 is R l2 *)
+    destruct l1; try done.
+    destruct l1'; cbn in hc; try done. 
+    (* l1 is R l1 ⋈ l1_2 *)
+    simpl in h2.
+    destruct l1'; cbn in h3; try done.  
+    simpl in hc.
+    f_equal. eauto.
+Qed.
+
+(* strictly ordered labels are approximated by 
+   strictly ordered labels *)
+Lemma order_preserving : forall l2 l2' l1 l1',
+  Label.comparable l1 l1' = true ->
+  Label.comparable l2 l2' = true ->
+  l2 < l2' -> l1 ⊑ l2 = true -> l1' ⊑ l2' = true -> l1 < l1'.
+Proof. 
+  intros l2. induction l2; intros l2' l1 l1' hc1 hc2 h1 h2 h3.
+  + destruct l1; try done.
+    destruct l1'; eauto.
+    destruct l2'; eauto.
+  + (* l2 is l2_1 ⋈ l2_2 *)
+    destruct l1; try done.
+    ++ (* l1 is Bot *)
+      destruct l1'; cbn in hc1; try done. 
+       (* l1' is Bot *)
+Abort.
+(* Lemma is not true when l1 and l1' are Bot. By backing 
+   up the approximation, we can lose the distinction between 
+   l2 and l2'. *)
+    
+
+(* If ordered labels are approximated by ordered labels *)
+Lemma order_preserving : forall l2 l2' l1 l1',
+  Label.comparable l1 l1' = true ->
+  l2 <= l2' -> l1 ⊑ l2 = true -> l1' ⊑ l2' = true -> l1 <= l1'.
+Proof. 
+  intros l2. induction l2; intros l2' l1 l1' hc h1 h2 h3.
+  + destruct l1; try done.
+    destruct l1'; eauto.
+  + (* l2 is l2_1 ⋈ l2_2 *)
+    destruct l1; try done.
+    destruct l1'; eauto.
+    (* l1 is l1_1 ⋈ l1_2 *)
+    simpl in h2.
+    eapply Bool.andb_true_iff in h2. move: h2 => [h21 h22].
+    destruct l2'; try done.
+    ++ (* l2' is l2'1 ⋈ l2'2 *)
+      unfold Label.le in h1.
+      rewrite Label.leb_Br in h1.
+      destruct l1'; try done. 
+      (* l1' is l1'1 ⋈ l1'2 *)
+      cbn in h3.
+      eapply Bool.andb_true_iff in h3. move: h3 => [h31 h32].
+      (* how are l2 and l2' related? *)
+      destruct h1.
+      ++++  (*  l2_1 < l2_2 *)    
+            (* eg: L Bot ⋈ R Bot < R Bot ⋈ L Bot *)
+        (* then l1 could be     Bot ⋈ R Bot 
+           and  l1' could be    Bot ⋈ L Bot 
+           so the two labels could swap orderings as we 
+           gain more information during the computation.
+
+           This is unfortunate because it wouldn't happen 
+           in practice due to the strictness of ;
+           we will completely evaluate the first side 
+           before we start evaluating the second side.
+
+           would it help to have a "bot" label for 
+           computation that isn't finished yet? then 
+           we can equate Bot ⋈ R Bot and Bot ⋈ L Bot
+           instead of ordering them.
+
+           or is there a better behaved Br label?
+
+           or could we drop the Br labels?
+           
+         *)
+Abort.
+
 
 End Label.
 
@@ -875,7 +1000,7 @@ Definition right {A} : (label * option A) -> (label * option A) :=
 
 Definition M (A : Type) := (label * option A) -> Prop.  
 
-Definition BOTTOM {A} : P (label * option A) := ⌈ (Top, None) ⌉.
+Definition BOTTOM {A} : P (label * option A) := ⌈ (Bot, None) ⌉.
 
 Definition WRONG {A} : P (label * option A) := ∅.
 
@@ -1455,114 +1580,6 @@ Definition approx {A} (s1 s2 : M A) : Prop :=
   (forall l r, ((l, Some r) ∈ s1) -> ((l, Some r) ∈ s2)) /\
   (forall l' r', ((l',r') ∈ s2) -> exists l r, ((l,r) ∈ s1) /\ entry_approx (l,r) (l',r')).
 
-(* If two comparable labels approx the same label, then 
-   they are equal *)
-Lemma eq_preserving : forall l2 l1 l1',
-  Label.comparable l1 l1' = true ->
-  l1 ⊑ l2 = true -> l1' ⊑ l2 = true -> l1 = l1'.
-Proof. 
-  intros l2. induction l2; intros l1 l1' hc h2 h3.
-  + destruct l1; try done.
-    destruct l1'; cbv in h3; try done.
-  + (* l2 is l2_1 ⋈ l2_2 *)
-    destruct l1; try done.
-    destruct l1'; cbn in hc; try done. 
-    (* l1 is l1_1 ⋈ l1_2 *)
-    simpl in h2.
-    eapply Bool.andb_true_iff in h2. move: h2 => [h21 h22].
-    destruct l1'; cbn in h3; try done.  
-    eapply Bool.andb_true_iff in h3. move: h3 => [h31 h32].
-    simpl in hc.
-    eapply Bool.andb_true_iff in hc. move: hc => [hc1 hc2].
-    specialize (IHl2_1 l1_1 l1'1). rewrite IHl2_1; eauto.
-    specialize (IHl2_2 l1_2 l1'2). rewrite IHl2_2; eauto.
-  + (* l2 is L l2 *)
-    destruct l1; try done.
-    destruct l1'; cbn in hc; try done. 
-    (* l1 is L l1 ⋈ l1_2 *)
-    simpl in h2.
-    destruct l1'; cbn in h3; try done.  
-    simpl in hc.
-    f_equal. eauto.
-  + (* l2 is R l2 *)
-    destruct l1; try done.
-    destruct l1'; cbn in hc; try done. 
-    (* l1 is R l1 ⋈ l1_2 *)
-    simpl in h2.
-    destruct l1'; cbn in h3; try done.  
-    simpl in hc.
-    f_equal. eauto.
-Qed.
-
-(* strictly ordered labels are approximated by 
-   strictly ordered labels *)
-Lemma order_preserving : forall l2 l2' l1 l1',
-  Label.comparable l1 l1' = true ->
-  Label.comparable l2 l2' = true ->
-  l2 < l2' -> l1 ⊑ l2 = true -> l1' ⊑ l2' = true -> l1 < l1'.
-Proof. 
-  intros l2. induction l2; intros l2' l1 l1' hc1 hc2 h1 h2 h3.
-  + destruct l1; try done.
-    destruct l1'; eauto.
-    destruct l2'; eauto.
-  + (* l2 is l2_1 ⋈ l2_2 *)
-    destruct l1; try done.
-    ++ (* l1 is Top *)
-      destruct l1'; cbn in hc1; try done. 
-       (* l1' is Top *)
-Abort.
-(* Lemma is not true when l1 and l1' are Top. By backing 
-   up the approximation, we can lose the distinction between 
-   l2 and l2'. *)
-    
-
-(* If ordered labels are approximated by ordered labels *)
-Lemma order_preserving : forall l2 l2' l1 l1',
-  Label.comparable l1 l1' = true ->
-  l2 <= l2' -> l1 ⊑ l2 = true -> l1' ⊑ l2' = true -> l1 <= l1'.
-Proof. 
-  intros l2. induction l2; intros l2' l1 l1' hc h1 h2 h3.
-  + destruct l1; try done.
-    destruct l1'; eauto.
-  + (* l2 is l2_1 ⋈ l2_2 *)
-    destruct l1; try done.
-    destruct l1'; eauto.
-    (* l1 is l1_1 ⋈ l1_2 *)
-    simpl in h2.
-    eapply Bool.andb_true_iff in h2. move: h2 => [h21 h22].
-    destruct l2'; try done.
-    ++ (* l2' is l2'1 ⋈ l2'2 *)
-      unfold Label.le in h1.
-      rewrite Label.leb_Br in h1.
-      destruct l1'; try done. 
-      (* l1' is l1'1 ⋈ l1'2 *)
-      cbn in h3.
-      eapply Bool.andb_true_iff in h3. move: h3 => [h31 h32].
-      (* how are l2 and l2' related? *)
-      destruct h1.
-      ++++  (*  l2_1 < l2_2 *)    
-            (* eg: L Top ⋈ R Top < R Top ⋈ L Top *)
-        (* then l1 could be     Top ⋈ R Top 
-           and  l1' could be    Top ⋈ L Top 
-           so the two labels could swap orderings as we 
-           gain more information during the computation.
-
-           This is unfortunate because it wouldn't happen 
-           in practice due to the strictness of ;
-           we will completely evaluate the first side 
-           before we start evaluating the second side.
-
-           would it help to have a "bot" label for 
-           computation that isn't finished yet? then 
-           we can equate Bot ⋈ R Top and Bot ⋈ L Top
-           instead of ordering them.
-
-           or is there a better behaved Br label?
-
-           or could we drop the Br labels?
-           
-         *)
-Abort.
 
 
 Lemma approx_minimal_Some {A} (s s' : M A) l1 l1' a r1' : 
@@ -1767,10 +1784,10 @@ Proof.
     intros w' r' wIn'.
 Admitted.
 
-Lemma approx_BOTTOM {A} : forall (s : M A), approx ⌈ (Top, None) ⌉ s.
+Lemma approx_BOTTOM {A} : forall (s : M A), approx ⌈ (Bot, None) ⌉ s.
 intros s. split.
 + intros l r lin. inversion lin.
-+ intros l' r' lin'. exists Top. exists None. split.
++ intros l' r' lin'. exists Bot. exists None. split.
   eapply in_singleton. simpl. auto.
 Qed.
 
