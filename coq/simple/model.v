@@ -940,10 +940,6 @@ Qed.
 #[export] Hint Resolve cc_set_NAT : examples.
 
 
-Definition Fix (f : (A -> A -> Prop) -> (A -> A -> Prop)) : A -> A -> Prop := 
-  fun s1 s2 => exists n, (app n f bot) s1 s2.
-
-
 (*
 Lemma canonical_set_APPLY D1 D2 : 
   canonical_set D1 -> 

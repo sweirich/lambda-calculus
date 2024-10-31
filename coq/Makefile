@@ -15,6 +15,10 @@ coq: $(COQMKFILENAME) $(VFILES)
 quick:  $(COQMKFILENAME)
 	$(MAKE) -f CoqSrc.mk vio
 
+verse/syntax.v : verse/verse.sig
+	as2-exe -i $< -p Coq > $@
+
+
 lc/%_ott.v: $(OTT_LOC)/%.ott 
 	ott -i $(OTT_LOC)/$(OTT_NAME).ott -o lc/$(OTT_NAME)_ott.v -coq_lngen true -coq_expand_list_types true
 
