@@ -1,20 +1,3 @@
-Require Export ssreflect.
-Require Export Coq.Classes.RelationClasses.
-Require Export Coq.Classes.Morphisms.
-
-Require Coq.Sorting.Sorted.
-Require Coq.Lists.List.
-
-Require structures.Option.
-Require Import structures.Sets.
-Require Import structures.Monad.
-
-(* autosubst2 "generated" syntax *)
-Require Import fintype.
-Require Import verse.syntax.
-
-Set Implicit Arguments.
-
 (* This file defines a "denotational" semantics for Verse.
 
    W* == (label * result W) -> Prop
@@ -31,589 +14,33 @@ Set Implicit Arguments.
 
    This operation is like a flat map for sets
 
-      bind m f  ===  union_{x ∈ m} (f x)
-
-   NOTE: trying to make failure explicit causes difficulties. 
-   Especially with intersect. 
-                       
+      bind m f  ===  union_{x ∈ m} (f x)                       
 *)
 
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-(* "deriving" Eq for syntax                                  *)
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
+Require Export ssreflect.
+Require Export Coq.Classes.RelationClasses.
+Require Export Coq.Classes.Morphisms.
 
-Module EqSyntax.
+Require Coq.Sorting.Sorted.
+Require Coq.Lists.List.
 
-Module Op. 
+Require structures.Option.
+Require Import structures.Sets.
+Require Import structures.Monad.
+Require structures.Vector.
 
-Definition eqb (x y : Op) : bool :=
-  match  x , y with
-  | opAdd , opAdd => true
-  | opGt , opGt => true
-  | opInt , opInt => true
-  | _ , _ => false
-  end.
-
-Lemma eqb_eq : forall x y, 
-  eqb x y = true <-> x = y.
-Proof.
-  intros x y. split; destruct x; destruct y; simpl; done.
-Qed. 
-
-Lemma eqb_neq : forall x y, 
-  eqb x y = false <-> x <> y.
-Proof. 
-  intros x y. split; destruct x; destruct y; simpl; done.
-Qed.
-
-End Op.
-
-Fixpoint fin_eqb {n} := 
-  match n return fin n -> fin n -> bool with 
-  | 0 => fun x y => match x with end
-  | S m => fun x y =>
-      match x , y with 
-      | Some x' , Some y' => fin_eqb x' y'
-      | None , None => true
-      | _ , _ => false
-      end
-  end.
-
-Fixpoint Val_eqb {n} (x y : Val n) : bool := 
-  let fix Vals_eqb {n} (xs ys : list (Val n)) := 
-  match xs , ys with
-  | cons x xs , cons y ys => (Val_eqb x y && Vals_eqb xs ys)%bool
-  | nil , nil => true
-  | _ , _ => false
-  end in
-  match x , y with 
-  | var_Val f1 , var_Val f2 => fin_eqb f1 f2
-  | Int n1 , Int n2 => Nat.eqb n1 n2
-  | Prim o1 , Prim o2 => Op.eqb o1 o2
-  | Tuple vs1 , Tuple vs2 => Vals_eqb vs1 vs2
-  | Lam e1 , Lam e2 => Exp_eqb e1 e2
-  | _ , _ => false
-  end
-with Exp_eqb {n} (x y : Exp n) : bool := 
-  match x, y with 
-  | Ret v1 , Ret v2 => Val_eqb v1 v2
-  | App v1 u1 , App v2 u2 => Val_eqb v1 v2 && Val_eqb u1 u2
-  | Seq e1 e2 , Seq e1' e2' => Exp_eqb e1 e1' && Exp_eqb e2 e2'
-  | Unify v1 e2 , Unify v1' e2' => Val_eqb v1 v1' && Exp_eqb e2 e2'
-  | Exists e1 , Exists e1' => Exp_eqb e1 e1'
-  | Or e1 e2 , Or e1' e2' => Exp_eqb e1 e1' && Exp_eqb e2 e2'
-  | Fail , Fail => true
-  | One e1 , One e1' => Exp_eqb e1 e1'
-  | All e1 , All e1' => Exp_eqb e1 e1'
-  | _ , _ => false
-  end.
-
-
-End EqSyntax.
+(* autosubst2 "generated" syntax *)
+Require Import fintype.
+Require Import verse.syntax.
+Require Import verse.notations.
 Import EqSyntax.
 
-
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-(* Syntactic sugar                                           *)
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-
-Definition var_one {n : nat} : fin (S (S n)) := Some None. 
-Definition var_two {n : nat} : fin (S (S (S n))) := Some (Some None). 
-
-Definition bind1 {n} : Exp n -> Exp (S n) -> Exp n := 
-  fun e1 e2 =>
-    Exists (Seq (Unify (var_Val var_zero) (ren_Exp shift e1)) e2).
-
-Definition bind2 {n} : Exp n -> Exp n -> Exp (S (S n)) -> Exp n := 
-  fun e1 e2 e3 =>
-    Exists (Seq (Unify (var_Val var_zero) (ren_Exp shift e1))
-                (Exists (Seq (Unify (var_Val var_zero) (ren_Exp (shift >> shift) e2))
-                          e3))).
-
-Definition app {n} : Exp n -> Exp n -> Exp n := 
-  fun e1 e2 => bind2 e1 e2 (App (var_Val var_one) (var_Val var_zero)).
-
-
-Module VerseNotations.
-
-Declare Scope verse_syntax.
-Delimit Scope verse_syntax with Exp.
-Open Scope verse_syntax.
-
-Notation x0 := (var_Val var_zero).
-Notation x1 := (var_Val var_one).
-Notation x2 := (var_Val var_two).
-
-Notation "⟨⟩" := (Tuple nil) : verse_syntax.
-
-Infix ";;" := Seq (at level 100, right associativity) : verse_syntax.
-
-Infix "≡" := Unify (at level 100, right associativity) : verse_syntax.
-
-Coercion Ret : Val >-> Exp.
-
-Infix "@" := app (at level 71, left associativity) : verse_syntax.
-
-Definition ifthenelse {n} (e1 e2 e3 : Exp n) : Exp n := 
-  One ( Or ( e1 ;; Lam ( ⟨⟩ ≡ x0 ;; ren_Exp shift e2 ) )
-                 ( Lam ( ⟨⟩ ≡ x0 ;; ren_Exp shift e3 ) )) @ ⟨⟩.
-
-Notation "e1 ?? e2 :: e3" := (ifthenelse e1 e2 e3) (at level 70) : verse_syntax.
-
-End VerseNotations.
-
-
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-(* Length indexed vectors *)
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-
-Module Vector. 
-
-Inductive vec (A:Type) : nat -> Type := 
-  | nil : vec A 0
-  | cons : forall {n}, A -> vec A n -> vec A (S n)
-.
-
-Arguments nil {_}.
-Arguments cons {_}{_}.
-
-Fixpoint nth {A}{n} (v : vec A n) : fin n -> A := 
-  match v in vec _ n return fin n -> A with 
-        | nil => null
-        | cons x xs => fun f => match f with 
-                            | Some g => nth xs g
-                            | None => x
-                            end
-        end.
-
-(* 
-Fixpoint eqb {A} {n} (eqA : A -> A -> bool) := 
-  match n return vec _ n -> vec A n -> bool with 
-  | 0 => fun v1 v2 => true
-  | S m => fun v1 v2 => 
-            match v1 , v2 in vec _ m with 
-            | cons x xs , cons y ys => (eqA x y && eqb eqA xs ys)%bool
-            | nil , nil => true
-            | _ , _ => false
-            end
-  end.
-*)
-
-Declare Scope vec_scope.
-Delimit Scope vec_scope with vec.
-Bind Scope vec_scope with vec.
-
-Open Scope vec_scope.
-
-Module VectorNotation.
-Infix "::" := cons (at level 60, right associativity) : vec_scope.
-Notation "[ ]" := nil (format "[ ]") : vec_scope.
-Notation "[ x ]" := (cons x nil) : vec_scope.
-(*
-Notation "[ x ; y ; .. ; z ]" := (cons x (cons y .. (cons z nil) ..))
-  (format "[ '[' x ; '/' y ; '/' .. ; '/' z ']' ]") : vec_scope.
-*)
-End VectorNotation.
-
-End Vector.
-
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-(*                     Labels                                *)
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-
-Module Label.
-
-Declare Scope label_scope.
-Delimit Scope label_scope with label.
-Open Scope label_scope.
-
-Inductive label : Type := 
-   | Bot : label                   (* unfinished *)
-   | Top : label                   (* Returned value *)
-   | Br  : label -> label -> label   (* sequenced choices *)
-   | L   : label -> label           (* inside a left choice *)
-   | R   : label -> label           (* inside a right choice *)
-.
-
-Module Label.
-
-  Fixpoint compare (l m : label) : comparison := 
-    match l , m with 
-    | Bot  , Bot  => Eq
-    | Bot  , _    => Lt
-    | _    , Bot  => Gt
-
-    | L l0 , L m0 => compare l0 m0
-    | R l0 , R m0 => compare l0 m0 
-    | L _  , R _  => Lt
-    | R _ , L _   => Gt
-
-    | Top , Top => Eq
-
-    | Br l1 l2 , Br l3 l4 => 
-        match compare l1 l3 with
-        | Eq => compare l2 l4
-        | o  => o
-        end
-
-    (* these don't matter, we only compare comparable things *)
-    | L _ , _  => Lt
-    | _   , L _  => Gt
-    | Top , _ => Lt
-    | _   , Top => Gt
-    | Br _ _ , _ => Lt
-    | _   , Br _ _ => Gt
-   
-    end.
-
-  Fixpoint comparable (l1 l2 : label) : bool :=
-    match l1 , l2 with 
-    | Bot  , _    => true
-    | _    , Bot  => true
-    | L l0 , L m0 => comparable l0 m0
-    | R l0 , R m0 => comparable l0 m0 
-    | L _  , R _  => true
-    | R _ , L _   => true
-    | Top , Top => true
-    | Br l1 l2 , Br l3 l4 => comparable l1 l3 && comparable l2 l4
-    | _ , _ => false
-    end.
-
-  Definition eqb l m : bool := 
-    match compare l m with 
-    | Eq => true
-    | _ => false
-    end.
-
-  Definition ltb l m : bool := 
-    match compare l m with 
-    | Lt => true
-    | _ => false
-    end.
-
-  Definition leb l m : bool := 
-    match compare l m with 
-    | Lt => true
-    | Eq => true
-    | _ => false
-    end.
-
-
-  (* During computation, a partial result have label "Bot". However, 
-     if we give the evaluator more fuel, the expression may make 
-     choices, so the label will grow more structure.
-
-          Bot ⊑ L Bot
-              ⊑ L (R Bot) 
-              ⊑ L (R (Bot ⋈ Bot))
-              ⊑ L (R (L Bot ⋈ Bot))
-              ⊑ L (R (L Bot ⋈ R Bot))
-   *)
-  
-  Fixpoint approxb (l1 l2 : label) : bool := 
-    match l1 , l2 with 
-    | Bot , _  => true
-    | Top , Top => true 
-    | L l0 , L l1 => approxb l0 l1 
-    | R l0 , R l1 => approxb l0 l1 
-    | Br l1 l2 , Br l3 l4 => approxb l1 l3 && approxb l2 l4
-    | _ , _ => false
-    end.
-
-  Lemma approxb_refl : forall l, approxb l l = true.
-  Proof. induction l; eauto. simpl. rewrite IHl1. rewrite IHl2. auto. Qed.
-
-  Lemma approxb_trans : forall l2 l1 l3, 
-      approxb l1 l2 = true -> approxb l2 l3 = true -> approxb l1 l3 = true.
-  Proof. induction l2. all: intros l1 l3. 
-         all: destruct l1; destruct l3.
-         all: simpl; intros h1 h2; try done. 
-
-         all: try (apply andb_prop in h1; move: h1 => [h1 h1']).
-         all: try (apply andb_prop in h2; move: h2 => [h2 h2']).
-
-         all: try (apply andb_true_intro; split; eauto 3).
-         eauto.
-         eauto.
-  Qed.
-
-
-
-  (* comparison relations *)
-  Definition lt (l m : label) : Prop := ltb l m = true.
-  Definition le (l m : label) : Prop := leb l m = true.
-  Definition eq (l m : label) : Prop := eqb l m = true.
-  Definition approx (l m : label) : Prop := approxb l m = true.
-
-Lemma approx_refl : forall x, approx x x.
-Proof. intros x. unfold approx. eapply approxb_refl. Qed.
- 
-Lemma approx_trans l1 l2 l3 : Label.approx l1 l2 -> Label.approx l2 l3 -> Label.approx l1 l3.
-Proof. unfold Label.approx.  intros. eapply Label.approxb_trans; eauto. Qed.
-
-
-Lemma compare_refl: forall x, compare x x = Eq.
-Proof. induction x; simpl; eauto.
-       rewrite IHx1. rewrite IHx2. done.
-Qed.
-
-
-Lemma compare_eq : forall x y, compare x y = Eq <-> x = y.
-Proof. 
-intros x y.
-split.
-- move: y. 
-  induction x; intros y; destruct y.
-  all: simpl.
-  all: try done.
-  all: try (destruct (compare x1 y1) eqn:c1).
-  all: intro c2.
-  all: try done.
-  all: try rewrite (IHx1 y1); auto. 
-  all: try rewrite (IHx2 y2); auto. 
-  all: try rewrite (IHx y); auto. 
-- move: y. induction x; intros y; destruct y.
-  all: simpl.
-  all: try done.
-  all: try (destruct (compare x1 y1) eqn:c1).
-  all: intro c2.
-  all: try (inversion c2; subst; clear c2).
-  all: try rewrite (IHx1 y1); auto. 
-  all: rewrite IHx1 in c1; auto.
-Qed.
-
-
-  Lemma eq_eq : forall x y, eq x y <-> x = y.
-    intros x y. unfold eq. unfold eqb.
-    destruct (compare x y) eqn:h.
-    all: try rewrite compare_eq in h; subst.
-    all: intuition.
-    subst. rewrite compare_refl in h. done.
-    subst. rewrite compare_refl in h. done.
-  Qed.
-      
-
-Lemma compare_transitive: forall y x z o, 
-    compare x y = o -> compare y z = o -> compare x z = o.
-Proof. 
-  move=> y. induction y; intros x z o h1 h2.
-  all: destruct x; destruct z; simpl in *; subst; auto.
-  all: try solve [inversion h2; auto].
-  destruct (compare y1 z1) eqn: c1;
-  destruct (compare x1 y1) eqn: c2.
-  all: try (rewrite compare_eq in c1; subst).
-  all: try (rewrite compare_eq in c2; subst).
-  all: try (rewrite compare_refl).
-  all: try rewrite c2; auto.
-  all: try rewrite c1; auto.
-  all: try solve [inversion h2].
-  + erewrite IHy1 with (o := Lt); auto.
-  + erewrite IHy1 with (o := Gt); auto.
-Qed.
-
-Lemma compare_antisymmetry : 
-  forall x, (forall y, compare x y = Lt <-> compare y x = Gt).
-Proof. intros x. induction x.
-       all: intros y. 
-       all: split.
-       all: intros h.
-       all: destruct y eqn:Ey; try (simpl in h; done).
-       - simpl.
-         simpl in h. 
-         destruct (compare l1 x1) eqn:h1.
-         rewrite compare_eq in h1. subst.
-         rewrite compare_refl in h. eauto.
-         eapply IHx2; eauto.
-         destruct (compare x1 l1) eqn:h2.
-         rewrite compare_eq in h2. subst. 
-         rewrite compare_refl in h1. done. 
-         eapply IHx1 in h2. rewrite h2 in h1. done.
-         move: (IHx1 l1) => [IH1 IH1']. done. 
-         move: (IHx1 l1) => [IH1 IH1'].  apply IH1' in h1.
-         rewrite h1 in h. done.
-       - simpl in *.
-         destruct (compare x1 l1) eqn: h1; try done.
-         + rewrite compare_eq in h1. subst.
-           rewrite compare_refl in h. rewrite IHx2. done.
-         + destruct (compare l1 x1) eqn:h2.
-           rewrite compare_eq in h2. subst.
-           rewrite compare_refl in h1. done.
-           done. 
-           rewrite <- IHx1 in h2. rewrite h2 in h1. done.
-
-       - simpl. simpl in h. rewrite IHx in h. done.
-       - simpl. simpl in h. rewrite IHx. done.
-       - simpl in *. rewrite IHx in h. done.
-       - simpl in *. rewrite IHx. done.
-Qed.
-
-
-Lemma ltb_irreflexive: forall x, not (ltb x x = true).
-intros x. unfold ltb. rewrite compare_refl. done.
-Qed.
-
-Lemma ltb_transitive : forall x y z, ltb x y = true -> ltb y z = true -> ltb x z = true.
-intros x y z. unfold ltb. 
-destruct (compare x y) eqn:h1; intro h; try discriminate; clear h.
-destruct (compare y z) eqn:h2; intro h; try discriminate; clear h.
-move: (compare_transitive _ _ _ h1 h2) => h3. rewrite h3. done.
-Qed.
-
-
-  Lemma lt_irreflexive: forall x, not (lt x x).
-    intros x. unfold lt, ltb. rewrite compare_refl. done.
-  Qed.
-
-  Lemma lt_transitive: forall x y z, lt x y -> lt y z -> lt x z.
-  Proof.
-    intros x y z. unfold lt, ltb.
-    destruct (compare x y) eqn:h1;
-    destruct (compare y z) eqn:h2;
-    destruct (compare x z) eqn:h3.
-    all: try solve [intuition].
-    +  move: (compare_transitive _ _ _ h1 h2) => h4.
-       rewrite h3 in h4. done.
-    +  move: (compare_transitive _ _ _ h1 h2) => h4.
-       rewrite h3 in h4. done.
-  Qed.
-
-
-Lemma leb_L l1 l1'  :
-  leb (L l1) (L l1') = true <->
-    leb l1 l1' = true.
-Proof.
-  split; unfold leb; simpl.
-  all: destruct (compare l1 l1') eqn:E1.
-  all: try done.
-Qed.
-  
-Lemma leb_R l1 l1'  :
-  leb (R l1) (R l1') = true <->
-    leb l1 l1' = true.
-Proof.
-  split; unfold leb; simpl.
-  all: destruct (compare l1 l1') eqn:E1.
-  all: try done.
-Qed.
-
-Lemma leb_Br l1 l1' l2 l2'  :
-  leb (Br l1 l2) (Br l1' l2') = true <->
-    ((ltb l1 l1' = true) \/ (l1 = l1' /\ leb l2 l2' = true)).
-Proof.
-  split.
-  -  unfold leb, ltb; simpl.
-     all: destruct (compare l1 l1') eqn:E1.
-     all: destruct (compare l2 l2') eqn:E2.
-     all: try solve [intuition].
-     all: intro h1; right; rewrite compare_eq in E1; split; auto.
-  - intros [h1|h1]; unfold leb, ltb; simpl.
-    all: destruct (compare l1 l1') eqn:E1.
-    all: destruct (compare l2 l2') eqn:E2.
-    all: try solve [intuition].
-    all: try rewrite compare_eq in E1; subst. 
-    all: try rewrite compare_eq in E2; subst. 
-    all: try move: (ltb_irreflexive l1') => h; try done.
-    all: unfold ltb in h1. 
-    all: try solve [destruct (compare l1 l1'); try done].
-    all: try move: h1 => [E h1]; subst.
-    all: unfold leb in h1. 
-    all: try solve [destruct (compare l2 l2'); try done].
-    rewrite compare_refl in E1. done.
-    rewrite compare_refl in E1. done.
-Qed.
-
-  Lemma le_transitive :  forall y x z, 
-      le x y -> le y z -> le x z.
-  Proof. 
-    intros y; induction y; intros x z h1 h2.
-    all: destruct x; destruct z; simpl.
-    all: try done.
-    - unfold le in *. rewrite leb_Br.
-      repeat rewrite leb_Br in h1, h2.
-      destruct h1 as [h1 | [-> h1]];
-        destruct h2 as [h2 | [-> h2]].
-      left. unfold ltb in *.
-      destruct (compare x1 y1) eqn:E1; destruct (compare y1 z1) eqn:E2; 
-        destruct (compare x1 z1) eqn:E3.
-      all: try intuition.
-      rewrite compare_eq in E3. subst.
-      move: (compare_transitive _ _ _ E1 E2) => h. rewrite compare_refl in h. done.
-      move: (compare_transitive _ _ _ E1 E2) => h. rewrite h in E3. done.
-    - unfold le in *. repeat rewrite leb_L in h1, h2. rewrite leb_L. eauto.
-    - unfold le in *. repeat rewrite leb_R in h1, h2. rewrite leb_R. eauto.       
-  Qed.
-
-
-Lemma approxb_leb : forall l1 l2, 
-    Label.approxb l1 l2 = true -> Label.leb l1 l2 = true.
-Proof. 
-  induction l1; intros l2; destruct l2; simpl.
-    all: try done.
-    - rewrite -> Bool.andb_true_iff.
-      intros [h1 h2].
-      apply IHl1_1 in h1.
-      apply IHl1_2 in h2.
-      unfold Label.leb in h1, h2.
-      destruct (Label.compare l1_1 l2_1) eqn:E1.
-      destruct (Label.compare l1_2 l2_2) eqn:E2.
-      all: try done.
-      all: try rewrite Label.compare_eq in E1.
-      all: try rewrite Label.compare_eq in E2.
-      all: subst.
-      ++ unfold Label.leb. rewrite Label.compare_refl. auto.
-      ++ unfold Label.leb. simpl. rewrite Label.compare_refl. rewrite E2. auto.
-      ++ unfold Label.leb. simpl. rewrite E1.
-         destruct (Label.compare l1_2 l2_2) eqn:E2; try done.
-    - intro h. apply IHl1 in h.
-      unfold Label.leb in *. simpl. auto.
-    - intro h. apply IHl1 in h.
-      unfold Label.leb in *. simpl. auto.
-  Qed.
-
-
-  Lemma approxb_le : forall l1 l2, 
-      approxb l1 l2 = true -> Label.le l1 l2.
-  Proof. intros. unfold Label.le. eapply Label.approxb_leb. auto. Qed.
-
-Lemma leb_antisymmetry k1 k2 : 
-  Label.leb k1 k2 = true -> Label.leb k2 k1 = true -> k1 = k2.
-Proof. 
-  unfold leb.
-Admitted.
-
-End Label.
-
-Module LabelNotation.
-Infix "⋈" := Br (at level 70, right associativity) : label_scope.
-Infix "=?" := Label.eqb (at level 70) : label_scope.
-Infix "<=?" := Label.leb (at level 70) : label_scope.
-Infix "<?" := Label.ltb (at level 70) : label_scope.
-Infix "<=" := Label.le (at level 70) : label_scope.
-Infix "<" := Label.lt (at level 70) : label_scope.
-Infix "⊑" := Label.approx (at level 70) : label_scope.
-End LabelNotation.
-  
+Require Import stepverse.label.
 Import LabelNotation.
 
-Instance LtStrict : StrictOrder (fun x y : label => (Label.ltb x y) = true).
-constructor.
-- intros l h. eapply Label.ltb_irreflexive; eauto.
-- intros x y z. eapply Label.ltb_transitive; eauto.
-Qed.
+Require Import Classical.
 
-
-End Label.
-
-Import Label.
-
+Set Implicit Arguments.
 
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
@@ -621,18 +48,6 @@ Import Label.
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
 
-(* Note: *failure* is the absence of any result in the set. We don't want
-   failure to be constructor in this type.
-
-   - this simplifies the operation of "One" --- we only need to find the
-   result with the smallest label in the set, not the smallest label with a
-   nonfailing result in the set.
-
-   the cost for not modelling failure is that it is difficult to say when one
-   *set* of results approximates another. Labeled bottoms can disappear when 
-   given more fuel, because they could fail.
-
- *)
 Inductive Result (A : Type) : Type := 
   | Bottom : Result A       (* divergence *)
   | Wrong  : Result A       (* runtime type error *)
@@ -641,6 +56,19 @@ Inductive Result (A : Type) : Type :=
 Arguments Bottom {_}.
 Arguments Wrong {_}.
 Arguments Value  {_}.
+
+(* Note: *failure* is the absence of any result in the set so is not included
+   as a constructor in the result type.
+
+   This design simplifies the operation of "One" --- we only need to find the
+   result with the smallest label in the set, not the smallest label with a
+   nonfailing result.
+
+   The cost for not modelling failure is that it is difficult to say when one
+   *set* of results approximates another. Labeled bottoms can disappear when
+   given more fuel, because they could fail.
+ *)
+
 
 Module R. 
 
@@ -670,83 +98,6 @@ Definition approxb {A} (R : A -> A -> bool) (r1 : Result A) (r2 : Result A) : bo
 End R.
 
 
-Section PartialFunctions.
-
-Import SetNotations.
-
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-(*      partial functions as sets of labeled results         *)
-(* --------------------------------------------------------- *)
-(* --------------------------------------------------------- *)
-
-(* A set of pairs is a partial function if there is at most one mapping for
-   any key in the set.
-
-   NOTE: this definition uses syntactic equality for values. That means that
-   for values with multiple representations (i.e. functions) this definition
-   is too rigid.  *)
-
-Definition M (A : Type) := (label * Result A) -> Prop.  
-
-Definition entry_approx {A} '(l1,r1) '(l2, r2) : Prop := 
-  Label.approx l1 l2 /\ R.approx r1 (r2 : Result A).
-
-Definition mapsto {A} '(l,r) (s : M A) := 
-  exists l', ((l',r) ∈ s) /\ Label.approx l' l.
-
-Lemma exact_mapsto {A} e (s : M A) : (e ∈ s) -> mapsto e s.
-Proof. 
-  move: e => [l r].
-  move=> in1.
-  exists l. split. auto. eapply Label.approx_refl.
-Qed.
-
-Definition partial_function {A} (s : M A) := 
-  forall l r1 r2, mapsto (l,r1) s -> mapsto (l, r2) s -> r1 = r2.
-
-(* This predicate defines when a key is in the domain of 
-   the partial function *)
-Definition in_dom {A} (s : M A) (l : label) : Prop := 
-  exists l' r, ((l', r) ∈ s) /\ Label.approx l' l.
-
-
-(* Access the canonical list of elements in a finite mapping *)
-Definition elements {A} (s : M A) (l : list (label * Result A)) : Prop := 
-  let LT := fun '(l1,_) '(l2, _)=> Label.lt l1 l2 in
-  (mem l = s) /\                        (* memberships are equal *)
-  @Sorted.LocallySorted _ LT l.        (* the list is sorted by the labels *)
-
-
-Lemma smaller_notpresent {A} 
-  (a : label * Result A) (w : list (label * Result A)) :
-  List.Forall (let '(l1, _) := a in fun '(l2, _) => Label.lt l1 l2) w ->
-  ~(List.In a w).
-Proof. destruct a. 
-       induction w.
-       intros h1 h2. inversion h2.
-       intros h1 h2. simpl in h2. 
-       inversion h1. subst.
-       destruct h2.
-       + subst. eapply Label.lt_irreflexive; eauto.
-       + apply IHw; eauto.
-Qed.
-
-Lemma elements_functional {A}{e: M A}{w1 w2} : 
-  partial_function e -> 
-  elements e w1 -> elements e w2 -> w1 = w2.
-Proof.
-  move=> pfe.
-Admitted.
-
-Lemma partial_function_singleton {A}{k}{r:Result A} : 
-   partial_function ⌈ (k , r) ⌉.
- Proof. 
-   intros l r1 r2 [l1 [m1 a1]] [l2 [m2 a2]].
-   inversion m1. inversion m2. subst. auto.
- Qed.
-
-End PartialFunctions.
 
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
@@ -754,8 +105,8 @@ End PartialFunctions.
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
 
-(* This is our domain of values (W): numbers, primitives, tuples of values 
-   and closures *)
+(* The semantics of values (W): numbers, primitives, tuples of values 
+   and closures. *)
 
 Inductive W : Type := 
   | IntV    : nat -> W
@@ -786,13 +137,178 @@ Fixpoint eqb (x : W) (y : W) : bool :=
 
 End W.
 
+Section PartialFunctions.
+
+Import SetNotations.
+
+(* --------------------------------------------------------- *)
+(* --------------------------------------------------------- *)
+(*      Monadic type                                         *)
+(* --------------------------------------------------------- *)
+(* --------------------------------------------------------- *)
+
+(** The semantics of computations is a set of labeled results.  These sets
+   should be partial functions, i.e. there should be at most one result for
+   any label in the set. *)
+
+Definition M (A : Type) := (label * Result A) -> Prop.  
+
+(** ** entries *)
+
+(* A pair of a label and result is an entry. An entry is "finished" if 
+   the label does not contain Bot and the result is not Bottom. *)
+
+Definition label_finished (l : label) := 
+  forall l', l ⊑ l' -> l = l'.
+
+Definition result_finished {A} (r : Result A) := 
+  forall r', R.approx r r' -> r = r'.
+
+Definition entry_finished {A} '((l,r) : label * Result A) := 
+  label_finished l /\ result_finished r.
+
+(** ** set approximatation *)
+
+(* Because we will use these sets as the semantics of computations, we 
+   need to say what it means for one set to *approximate* another.
+
+   We have s1 ⊑ s2 when:
+
+      1. for every e in s1 that has finished (i.e. is Value or Wrong), 
+          a. e must be in s2 
+
+      2. if e has bottomed 
+          a. it could stay bottom, with a potentially bigger label
+          b. it could succeed, with a bigger label
+          c. it could fail and won't be in s2
+
+      3. if e is not in s1, i.e. fails
+          - then it should continue to fail, i.e. all bigger labels shouldn't be in s2
+
+   We can express 1 as is
+   Case 2 is trivial
+   we can express 3 using the contrapositive:
+            everything in s2 should be approximated by something in s1
+         
+We need (1) to know that successful values do not change with more fuel.
+We need (3) for the case of ONE: there won't be new "smaller" elements 
+when we add more fuel.
+*)
+
+  
+Definition entry_approx {A} '(l1,r1) '(l2, r2) : Prop := 
+  Label.approx l1 l2 /\ R.approx r1 (r2 : Result A).
+
+Definition approx {A} (s1 s2 : M A) : Prop := 
+  (* (1) We don't lose successful results. 
+     Everything that has finished in s1 is still present in s2. *)
+  (forall e, e ∈ s1 -> entry_finished e -> (e ∈ s2)) /\
+  (* (3) We don't make up results. 
+     Every entry in s2 is approximated by something from s1. *)
+  (forall e2, e2 ∈ s2 -> exists e1, (e1 ∈ s1) /\ entry_approx e1 e2).
+
+(** ** partial functions *)
+
+(* We can look up values in the set by label. This label can be exactly the 
+   same as the label in some entry, or it can be an extension of the label 
+   of an unfinished entry. *)
+
+Definition mapsto {A} '(l,r) (s : M A) := 
+  exists l', ((l',r) ∈ s) /\ Label.approx l' l.
+
+(* A set of pairs is a partial function if there is at most one mapping for
+   any key in the set. *)
+Definition partial_function {A} (s : M A) := 
+  forall l r1 r2, mapsto (l,r1) s -> mapsto (l, r2) s -> r1 = r2.
+
+(* This predicate defines when a key is in the domain of 
+   the partial function *)
+Definition in_dom {A} (s : M A) (l : label) : Prop := 
+  exists l' r, ((l', r) ∈ s) /\ Label.approx l' l.
+
+(** ** element ordering *)
+Definition entry_lt {A} : (label * A) -> (label * A) -> Prop := fun '(l1,_) '(l2, _)=> Label.lt l1 l2.
+
+(* The canonical list of elements in a finite set *)
+Definition elements {A} (s : M A) (l : list (label * Result A)) : Prop := 
+  (mem l = s) /\                        (* memberships are equal *)
+  @Sorted.LocallySorted _ entry_lt l.  (* the list is sorted by the labels *)
+
+(** ** Properties of partial_functions, approx, and labeled sets *)
+
+Lemma smaller_notpresent {A} 
+  (a : label * Result A) (w : list (label * Result A)) :
+  List.Forall (entry_lt a) w ->  ~(List.In a w).
+Proof. destruct a. 
+       induction w.
+       intros h1 h2. inversion h2.
+       intros h1 h2. simpl in h2. 
+       inversion h1. subst.
+       destruct h2.
+       + subst. eapply Label.lt_irreflexive; eauto.
+       + apply IHw; eauto.
+Qed.
+
+Lemma exact_mapsto {A} e (s : M A) : (e ∈ s) -> mapsto e s.
+Proof. 
+  move: e => [l r].
+  move=> in1.
+  exists l. split. auto. eapply Label.approx_refl.
+Qed.
+
+Lemma elements_functional {A}{e: M A}{w1 w2} : 
+  partial_function e -> 
+  elements e w1 -> elements e w2 -> w1 = w2.
+Proof.
+  move=> pfe.
+Admitted.
+
+Lemma partial_function_singleton {A}{k}{r:Result A} : 
+   partial_function ⌈ (k , r) ⌉.
+ Proof. 
+   intros l r1 r2 [l1 [m1 a1]] [l2 [m2 a2]].
+   inversion m1. inversion m2. subst. auto.
+ Qed.
+
+Lemma entry_approx_label {A:Type} {l1 r1 l2 r2}: 
+  entry_approx (A:=A) (l1, r1) (l2, r2) -> Label.approx l1 l2.
+destruct r1; simpl; tauto.
+Qed.
+
+Lemma entry_approx_refl {A} (e : label * Result A) : entry_approx e e.
+Proof. destruct e as [l r]. destruct r; simpl; eauto using Label.approx_refl. Qed.
+
+Lemma entry_approx_trans {A} (e1 e2 e3 : label * Result A) : 
+  entry_approx e1 e2 -> entry_approx e2 e3 -> entry_approx e1 e3.
+Proof. destruct e1 as [l1 r1]. destruct e2 as [l2 r2]. destruct e3 as [l3 r3]. 
+       destruct r1; destruct r2; simpl.
+Admitted.
+(*
+       eauto using Label.approx_trans. 
+       intros h1 [h2 e]. eauto using Label.approx_trans. 
+       intros h1 [h2 e]. eauto using Label.approx_trans. 
+       intros [h1 e] h2. discriminate.
+       intros [h1 e1] [h2 e2]. eauto using Label.approx_trans. 
+       intros [h1 e1] [h2 e2]. discriminate.
+       intros [h1 e1] h2. discriminate.
+       intros [h1 e1] h2. discriminate.
+       intros [h1 e1] [h2 e2]. inversion e1. subst. eauto using Label.approx_trans. 
+Qed. *)
+
+Lemma approx_refl {A} (s : M A) : approx s s.
+Admitted.
+
+
+End PartialFunctions.
+
+
+
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
 (*                Semantic operators                         *)
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
 
-Require Import Classical.
 
 Section Semantics.
 
@@ -802,6 +318,7 @@ Import MonadNotation.
 Import AlternativeNotation.
 
 Local Open Scope monad_scope.
+
 
 Context {A : Type} {eqb : A -> A -> bool}.
 
@@ -840,40 +357,42 @@ result is.
  *)
 
 Definition SEQ (s1 s2 : P (label * Result A)) :  P (label * Result A)%type :=
-(* First part corresponds to  {(𝑙1 ⋈ 𝑙2,𝑤2) | (𝑙1,𝑤1) ∈ 𝑠1, (𝑙2,𝑤2) ∈ 𝑠2} *)
   '(l1, r1) <- s1 ;;
   match r1 with 
   | Bottom => ⌈ (l1 ⋈ Bot, Bottom) ⌉
   | Wrong =>  ⌈ (l1 ⋈ Top, Wrong) ⌉
   | _ =>  '(l2, r2) <- s2 ;; ⌈ (l1 ⋈ l2, r2) ⌉
+         (* corresponds to  {(𝑙1 ⋈ 𝑙2,𝑤2) | (𝑙1,𝑤1) ∈ 𝑠1, (𝑙2,𝑤2) ∈ 𝑠2} *)
   end.
 
 
 (* ONE: find the *smallest* labelled result *)
 Definition ONE (s : P (label * Result A)) : (label * Result A) -> Prop := 
   fun '(l,w) => 
-    match l , w with 
-    | _ , w => exists k, ((k,w) ∈ s) 
 
-                  (* all other labeled results have larger labels. *)
-                /\ (forall k' w', (k', w') ∈ s -> (k <=? k' = true))
+       exists k, ((k,w) ∈ s) 
 
-                  (* if the result is Bottom, then label is Bot. *)
-                /\ (l = (if R.isBottom w then Bot else Top))
+            (* all other labeled results have larger labels. *)
+            /\ (forall k' w', (k', w') ∈ s -> (k <=? k' = true))
 
-    end.
+            (* if the result is Bottom, then label is Bot. *)
+            /\ (l = (if R.isBottom w then Bot else Top)).
+
+    
 
 
-(* EXISTS: Merge togther the result of the function f applied to every w in W.
+(** ** EXISTS f: Merge togther the result of the function f applied to every w in W.
 
-   - Ensures that we only have one result per label. If a label has
-   multiple mappings (for any picked value w), then the overall result
-   is WRONG.
+   - This operation must ensure that we only have one result per label. 
+     If a label has multiple mappings (for any picked value w), then the 
+     overall result is WRONG.
+
       exists X.X -> WRONG
       exists X. [X=3;X | X=4;X] -> { (L Top, 3) ∪ (R Top, 4) }
 
    - Not every result will be defined for each w. If we have a partial result for 
-     and w, then the *whole* result is partial. 
+     any w, then the *whole* result is partial. We have to define exists like 
+     this for monotonicity... 
 
    For example:
 
@@ -926,38 +445,55 @@ Definition ONE (s : P (label * Result A)) : (label * Result A) -> Prop :=
 
 *)
                  
-Definition all_match {A} l r1 (s : M A) := (forall r2 , mapsto (l, r2) s -> r1 = r2).
+Print mapsto.
+
+Definition all_match {A} l r1 (s : M A) := (forall r2 , (l, r2) ∈ s -> r1 = r2).
                          
 Definition EXISTS {A} (f : A -> M A) : M A := 
   fun '(l,r) => 
-    if R.isBottom r then
+    match r with 
+    | Bottom => 
         (* for some guessed value the expression diverges *)
         exists w', mapsto (l, Bottom) (f w') 
-    else 
+
+    | Wrong =>
+
+        label_finished l /\          
+
         (* there are no bottom results for this label. i.e. for 
-           any value that we guess, the function terminates. *)
-        (forall w2, not (mapsto (l, Bottom) (f w2))) /\
+           all chosen values, we have a nonbottom result *)
+        (forall w' r, mapsto (l,r) (f w') -> r <> Bottom) /\
+
+        (* there are two results that do not match *)
+        (exists w1 r1, ((l, r1) ∈ (f w1)) /\
+        (exists w2 r2, ((l, r2) ∈ (f w2)) /\ r1 <> r2))
+
+    | Value _ =>
+
+        label_finished l /\          
+
+        (* there are no bottom results for this label. i.e. for 
+           all chosen values, we have a nonbottom result *)
+        (forall w' r, mapsto (l,r) (f w') -> r <> Bottom) /\
         
-        (* there is some result r1 for this label *)
-        (exists w1 r1, mapsto (l, r1) (f w1) /\
+        (* this is a result for this label, in some world *)
+        (exists w1, ((l, r) ∈ (f w1)) /\
 
-        (* if all other outputs match r1, then r is r1 *)
-        ((forall w, all_match l r1 (f w) -> r = r1) /\
-
-        (* if there is some output that does not match, then r is Wrong *)
-        ( not (forall w, all_match l r1 (f w)) -> r = Wrong))).
+        (* all results match r *)
+        (forall w, all_match l r (f w)))
+    end.
 
 
+(** ** Intersection fails if its argument fails and diverges if its argument diverges *)
+  (* { (l2, 𝑤2) | (𝑙2,𝑤2) ∈ 𝑠2, 𝑤1 = 𝑤2} *)
 
 (* Could value w1 be represented by the entry? *)
 Definition keep : W -> (label * Result W) -> bool := 
   fun w1 '(_, r2) => R.approxb W.eqb r2 (Value w1).
 
-(*  Intersection fails if its argument fails
-    and diverges if its argument diverges *)
-  (* { (l2, 𝑤2) | (𝑙2,𝑤2) ∈ 𝑠2, 𝑤1 = 𝑤2} *)
 Definition INTER (w : W) : M W -> M W := Sets.filter (keep w).
 
+(** ** All *)
 
 (* The 'elements' proposition asserts that a set s is finite and contains the ordered 
    list of entries (i.e. labeled results). *)
@@ -1176,27 +712,52 @@ Proof.
 intros k r r' ein ein'.
 unfold EXISTS in ein, ein'.
 cbn in ein, ein'.
-destruct (R.isBottom r) eqn:DEF; 
-[ move: ein => [w1 in1] | idtac ];
-destruct (R.isBottom r') eqn:DEF' . 
-- destruct r; destruct r'; try done.
-Admitted.
-(*
-- move: ein' => [NB _].
-  assert False. eapply NB. eauto. done.
-- move: ein => [NB1 _].  
-  assert False. eapply NB1. eauto. done.
-- move: ein => [NB1 [[p1 [w1 in1]]|[w1 [r1 [w1' [r1' [in1 [in1' [Eq1' p1]]]]]]]]];
-  move: ein' => [NB2 [[p2 [w2 in2]]|[w2 [r2 [w2' [r2' [in2 [in2' [Eq2' p2]]]]]]]]].
-  + eauto.
-  + clear NB1 NB2.
-    move: (p1 _ _ in2) => [e1].
-    move: (p1 _ _ in2') => [e1']. subst.
-    done.
-  + move: (p2 _ _ in1) => e1.
-    move: (p2 _ _ in1') => e1'. subst. done.
-  + subst. done.
-Qed.  *)
+destruct r eqn:ER.
+-  move: ein => [l1 [[w' [l' [in1 a1]]] a2]].
+   move: ein' => [l2' h].
+   destruct r'. done.
+   + move: h => [[fl2 [h1 h2]] a3]. 
+   have EQ: (l2' = k). eapply fl2; eauto. subst l2'.
+   have a4: (l' ⊑ k). eapply Label.approx_trans; eauto.
+   assert ((Bottom : Result A) <> Bottom). eapply (h1 w').
+   exists l'. split; eauto. done.
+   +  move: h => [[fl2 [h1 h2]] a3]. 
+   have EQ: (l2' = k). eapply fl2; eauto. subst l2'.
+   have a4: (l' ⊑ k). eapply Label.approx_trans; eauto.
+   assert ((Bottom : Result A) <> Bottom). eapply (h1 w').
+   exists l'. split; eauto. done.
+-  move: ein => [l1 [[h1 [NB1 [r1 [l' [w3 a1]]]]] a2]].
+   move: ein' => [l2' h].
+   have EQ: l1 = k. eapply h1; eauto. subst l1. 
+   destruct r'. 
+   -- move: h => [[w'' [l'' [in'' a3]] a4]].
+      assert False. eapply NB1. exists l''. split. eapply in''. eapply Label.approx_trans; eauto. done. done.
+   -- done.
+   -- move: h => [[h3 [NB2 [w4 [a3 h4]]] a4]].
+      move: a1 => [w5 [r5 [in5 NE]]].
+      have EQ: l2' = k. eapply h3; eauto. subst l2'.
+
+      move: (h4 w5 r5 in5) => E1.
+      move: (h4 _ _ w3) => E2.
+      rewrite E1 in E2. subst. done.
+- move: ein => [l1 [[F1 [NB1 ALL1]] a1]]. 
+  have EQ: l1 = k. eapply F1. auto. subst l1.
+  move: ein' => [l2 h].
+  destruct r'.
+  -- move: h => [[w'' [l'' [in'' a3]] a4]].
+     assert False. eapply NB1. exists l''. split; eauto. eapply Label.approx_trans; eauto. done. done.
+  -- move: h => [[F2 [NB2 DIFF2]] a2].
+     have EQ: l2 = k. eapply F2. auto. subst l2.
+     move: DIFF2 => [w1 [r1 [in1 [w2 [r2 [in2 NE2]]]]]].
+     move: ALL1 => [ w [inw ALL1 ]].
+     move: (ALL1 _ _ in1) => E1.
+     move: (ALL1 _ _ in2) => E2. subst. done.
+  -- move: ALL1 => [ w1 [in1 ALL1 ]].
+     move: h => [[F2 [NB2 ALL2]] a2].
+     have EQ: l2 = k. eapply F2. auto. subst l2.
+     move: ALL2 => [ w2 [in2 ALL2 ]].
+     move: (ALL1 _ _ in2) => E1. done.
+Qed.  
 
 Lemma partial_function_ONE (e : M W) : partial_function e -> partial_function (ONE e).
 Proof.
@@ -1458,60 +1019,6 @@ Section Monotonicity.
 Import SetNotations.
 Import MonadNotation.
 
-(* one interpretation approximates another when
-
-   for each entry in s1: 
-      1. if it has succeeded, 
-          a. it continues to succeed in s2 with the same label
-      2. if it has bottomed, 
-          a. it could stay bottom, with a potentially bigger label
-          b. it could succeed, with a potentially bigger label
-          c. it could fail and won't be in s2
-          (( condition 2 is trivial ))
-      3. if it fails (i.e. is not in the first set)
-          - it should continue to fail and all bigger labels shouldn't be in s2
-         we can express this using the contrapositive:
-            everything in s2 should be approximated by something in s1
-         
-
-We need (1) to know that successful values do not change with more fuel.
-We need (3) for the case of ONE
-  We need to know that there are no new "smaller" elements when we add more fuel.
- *)
-
-
-
-Lemma entry_approx_label {A:Type} {l1 r1 l2 r2}: 
-  entry_approx (A:=A) (l1, r1) (l2, r2) -> Label.approx l1 l2.
-destruct r1; simpl; tauto.
-Qed.
-
-Lemma entry_approx_refl {A} (e : label * Result A) : entry_approx e e.
-Proof. destruct e as [l r]. destruct r; simpl; eauto using Label.approx_refl. Qed.
-
-Lemma entry_approx_trans {A} (e1 e2 e3 : label * Result A) : entry_approx e1 e2 -> entry_approx e2 e3 -> entry_approx e1 e3.
-Proof. destruct e1 as [l1 r1]. destruct e2 as [l2 r2]. destruct e3 as [l3 r3]. 
-       destruct r1; destruct r2; simpl.
-Admitted.
-(*
-       eauto using Label.approx_trans. 
-       intros h1 [h2 e]. eauto using Label.approx_trans. 
-       intros h1 [h2 e]. eauto using Label.approx_trans. 
-       intros [h1 e] h2. discriminate.
-       intros [h1 e1] [h2 e2]. eauto using Label.approx_trans. 
-       intros [h1 e1] [h2 e2]. discriminate.
-       intros [h1 e1] h2. discriminate.
-       intros [h1 e1] h2. discriminate.
-       intros [h1 e1] [h2 e2]. inversion e1. subst. eauto using Label.approx_trans. 
-Qed. *)
-
-Definition approx {A} (s1 s2 : M A) : Prop := 
-  (* (1) We don't lose successful results. 
-     Everything that has finished in s1 is still present in s2. *)
-  (forall l r, (l, r) ∈ s1 -> r <> Bottom -> ((l, r) ∈ s2)) /\
-  (* (3) We don't make up results. 
-     Every entry in s2 is approximated by something from s1. *)
-  (forall e2, e2 ∈ s2 -> exists e1, (e1 ∈ s1) /\ entry_approx e1 e2).
 
 Ltac rewrite_approx := 
   match goal with 
@@ -1884,9 +1391,9 @@ Proof.
         destruct a1' as [a1' ar1].
         have EQ: r1 = r1'. eapply h1. exists l1'. split; eauto. eapply Label.approx_trans; eauto.
         subst r1'. destruct r1; try done; destruct r2; try done. inversion ar1. subst. auto.
-        split.
-        
-
+        admit.
+Admitted.
+(*
       -- intros ?. apply not_all_ex_not in H. move: H => [w nam]. 
          assert False. apply nam. eapply h1.
 
@@ -1986,7 +1493,7 @@ Proof.
           subst r1'.
           right. split. auto.
           
-Admitted.
+Admitted. *)
 
 
 Lemma evalExp_monotone : forall k n (env : Env n) e , approx (evalExp k e env) (evalExp (S k) e env).
@@ -2004,6 +1511,9 @@ intros k. induction k.
   + repeat rewrite eval_Unify. eapply INTER_monotone; eauto.
   + repeat rewrite eval_Exists.
     eapply EXISTS_monotone. intro w; eauto.
+    admit.
+    intro w.
+    eapply IHk.
   + repeat rewrite eval_Or.
 Admitted.
 
@@ -2078,7 +1588,7 @@ Proof.
 Qed.
 
 Lemma UNIT_mem {A} : forall (x : A), 
-    UNIT x = mem ([(Top, Some x)]).
+    UNIT x = mem ([(Top, Value x)]).
 Proof.
   intro x. unfold UNIT. eapply singleton_mem.
 Qed.
@@ -2101,7 +1611,7 @@ Proof.
   reflexivity.
 Qed.
 
-
+(*
 Lemma SEQ_mem {A}{l1 l2: list (label * Result A)} :
   SEQ (mem l1) (mem l2) = 
     mem ( '(l1, r1) <- l1 ;;
@@ -2138,11 +1648,12 @@ Proof.
     split. intros x [y [h xIn]]. done. intros x xIn. done.
   - 
 Admitted.
+*)
 
 End FiniteSemantics.
 
 Create HintDb mem.
-Hint Rewrite @UNIT_mem @UNION_mem @INTER_mem @SEQ_mem : mem.
+Hint Rewrite @UNIT_mem @UNION_mem @INTER_mem (* @SEQ_mem *) : mem.
 
 
 (* --------------------------------------------------------- *)
@@ -2179,23 +1690,7 @@ Ltac go := process;auto.
 Hint Unfold UNIT ONE EXISTS.
 Hint Constructors Ensembles.Singleton.
 
-(*
-Lemma f_equal_mem {A}{l1 l2 : list A}: l1 = l2 -> mem l1 ≃ mem l2.
-Admitted. *)
 Lemma P_In {A}{f : P A}{x} : (f x) -> x ∈ f. cbv. auto. Qed.
-
-
-(* 3 = 3 || 4 = 4 || 5 = 5 *)
-Definition exb : Exp 0 := Or (Int 3 ≡ Int 3) (Or (Int 4 ≡ Int 4) (Int 5 ≡ Int 5)).
-
-Example exb_example : evalExp 10 exb Vector.nil = 
-  mem ((L Top, Some (IntV 3)) :: (R (L Top), Some (IntV 4)) :: (R (R Top),Some (IntV 5)) :: nil).
-unfold exb. autorewrite with evalExp.
-unfold evalVal.
-autorewrite with mem.
-f_equal.
-Qed.
-
 Lemma In_extensionality {A} {s1 s2 : P A} : 
   (forall x, (x ∈ s1) <-> x ∈ s2) -> s1 = s2.
 Proof.
@@ -2207,30 +1702,54 @@ Qed.
 
 Lemma In_mem : forall (A : Type) (x : A) (l : list A), x ∈ mem l <-> List.In x l.
 Admitted.
-
-(* ∃ x. x = (1 || 2) ;; x *)
-Definition ex_two : Exp 0 := bind1 (Or (Int 1) (Int 2)) x0.
-
 Lemma W_eqb_eq (w1 w2: W) : W.eqb w1 w2 = true <-> w1 = w2.
 Admitted.
 
+
+(* 3 = 3 || 4 = 4 || 5 = 5 *)
+Definition ex_one : Exp 0 := Or (Int 3 ≡ Int 3) (Or (Int 4 ≡ Int 4) (Int 5 ≡ Int 5)).
+
+Example ex_one_semantics : evalExp 10 ex_one Vector.nil = 
+  mem ((L Top, Value (IntV 3)) :: (R (L Top),Value (IntV 4)) :: (R (R Top),Value (IntV 5)) :: nil).
+Proof.
+  unfold ex_one. autorewrite with evalExp.
+  unfold evalVal.
+  autorewrite with mem.
+  f_equal.
+Qed.
+
+Lemma union2 {A} (v1 v2 : A) : UNION (UNIT v1) (UNIT v2) = mem ((L Top, Value v1) :: (R Top,Value v2) :: nil).
+Proof.
+  repeat rewrite UNIT_mem.
+  rewrite UNION_mem.
+  cbv.  
+  done.
+Qed.
+
+(* ∃ x. x = (1 || 2) ;; x *)
+Definition ex_two : Exp 0 := bind1 (Or (Int 1) (Int 2)) x0.
 Lemma ev_ex_two1 : evalExp 10 ex_two Vector.nil =
-                     mem ((L Top ⋈ Top, Some (IntV 1)) :: (R Top ⋈ Top, Some (IntV 2)) :: nil).
+                     mem ((L Top ⋈ Top, Value (IntV 1)) :: (R Top ⋈ Top, Value (IntV 2)) :: nil).
 Proof.
 unfold ex_two,bind1. asimpl.
 autorewrite with evalExp.
 unfold evalVal, lookupEnv, Vector.nth, var_zero.
+rewrite union2.
+(* Want to prove sets are the same, will do so by showing they 
+   contain the same elements. *)
 eapply In_extensionality.
 intros [l r].
+(* need to show that (l,r) is in both sets *)
 rewrite In_mem.
-repeat rewrite UNIT_mem.
-rewrite UNION_mem.
 Opaque INTER SEQ mem. cbn.
 Transparent INTER SEQ mem.
-split.
-+ move=>[[w wIn] _].
+destruct (R.isBottom r) eqn:hr.
++ split.
+  intros [w' [l' [wIn sl]]].
   cbn in wIn.
-  move: wIn => [[l0 r0][ h1 [[l1 r1] [h2 h3]]]].
+  move: wIn => [[l0 r0][h1 h2]]. 
+  destruct r0; cbv in h1.
+  move: h2 => [l1 [r1 h3]]]].
   inversion h3; subst; clear h3.
   unfold UNIT in h2. inversion h2; subst; clear h2.
   have C: ((w = IntV 1 /\ l0 = L Top) \/ (w = IntV 2 /\ l0 = R Top)).
@@ -2256,7 +1775,7 @@ split.
 + move=> [h1|[h1|]]; try done; inversion h1; clear h1; subst.
   split.
   ++ exists (IntV 1). exists (L Top, Some (IntV 1)). cbv. split; eauto. econstructor.
-Admitted.
+Admitted. *)
 (*
      exists (Top, Some (IntV 1)). split; try econstructor; eauto.
   ++ intros w' r' h.
@@ -2281,9 +1800,9 @@ Admitted.
 Admitted. *)
 
 Lemma INTER_two : forall w l1 v1 l2 v2 s, 
-  INTER w (mem ((L l1, Some v1) :: (R l2, Some v2) :: nil)) = s -> 
-  ((w = v1 /\ s = mem ((L l1, Some v1) :: nil)) \/
-   (w = v2 /\ s = mem ((R l2, Some v2) :: nil))).
+  INTER w (mem ((L l1, Value v1) :: (R l2, Value v2) :: nil)) = s -> 
+  ((w = v1 /\ s = mem ((L l1, Value v1) :: nil)) \/
+   (w = v2 /\ s = mem ((R l2, Value v2) :: nil))).
 Proof.
 Admitted.
 
@@ -2306,7 +1825,7 @@ Definition ex_four : Exp 0 :=
   bind2 (Or (Int 1) (Int 2)) (Or (Int 3) (Int 4)) (Tuple (cons x1 (cons x0 nil))).
 
 Lemma ev_ex_four1 : (L Top ⋈ (L Top ⋈ Top), 
-                      Some (TupleV (cons (IntV 1) (cons (IntV 3) nil))))
+                      Value (TupleV (cons (IntV 1) (cons (IntV 3) nil))))
                       ∈ evalExp 30 ex_four Vector.nil.
 Proof.
   unfold ex_four, bind2.
@@ -2317,19 +1836,22 @@ Proof.
   unfold lookupEnv, Vector.nth, var_zero, var_one.
   autorewrite with mem. simpl.
   split.
-  - exists (IntV 1). 
+  - intros w2 h.
+    admit.
+  - exists (IntV 1).  eexists.
     autorewrite with mem. simpl.
-    exists (L Top, Some (IntV 1)). split; eauto.
+    repeat split.
+    exists (L Top, Value (IntV 1)). split; eauto.
     simpl.
-    exists (L Top ⋈ Top, Some (TupleV (IntV 1 :: IntV 3 :: nil))). 
+    exists (L Top ⋈ Top, Value (TupleV (IntV 1 :: IntV 3 :: nil))). 
     split. 2: econstructor; eauto.
     split.
     -- cbn.
        exists (IntV 3). 
-       exists (L Top, Some (IntV 3)). 
+       exists (L Top, Value (IntV 3)). 
        rewrite INTER_mem. rewrite In_mem.
        simpl. split; eauto.
-       exists (Top,  Some (TupleV (IntV 1 :: IntV 3 :: nil))). 
+       exists (Top,  Value (TupleV (IntV 1 :: IntV 3 :: nil))). 
        split. econstructor; eauto.
        econstructor; eauto.
     -- intros w' r' h.
@@ -2389,7 +1911,7 @@ Module Monotonicity.
 
 
 Definition contains (w : W) (m : M W ) : Prop := 
-  exists l , (l, Some w) ∈ m.
+  exists l , (l, Value w) ∈ m.
 
 
 
@@ -2446,11 +1968,11 @@ split.
      have EQ: (l = (IntV 3 :: IntV 4 :: nil)%list).
      { unfold elements in H. 
        go.
-       have h1: (List.In (L (Top ⋈ Top), Some (IntV 3)) xs). admit.
-       have h2: (List.In (R (Top ⋈ Top), Some (IntV 4)) xs). admit.
+       have h1: (List.In (L (Top ⋈ Top), Value (IntV 3)) xs). admit.
+       have h2: (List.In (R (Top ⋈ Top), Value (IntV 4)) xs). admit.
        admit.
 (*       destruct xs as [|x1 xs].
-       + move: (mem_nil_contra H1 (L (Top ⋈ Top), Some (IntV 3))) => h1. 
+       + move: (mem_nil_contra H1 (L (Top ⋈ Top), Value (IntV 3))) => h1. 
          exfalso. apply h1.
          cbn.
          repeat split. eexists. repeat split.
@@ -2469,7 +1991,7 @@ split.
 - intros x xIn.
   go.
   cbn.
-  exists ( (L (Top ⋈ Top), Some (IntV 3)) :: (R (Top ⋈ Top), Some (IntV 4)) :: nil )%list.
+  exists ( (L (Top ⋈ Top), Value (IntV 3)) :: (R (Top ⋈ Top), Value (IntV 4)) :: nil )%list.
   repeat split.
   ++ intros x xIn. cbn in xIn. destruct xIn; try done; subst.
      +++ cbn. repeat split.
@@ -2498,7 +2020,7 @@ Definition ex2 : Exp 0 :=
               (App (var_Val var_zero) (Int 1))).
 
 (* We can show that "2" is in the meaning of this expression *)
-Lemma evex2 : exists n, exists l, (l, Some (IntV 2)) ∈ evalExp n Vector.nil ex2.
+Lemma evex2 : exists n, exists l, (l, Value (IntV 2)) ∈ evalExp n Vector.nil ex2.
 Proof.
   exists 20.
   eexists. unfold ex2. 
@@ -2507,7 +2029,7 @@ Proof.
   remember (LamV Vector.nil (Ret (Int 2))) as w'.
   remember ((App (var_Val var_zero) (Int 1) ≡ Int 2); App (var_Val var_zero) (Int 1)) as ebody.
   have VE: forall w', Valid (evalExp 19 (Vector.cons w' Vector.nil) ebody). admit.
-  have EE: (((Top ⋈ Top) ⋈ Top), Some (IntV 2)) ∈ (evalExp 19 (Vector.cons w' Vector.nil) ebody).
+  have EE: (((Top ⋈ Top) ⋈ Top), Value (IntV 2)) ∈ (evalExp 19 (Vector.cons w' Vector.nil) ebody).
   { subst ebody. subst w'. cbn. eexists. repeat split. }
   repeat split.
   - eexists. eauto.
@@ -2523,7 +2045,7 @@ Proof.
     (* here we should know that 
        - evalExp 17 env e ⊆ evalExp 18 env e 
        - evalExp 18 env e is Valid, so a partial function
-       - thus v' = Some (IntV 2)
+       - thus v' = Value (IntV 2)
      *)
     admit.
   - (* need to prove that all result labels are compareable with the one that we have. *)
@@ -2692,7 +2214,7 @@ Definition EqOption {A} (eqv : A -> A -> Prop) : option A -> option A -> Prop :=
   fun o1 o2 =>
     match o1 , o2 with 
     | None , None => True
-    | Some a1 , Some a2 => eqv a1 a2 
+    | Value a1 , Value a2 => eqv a1 a2 
     | _ , _ => False
     end.
 Definition EqPair {A}{B} (eqa : A -> A -> Prop) (eqb : B -> B -> Prop) : A * B -> A * B -> Prop := 

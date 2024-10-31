@@ -369,3 +369,8 @@ Tactic Notation "auto_case" tactic(t) :=  (match goal with
 
 (** Functor instances which can be added later on. *)
 #[export]Hint Rewrite  @scons_p_comp scons_p_head scons_p_tail @scons_p_head' @scons_p_tail': FunctorInstances.
+
+
+(* ------------------------------------------------------------------ *)
+
+Definition fin_eqb {n} : fin n -> fin n -> bool. Admitted.

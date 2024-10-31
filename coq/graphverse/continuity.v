@@ -22,9 +22,9 @@ Continuity:
    continuous as:
 
         Definition continuous (F : P Value -> P Value) : Set := 
-          forall (X : P Value) (E : Comp (list B)), 
+          forall (X : P Value) (E : fset (Comp (list B))), 
              mem E ⊆ F X -> valid X -> 
-                exists (D : list Value), 
+                exists (D : fset Value), 
                     (mem D ⊆ X) /\ ((mem E) ⊆ F (mem D)) /\ valid_mem D.
 
    However, our denotation function, used in the following lemma,
@@ -65,10 +65,10 @@ Require Import Lia.
 Require Export lc.tactics.
 Require Import structures.Structures.
 
-Require Import verse.definitions.
-Require Import verse.denot.
-Require Import verse.congruence_theory.
-Require Import verse.valid_theory.
+Require Import graphverse.definitions.
+Require Import graphverse.denot.
+Require Import graphverse.congruence_theory.
+Require Import graphverse.valid_theory.
 
 Import MonadNotation.
 Open Scope monad_scope.

@@ -40,9 +40,9 @@ Require Import Lia.
 Require Export lc.tactics.
 Require Import structures.Structures.
 
-Require Import verse.definitions.
-Require Import verse.denot.
-Require Import verse.valid_theory.
+Require Import graphverse.definitions.
+Require Import graphverse.denot.
+Require Import graphverse.valid_theory.
 
 
 Import SetNotations.

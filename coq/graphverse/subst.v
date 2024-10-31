@@ -25,8 +25,8 @@ Require Export lc.tactics.
 Require Import lc.scoped.
 
 Require Import structures.Structures.
-Require Import verse.definitions.
-Require Import verse.denot.
+Require Import graphverse.definitions.
+Require Import graphverse.denot.
 
 Import SetNotations.
 Local Open Scope set_scope.

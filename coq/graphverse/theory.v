@@ -14,22 +14,22 @@ Import MonadNotation.
 Open Scope monad_scope.
 
 (* Definitions *)
-Require Import verse.definitions.
+Require Import graphverse.definitions.
 
 (* Rewrite rules for the definition of the denotation *)
-Require Import verse.denot.
+Require Import graphverse.denot.
 
 (* Weakening *)
-Require Import verse.subst.
+Require Import graphverse.subst.
 
 (* Operators preserve validity *)
-Require Import verse.valid_theory. 
+Require Import graphverse.valid_theory. 
 
 (* Congruence: operators respect set equality *)
-Require Import verse.congruence_theory.
+Require Import graphverse.congruence_theory.
 
 (* Denotation function is continuous. *)
-Require Import verse.continuity.
+Require Import graphverse.continuity.
 
 (* Denotation produces a consistent set *)
 (* Require Import verse.consistency. *)
