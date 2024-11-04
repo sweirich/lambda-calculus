@@ -19,11 +19,11 @@ Delimit Scope label_scope with label.
 Open Scope label_scope.
 
 Inductive label (A : Type) : Type := 
-   | Bot : label A                     (* unfinished *)
-   | Top : A -> label A                 (* Returned value *)
-   | Br  : label A -> label A -> label A (* sequenced choices *)
-   | L   : label A -> label A           (* inside a left choice *)
-   | R   : label A -> label A           (* inside a right choice *)
+   | Bot : label                   (* unfinished *)
+   | Top : label                   (* Returned value *)
+   | Br  : label -> label -> label   (* sequenced choices *)
+   | L   : label -> label           (* inside a left choice *)
+   | R   : label -> label           (* inside a right choice *)
 .
 
 Module Label.
