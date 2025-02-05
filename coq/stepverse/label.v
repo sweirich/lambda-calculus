@@ -372,6 +372,31 @@ Proof.
   unfold leb.
 Admitted.
 
+Lemma bot_min k : 
+  Label.leb Bot k = true.
+Proof. 
+  destruct k; cbv; auto.
+Qed.
+
+Lemma approx_leb k k1 k2 :
+  Label.leb k k1 = true -> 
+  Label.approx k1 k2 -> Label.leb k k2 = true.
+Proof.
+  intros.
+  unfold Label.approx in H0.
+  apply Label.approxb_leb in H0.
+  move: (@Label.le_transitive k1 k k2) => h. unfold Label.le in h. eauto.
+Qed.
+
+Lemma leb_transitive k1 k2 k3 : 
+  Label.leb k1 k2 = true -> Label.leb k2 k3 = true -> Label.leb k1 k3 = true.
+Admitted.
+
+Lemma leb_swap l1 l2 : Label.leb l1 l2 = false -> Label.leb l2 l1 = true.
+Proof.
+  unfold Label.leb.
+Admitted.
+
 End Label.
 
 Module LabelNotation.

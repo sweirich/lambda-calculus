@@ -155,7 +155,7 @@ Definition SEQ (s1 s2 : P (label * Result A)) :  P (label * Result A)%type :=
 
    This program terminates on all inputs, so its meaning is "5"
 
-     
+7     
    NOTE: in this semantics we cannot define functions extensionally.  For
    example, we might want to say:
 
@@ -491,6 +491,12 @@ destruct r eqn:ER.
      move: (ALL1 _ in2) => E1. done.
 Qed.  
 
+(* For the result of resolve (a partial function), we want to know that there
+   is some smallest Bottom in the set or no Bottom value
+   (an important property for the monotonicity of ONE and ALL). 
+
+   This part is sketchy --- I'm not sure yet of the best way to prove it.
+*)
 Section Validity.
 
 Definition has_unique_least_element (P:label->Prop) :=
@@ -547,137 +553,6 @@ Admitted.
   (* This will probably require classical reasoning -- there is at least one 
      bottom in the set or there is no bottom. *)
 
-(*  
-
-Lemma Valid_BOTTOM {A} : Valid (@BOTTOM A).
-  unfold BOTTOM.
-  left. exists Bot. split; cbn; eauto.
-  intros k in1. inversion in1. subst. cbv. auto.
-Qed.
-
-Lemma Valid_UNIT {A} (x:A) : Valid (UNIT x).
-  right. intros l h. unfold UNIT in h. inversion h.
-Qed.
-
-Lemma Valid_FAIL {A} : Valid (@FAIL A).
-  unfold FAIL. right. intros l h. inversion h.
-Qed.
-
-Lemma Valid_WRONG {A} : Valid (@WRONG A).
-  unfold WRONG. right. intros l h. inversion h.
-Qed.
-
-Lemma Valid_UNION {A} (s1 s2 : M A) : Valid s1 -> Valid s2 -> Valid (UNION s1 s2).
-intros in1 in2. 
-unfold UNION in *. unfold Valid in *.
-inversion in1 as [[l1 [i1 h1]]|h1]; clear in1. 
-- left.
-  exists (L l1). repeat split. left. cbn. exists (l1, Bottom). repeat split; eauto.
-  intros k kin. cbn in kin. inversion kin; subst.
-  -- destruct H as [[l1' w1] [h1' h2']]. 
-     inversion h2'. subst.
-     move: (h1 l1' h1') => LE. eauto.
-  -- destruct H as [[l1' w1] [h1' h2']]. 
-     inversion h2'. subst.
-     unfold Label.le, Label.leb. simpl. auto.
-- inversion in2 as [[l2 [i2 h2]]|h2]; subst; clear in2.
-  + left. 
-    exists (R l2). split. right. exists (l2, Bottom). repeat split; eauto.
-    intros k kin. inversion kin; subst.
-    -- destruct H as [[l1' w1] [h1' h2']]. 
-       inversion h2'. subst.
-       move: (h1 l1' h1') => LE. done.
-    -- destruct H as [[l1' w1] [h1' h2']]. 
-       inversion h2'. subst.
-       move: (h2 l1' h1') => LE. eauto.
-  + right.
-    intros l h. 
-    inversion h. 
-    destruct H as [[l1 w1] [h3 h4]]. inversion h4. subst. eapply h1; eauto.
-    destruct H as [[l1 w1] [h3 h4]]. inversion h4. subst. eapply h2; eauto.
- Qed.
-
-Lemma Valid_INTER  
-  (v : W)(s2 : M W) : Valid s2 -> Valid (INTER v s2).
-Proof.
-  intros pf. 
-  unfold INTER in *. unfold Valid in *.
-  destruct pf as [[l [h1 h2]]|pf].
-  - left.
-    exists l. split. cbv. split; auto.
-    intros k kin. cbv in kin. move: kin=> [_ kin]. eapply h2. eauto.
-  - right.
-    intros l lin. cbv in lin. move: lin=> [_ lin]. eapply pf. eauto.
-Qed.
-
-Lemma Valid_SEQ {A} (s1 s2 : M A) : Valid s1 -> Valid s2 -> Valid (SEQ s1 s2).
-Proof.
-Admitted.
-
-(* The IH doesn't help here because it only talks about individual 
-   sets f w. But we need to reason about all f w. *)
-Lemma Valid_EXISTS {A} (f : A -> M A) : 
-  (forall w, Valid (f w)) -> Valid (EXISTS f).
-Proof.
-  unfold Valid.
-  unfold EXISTS.
-  cbn.
-Admitted.  
-
-Lemma Valid_ONE (e : M W) : Valid e -> Valid (ONE e).
-Proof.
-Admitted.
-
-Lemma Valid_ALL (e : M W) : Valid e -> Valid (ALL e).
-Proof.
-Admitted.
-
-
-Lemma Valid_evalPrim {o w} :
-   Valid (evalPrim o w).
-Proof.
-  destruct o; destruct w; simpl.
-  all: try eapply Valid_WRONG.
-  all: try eapply Valid_UNIT.
-  all: try destruct l.
-  all: try destruct w.
-  all: try destruct l.
-  all: try destruct w.
-  all: try destruct l.
-  all: try eapply Valid_WRONG.
-  all: try eapply Valid_UNIT.
-  destruct (Nat.leb n0 n).
-  all: try eapply Valid_UNIT.
-  all: try eapply Valid_FAIL.
-Qed.
-
-Lemma Valid_evalExp : forall k n (env : Env n) e , Valid (evalExp k e env).
-intros k. induction k.
-- intros. cbn. eapply Valid_BOTTOM.
-- intros.
-  destruct e.
-  + simpl. eapply Valid_UNIT.
-  + repeat rewrite eval_App.    
-    remember (evalVal env v0) as w. cbv zeta.
-    destruct (evalVal env v).
-    all: try eapply Valid_WRONG.
-    eapply Valid_evalPrim.
-    eapply IHk.
-  + repeat rewrite eval_Seq. eapply Valid_SEQ; eauto.
-  + repeat rewrite eval_Unify. eapply Valid_INTER; eauto.
-  + repeat rewrite eval_Exists.
-    eapply Valid_EXISTS. intro w. eauto.
-  + repeat rewrite eval_Or.
-    eapply Valid_UNION; eauto.
-  + simpl.
-    eapply Valid_FAIL; eauto.
-  + rewrite eval_One.
-    eapply Valid_ONE; eauto.
-  + rewrite eval_All.
-    eapply Valid_ALL; eauto.
-Qed.
-*)
-
 End Validity.
 
 
@@ -688,9 +563,7 @@ End Validity.
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
 
-
 Section Monotonicity.
-
 
 Import SetNotations.
 Import MonadNotation.
@@ -816,8 +689,6 @@ Proof.
          have EQr: r1 = r2.
          { destruct r1; destruct r2; try done. 
            cbn in ra1. subst. auto. }
-                              
-         
          move: (A1' _ in2') => [[l1' r1'] [in1' [la1' ra1']]].
          have [vl1' vr1'] : entry_valid (l1', r1'). eapply Vs1; auto.
          have NE1': (r1' <> Bottom).
@@ -893,14 +764,14 @@ Proof.
       have F2: entry_finished (l0, Value a).
       split; eauto. eapply Value_finished,
         Same_set_Equivalence, Same_set_PartialOrder.
-Admitted.
-(*
-      move: (A1 _ h1 ltac:(split; eauto using Value_finished)) => h1'.
+      admit. admit. admit.
+      admit.
+(*      move: (A1 _ h1 ltac:(split; eauto using Value_finished)) => h1'.
       move: (A2 _ h2 ltac:(split; eauto using (proj2 ne))) => h2'.
       exists (l0, Value a).
       split; eauto.
       exists (l1, v). 
-      split; eauto.
+      split; eauto. *)
   - intros [l2 r2] [[l1' r1'] [h1 h2]].
     move: (A1' _ h1) => [[l1 r1] [in1 [a3 h3]]].
     destruct r1'; simpl in a3. 
@@ -950,40 +821,10 @@ Admitted.
          split; simpl; auto. 
          split; simpl; auto. 
          destruct r2; simpl; auto.
-Qed. *)
-
-
-Lemma bot_min k : 
-  Label.leb Bot k = true.
-Proof. 
-  destruct k; cbv; auto.
-Qed.
-
-Hint Resolve bot_min : label.
-
-Lemma approx_leb k k1 k2 :
-  Label.leb k k1 = true -> 
-  Label.approx k1 k2 -> Label.leb k k2 = true.
-Proof.
-  intros.
-  unfold Label.approx in H0.
-  apply Label.approxb_leb in H0.
-  move: (@Label.le_transitive k1 k k2) => h. unfold Label.le in h. eauto.
-Qed.
-
-Lemma leb_transitive k1 k2 k3 : 
-  Label.leb k1 k2 = true -> Label.leb k2 k3 = true -> Label.leb k1 k3 = true.
-Admitted.
-
-Lemma leb_swap l1 l2 : Label.leb l1 l2 = false -> Label.leb l2 l1 = true.
-Proof.
-  unfold Label.leb.
 Admitted.
 
 
-Lemma bottom_cases {A} (w : Result A) : w = Bottom \/ w <> Bottom.
-Proof. destruct w. left. auto. right. done. right. done. Qed. 
-
+(* Hint Resolve bot_min : label. *)
 
 Lemma ONE_monotone {s2 s2' : M W} : 
   Valid s2 ->
@@ -1007,7 +848,7 @@ Proof.
     move: (L1 _ _ h4). 
     move: (entry_approx_label h5).
     clear. intros.
-    eapply approx_leb; eauto.
+    eapply Label.approx_leb; eauto.
   - (* WTP: everything in ONE s2' is approximated by something in ONE s2 *)
     intros [l w2'] [l2' [h1 [h2 h3]]].
     (* have (l2', w2') in ONE s2', so l2' is smallest label *) 
@@ -1036,8 +877,8 @@ Proof.
          move: (A1 _ kin' EF') => h6.
          (* if (k',w') is in s2' then l2' <= k' *)
          move: (h2 _ _ h6) => LE2.
-         move: (approx_leb _ LE al2) => h.
-         eapply leb_transitive; eauto. 
+         move: (Label.approx_leb _ LE al2) => h.
+         eapply Label.leb_transitive; eauto. 
     + (* w2' does NOT diverge *)
       have EQ: l = Top. destruct w2'; try done. subst.
       have E2: (w2 = w2' \/ w2 = Bottom).
@@ -1067,18 +908,18 @@ Proof.
                (* transitivity: l1 <= l2 [= l2' <= k' *)
                apply Label.approxb_le in al2. 
                unfold Label.le in *.
-               eapply leb_transitive; eauto.
-               eapply leb_transitive; eauto.
+               eapply Label.leb_transitive; eauto.
+               eapply Label.leb_transitive; eauto.
              -- (* (l2, w2') is smaller than (l1, Bottom) *)
                right.
-               move: (leb_swap _ _ LEl) => LE1.
+               move: (Label.leb_swap _ _ LEl) => LE1.
                intros k' w' in'.
                move: (bottom_cases w') => C.
                destruct C as [C|C]. subst. 
                (* if w' is Bottom, then must have l1 <= k'  *)
                move: (h8 _ in') => LE2. 
                unfold Label.le in *. 
-               eauto using leb_transitive.
+               eauto using Label.leb_transitive.
 
                (* otherwise transitivity: l2 [= l2' <= k' *)
                have EF1: entry_finished (k',w'). 
@@ -1090,7 +931,7 @@ Proof.
                move: (h2 _ _ in2') => LE3.               
                apply Label.approxb_le in al2. 
                unfold Label.le in *. 
-               eauto using leb_transitive.
+               eauto using Label.leb_transitive.
 
            - (* no bottoms in s2 *)
              right.
@@ -1108,7 +949,7 @@ Proof.
              move: (h2 _ _ in2') => LE3.               
              apply Label.approxb_le in al2. 
              unfold Label.le in *. 
-             eauto using leb_transitive.
+             eauto using Label.leb_transitive.
          }                
 
          destruct D as [[k [kin kmin]]|nok].
@@ -1142,8 +983,8 @@ Proof.
             (* transitivity: l <= l2 <= l2' <= k' *)
             unfold Label.approx in al2.
             apply Label.approxb_le in al2. unfold Label.le in *.
-            eapply leb_transitive. eauto.
-            eapply leb_transitive. eauto. auto.
+            eapply Label.leb_transitive. eauto.
+            eapply Label.leb_transitive. eauto. auto.
         +++ subst. assert False. eapply h7. eauto. done.
 Qed.
 
@@ -1179,7 +1020,7 @@ Lemma ALL_monotone {s2 s2' : M W} :
   approx eq s2 s2' -> approx eq (ALL TupleV s2) (ALL TupleV s2').
 Admitted.
 
-
+(* Can we get rid of entry_valid?? *)
 Lemma RESOLVE_entry_valid {A} (s : M A) :
   forall e : label * Result A, e ∈ RESOLVE s -> entry_valid e.
 Proof.

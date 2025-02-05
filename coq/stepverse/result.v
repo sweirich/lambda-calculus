@@ -1,3 +1,6 @@
+Require Export ssreflect.
+Require Export Coq.Classes.RelationClasses.
+Require Export Coq.Classes.Morphisms.
 
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
@@ -54,3 +57,6 @@ Definition approxb {A} (R : A -> A -> bool) (r1 : Result A) (r2 : Result A) : bo
   end.
 
 End R.
+
+Lemma bottom_cases {A} (w : Result A) : w = Bottom \/ w <> Bottom.
+Proof. destruct w. left. auto. right. done. right. done. Qed. 
