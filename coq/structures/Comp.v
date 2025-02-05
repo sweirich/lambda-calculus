@@ -3,7 +3,7 @@ Require Import Coq.Classes.RelationClasses.
 Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
-Require Export lc.tactics.
+Require Import Coq.Lists.List.
 Require Import structures.Monad.
 
 Import MonadNotation.

@@ -1,4 +1,3 @@
-
 (* --------------------------------------------------------- *)
 (* --------------------------------------------------------- *)
 (*                     Labels                                *)
@@ -18,7 +17,7 @@ Declare Scope label_scope.
 Delimit Scope label_scope with label.
 Open Scope label_scope.
 
-Inductive label (A : Type) : Type := 
+Inductive label : Type := 
    | Bot : label                   (* unfinished *)
    | Top : label                   (* Returned value *)
    | Br  : label -> label -> label   (* sequenced choices *)

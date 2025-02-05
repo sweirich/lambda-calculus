@@ -18,17 +18,16 @@ quick:  $(COQMKFILENAME)
 verse/syntax.v : verse/verse.sig
 	as2-exe -i $< -p Coq > $@
 
+# lc/%_ott.v: $(OTT_LOC)/%.ott 
+#	ott -i $(OTT_LOC)/$(OTT_NAME).ott -o lc/$(OTT_NAME)_ott.v -coq_lngen true -coq_expand_list_types true
 
-lc/%_ott.v: $(OTT_LOC)/%.ott 
-	ott -i $(OTT_LOC)/$(OTT_NAME).ott -o lc/$(OTT_NAME)_ott.v -coq_lngen true -coq_expand_list_types true
+# lc/%_inf.v: $(OTT_LOC)/%.ott  
+#	$(LNGEN) --coq-no-proofs --coq lc/$*_inf.v --coq-ott $*_ott $(OTT_LOC)/$*.ott 
 
-lc/%_inf.v: $(OTT_LOC)/%.ott  
-	$(LNGEN) --coq-no-proofs --coq lc/$*_inf.v --coq-ott $*_ott $(OTT_LOC)/$*.ott 
+# lc/%_inf_proofs.v: $(OTT_LOC)/%.ott Makefile
+#	$(LNGEN) --coq $(COQ_LOC)/$*_inf_proofs.v --coq-ott $*_ott $(OTT_LOC)/$*.ott 
 
-lc/%_inf_proofs.v: $(OTT_LOC)/%.ott Makefile
-	$(LNGEN) --coq $(COQ_LOC)/$*_inf_proofs.v --coq-ott $*_ott $(OTT_LOC)/$*.ott 
-
-$(COQMKFILENAME): Makefile $(shell ls */*.v | grep -v _ott.v | grep -v _inf.v)
+$(COQMKFILENAME): Makefile $(shell ls */*.v)
 	coq_makefile -arg '-w -variable-collision,-meta-collision,-require-in-module' -f _CoqProject -o $(COQMKFILENAME)
 
 clean:

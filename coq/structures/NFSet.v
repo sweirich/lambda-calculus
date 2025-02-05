@@ -5,7 +5,6 @@ Require Import Lia.
 
 Require Import structures.Sets.
 Require Import structures.List.
-Require Export lc.tactics.
 
 Import SetNotations.
 

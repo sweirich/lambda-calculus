@@ -3,9 +3,9 @@ Require Import Coq.Classes.RelationClasses.
 Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
+Require Import Coq.Lists.List.
 Require Import structures.Sets.
 Require Import structures.List.
-Require Export lc.tactics.
 
 Import SetNotations.
 

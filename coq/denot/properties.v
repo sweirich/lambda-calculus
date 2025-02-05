@@ -3,7 +3,6 @@ Require Import Coq.Classes.RelationClasses.
 Require Coq.Relations.Relation_Definitions.
 Require Import Lia.
 
-Require Export lc.tactics.
 Require Import structures.Structures.
 Require Import structures.FSet.
 Require Export structures.consistency.

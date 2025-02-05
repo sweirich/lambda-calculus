@@ -6,8 +6,6 @@ Require Import Coq.Classes.EquivDec.
 
 Require Import Lia.
 
-Require Export lc.tactics.
-Require Export lc.scoped.
 Require Import structures.Structures.
 Require Export structures.consistency.
 
